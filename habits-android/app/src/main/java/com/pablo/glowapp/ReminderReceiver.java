@@ -63,9 +63,14 @@ public class ReminderReceiver extends BroadcastReceiver {
       if (habit == null || habit.done()) return;         // not due that day, or already done
     }
 
-    final String voice = ReminderNotifier.remind(context, habitId, reminder.optString("name"), date,
-        pickMessage(reminder.optJSONArray("msgs"), date, reminder.optInt("slot")));
-    autoplay(context, snapshot, voice);
+    // The user's own recording when the habit has one and it is still on the
+    // phone; the character's line otherwise.
+    final String own = OwnNotes.existing(context, reminder.optString("own")) != null ? reminder.optString("own") : null;
+    final String voice = own != null
+        ? ReminderNotifier.remindOwn(context, habitId, reminder.optString("name"), reminder.optString("emoji"), date, own)
+        : ReminderNotifier.remind(context, habitId, reminder.optString("name"), date,
+            pickMessage(reminder.optJSONArray("msgs"), date, reminder.optInt("slot")));
+    autoplay(context, snapshot, voice, own != null ? ReminderNotifier.CHANNEL_OWN : ReminderNotifier.CHANNEL_CAST);
   }
 
   /**
@@ -96,12 +101,12 @@ public class ReminderReceiver extends BroadcastReceiver {
     GlowWidgetProvider.refresh(context);
     final String voice = ReminderNotifier.answerDone(context, habitId, date, intent.getStringExtra(EXTRA_TEXT));
     MainActivity.pokePage();
-    autoplay(context, GlowStore.readSnapshot(context), voice);
+    autoplay(context, GlowStore.readSnapshot(context), voice, ReminderNotifier.CHANNEL_CAST);
   }
 
-  private void autoplay(Context context, JSONObject snapshot, String voice) {
+  private void autoplay(Context context, JSONObject snapshot, String voice, String channel) {
     if (!autoplayWanted(snapshot, voice)) return;
-    if (!VoicePlayer.mayAutoplay(context)) return;
+    if (!VoicePlayer.mayAutoplay(context, channel)) return;
     VoicePlayer.play(context, voice, goAsync(), AUTOPLAY_DELAY, true);
   }
 
@@ -122,12 +127,14 @@ public class ReminderReceiver extends BroadcastReceiver {
    * On unless the user turned it off. A snapshot written by 2.8 (v2) says off
    * for everyone who never touched the switch, its old default; 2.9 turns
    * the notes on for them, and so does this until the page has run once and
-   * sent its own choice.
+   * sent its own choice. From 2.10 the choice also sits at the top of the
+   * snapshot, because a habit's own recording plays with no character at all.
    */
   static boolean autoplayWanted(JSONObject snapshot, String voice) {
+    if (voice == null || snapshot == null) return false;
+    if (snapshot.optInt("v") < 3) return true;
     final JSONObject cast = ReminderNotifier.character(snapshot);
-    if (voice == null || cast == null) return false;
-    return snapshot.optInt("v") < 3 || cast.optBoolean("autoplay", true);
+    return snapshot.optBoolean("autoplay", cast == null || cast.optBoolean("autoplay", true));
   }
 
   /**

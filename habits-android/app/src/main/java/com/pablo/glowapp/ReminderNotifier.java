@@ -31,11 +31,15 @@ import org.json.JSONObject;
  *
  * Everything said in a notification is also filed in the inbox, so the
  * in-app chat shows the same conversation.
+ *
+ * A habit can also carry the user's own recording, which then takes the
+ * place of the character's note in its reminders (remindOwn).
  */
 final class ReminderNotifier {
 
   static final String CHANNEL_CAST = "glow_cast";
   static final String CHANNEL_PLAIN = "glow_reminders";
+  static final String CHANNEL_OWN = "glow_own";
   private static final int NOTIFY_ID = 7;
   /** Marks the short-lived "done" exchange, which clearDone() leaves to time out. */
   private static final String EXTRA_CLOSING = "com.pablo.glowapp.closing";
@@ -75,6 +79,34 @@ final class ReminderNotifier {
             ui.optString("done", context.getString(R.string.mark_done)), doneIntent(context, habitId, date, null)));
     notify(context, habitId, builder.build());
     return null;
+  }
+
+  /**
+   * A reminder in the user's own voice: their recording instead of a
+   * character's line, with the same Listen and Done buttons and the same
+   * playing on arrival. It is theirs rather than a character's, so it is not
+   * filed in the chat. Returns the note's path, for the caller to autoplay.
+   */
+  static String remindOwn(Context context, String habitId, String habitName, String emoji, String date, String voice) {
+    final JSONObject snapshot = GlowStore.readSnapshot(context);
+    final JSONObject ui = ui(snapshot);
+    final String name = nameOf(snapshot, habitId, habitName);
+    ensureChannels(context);
+    final Notification.Builder builder = builder(context, CHANNEL_OWN)
+        .setSmallIcon(R.drawable.ic_notification)
+        .setColor(accent(""))
+        .setContentTitle(emoji == null || emoji.isEmpty() ? name : emoji + " " + name)
+        .setContentText("🎤 " + ui.optString("ownVoice", context.getString(R.string.own_voice)))
+        .setCategory(Notification.CATEGORY_REMINDER)
+        .setAutoCancel(true)
+        .setShowWhen(true)
+        .setContentIntent(GlowWidgetProvider.openApp(context, "today"))
+        .addAction(action(context, R.drawable.ic_action_play, ui.optString("listen", "Listen"),
+            playIntent(context, habitId, voice)))
+        .addAction(action(context, R.drawable.ic_notification,
+            ui.optString("done", context.getString(R.string.mark_done)), doneIntent(context, habitId, date, null)));
+    notify(context, habitId, builder.build());
+    return voice;
   }
 
   /**
@@ -118,10 +150,13 @@ final class ReminderNotifier {
    */
   static void test(Context context, JSONObject request) {
     final String habitId = request.optString("id");
-    final JSONObject message = request.optJSONObject("msg");
     final String key = habitId.isEmpty() ? "test" : habitId;
-    final String voice = remind(context, key, request.optString("name"), GlowStore.today(), message);
-    if (ReminderReceiver.autoplayWanted(GlowStore.readSnapshot(context), voice) && VoicePlayer.mayAutoplay(context)) {
+    final String own = OwnNotes.existing(context, request.optString("own")) != null ? request.optString("own") : null;
+    final String voice = own != null
+        ? remindOwn(context, key, request.optString("name"), request.optString("emoji"), GlowStore.today(), own)
+        : remind(context, key, request.optString("name"), GlowStore.today(), request.optJSONObject("msg"));
+    if (ReminderReceiver.autoplayWanted(GlowStore.readSnapshot(context), voice)
+        && VoicePlayer.mayAutoplay(context, own != null ? CHANNEL_OWN : CHANNEL_CAST)) {
       VoicePlayer.playFromAnyThread(context, voice, 1500L, true);
     }
   }
@@ -313,8 +348,12 @@ final class ReminderNotifier {
     final NotificationChannel plain = new NotificationChannel(CHANNEL_PLAIN,
         context.getString(R.string.reminder_channel), NotificationManager.IMPORTANCE_DEFAULT);
     plain.setDescription(context.getString(R.string.reminder_channel_desc));
+    final NotificationChannel own = new NotificationChannel(CHANNEL_OWN,
+        context.getString(R.string.own_channel), NotificationManager.IMPORTANCE_HIGH);
+    own.setDescription(context.getString(R.string.own_channel_desc));
     manager.createNotificationChannel(cast);
     manager.createNotificationChannel(plain);
+    manager.createNotificationChannel(own);
   }
 
   private static NotificationManager manager(Context context) {
@@ -339,9 +378,11 @@ final class ReminderNotifier {
     return name.isEmpty() ? (fallback == null ? "" : fallback) : name;
   }
 
-  /** Voice notes ship inside the app; anything else is not ours to play. */
+  /** Voice notes ship inside the app or were recorded in it; anything else is not ours to play. */
   static String validVoice(String path) {
-    return path != null && path.matches("voices/[a-z]+/[a-z]{2}/[a-z0-9-]+\\.webm") ? path : null;
+    if (path == null) return null;
+    if (path.matches("voices/[a-z]+/[a-z]{2}/[a-z0-9-]+\\.webm")) return path;
+    return OwnNotes.idOf(path) != null ? path : null;
   }
 
   private static void fileInChat(Context context, String castId, String from, String kind, String habitId,

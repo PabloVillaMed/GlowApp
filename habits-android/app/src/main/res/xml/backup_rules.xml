@@ -3,8 +3,10 @@
      storage, under the app's data root rather than its files folder (which is
      where 2.7 and earlier pointed, so their backups held nothing useful).
      Only that store is included: the WebView's caches are large and
-     rebuilt on their own. The native snapshot and the queues go too. -->
+     rebuilt on their own. The native snapshot and the queues go too, and so
+     do the voice notes recorded in the app (files/notes). -->
 <full-backup-content>
   <include domain="root" path="app_webview/Default/Local Storage" />
   <include domain="sharedpref" path="glow_shell.xml" />
+  <include domain="file" path="notes" />
 </full-backup-content>

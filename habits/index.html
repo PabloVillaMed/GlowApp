@@ -31,8 +31,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="GlowApp">
-  <link rel="stylesheet" href="styles.css?v=2.9">
-  <script src="i18n.js?v=2.9"></script>
+  <link rel="stylesheet" href="styles.css?v=2.10">
+  <script src="i18n.js?v=2.10"></script>
 </head>
 <body>
   <!-- Launch screen. The mark draws itself, then a phrase lands under it.
@@ -487,6 +487,13 @@
             <span aria-hidden="true">+</span> <span data-i18n="reminderAdd">Añadir hora</span>
           </button>
           <span class="field-hint" id="reminderHint"></span>
+          <!-- Your own voice for this habit's reminders: recorded here, kept by
+               the Android app. A browser has no reminders, so no recorder. -->
+          <div class="own-voice" id="ownVoice" hidden>
+            <span class="field-label" data-i18n="ownVoiceLabel">Tu nota de voz</span>
+            <div class="own-voice-body" id="ownVoiceBody"></div>
+            <p class="field-hint" id="ownVoiceHint" aria-live="polite"></p>
+          </div>
         </div>
 
         <p class="form-error" id="formError" hidden role="alert"></p>
@@ -612,14 +619,17 @@
     <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
       <path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>
     </symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="9" y="3" width="6" height="11.5" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0"/><path d="M12 18v3"/>
+    </symbol>
     <symbol id="i-restore" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
       <path d="M4 10a8 8 0 1 1 1.2 5"/><path d="M4 4.5V10h5.5"/>
     </symbol>
   </svg>
 
-  <script src="sounds.js?v=2.9"></script>
-  <script src="charts.js?v=2.9"></script>
-  <script src="characters.js?v=2.9"></script>
-  <script src="app.js?v=2.9"></script>
+  <script src="sounds.js?v=2.10"></script>
+  <script src="charts.js?v=2.10"></script>
+  <script src="characters.js?v=2.10"></script>
+  <script src="app.js?v=2.10"></script>
 </body>
 </html>

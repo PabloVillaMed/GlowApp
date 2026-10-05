@@ -6,7 +6,7 @@ truth — edit the app there, rebuild, and the APK picks the changes up.
 
 ## The built APK
 
-`GlowApp-2.9.apk` sits at the repository root. It is signed with the release key
+`GlowApp-2.10.apk` sits at the repository root. It is signed with the release key
 in `keystore/` (not committed), targets API 36 (Android 16), and needs Android
 7.0 or newer.
 
@@ -47,12 +47,12 @@ installs once they are answered. Some phones add their own layer on top:
 Over USB with developer options and USB debugging on:
 
 ```sh
-adb install GlowApp-2.9.apk
+adb install GlowApp-2.10.apk
 ```
 
 ## Native features
 
-Three things live in the shell rather than the page, because a web page cannot
+Four things live in the shell rather than the page, because a web page cannot
 do them:
 
 - **Reminders.** A habit can have up to four times. Each is a one-shot alarm
@@ -78,6 +78,18 @@ do them:
   "would mute" background playback. If a later Android turns that on, the
   note will have to play from a short foreground service (an exact alarm is
   allowed to start one).
+- **Your own voice notes** (pilot, 2.10). The page records a note for a habit
+  with the microphone and hands the WebM file over once, on save
+  (`saveVoiceNote`, base64). `OwnNotes` keeps it in `files/notes/<id>.webm`,
+  checks it starts like a WebM file and stays under 2 MB, and writes it aside
+  before renaming it into place. A reminder for that habit then plays it
+  instead of the character's note (`ReminderNotifier.remindOwn`, channel
+  `glow_own`), and the page plays it back as `mine/<id>.webm`, which
+  `MainActivity` answers from that folder. The WebView only gets the
+  microphone through `WebChromeClient.onPermissionRequest`: a request for
+  audio capture alone, from the app's own origin, granted once Android has
+  granted `RECORD_AUDIO`, which is asked for the first time the record button
+  is pressed.
 - **Home-screen widget.** A progress ring for the day that stays put, then a
   scrolling list with every habit due: its colour and emoji, a progress bar
   for counted habits, its streak, and two tap targets — the name opens the
@@ -200,3 +212,6 @@ Uninstalling deletes it. Android's backup includes that storage
 (`res/xml/backup_rules.xml` and `data_extraction_rules.xml`; up to 2.7 the rules
 pointed at the wrong folder and carried nothing useful), but treat the JSON
 export as the real backup.
+
+Voice notes recorded in the app (2.10) are files in `files/notes`, outside the
+page's storage: Android's backup carries them, the JSON export does not.

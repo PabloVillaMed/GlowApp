@@ -83,6 +83,28 @@ bar), with a one-tap "ya lo hice" for anything still open.
   names the habit; the recording cannot), five answers to "done" and an
   introduction.
 
+### Your own voice note (pilot, 2.10)
+
+A habit can also carry a note in the user's own voice: *Hábitos → a habit →
+Recordatorios → Tu nota de voz → Grabar mi voz*. It records up to 30 seconds
+with a live level, plays back in the editor, and can be recorded again or
+removed; nothing is kept until the habit is saved. From then on that habit's
+reminders play it instead of the character's note, as a "Tu nota de voz"
+notification with the same Escuchar and Hecho buttons, playing by itself under
+the same rules (on its own Android channel, *Tus notas de voz*). A habit with
+no character chosen gets it too.
+
+- Android asks for the microphone the first time the button is pressed. If it
+  was refused, the editor says so and offers Android's settings page.
+- The page records (`MediaRecorder`, WebM/Opus at 32 kbps) and hands the file
+  to the shell once, on save; it lives in the app's private storage, not in
+  `glow.v1`, so the JSON export does not carry it. Android's own backup does.
+  On start the page and the shell compare notes: a file no habit uses is
+  deleted, and a habit whose file is missing (a backup from another phone)
+  forgets it.
+- A take that is almost silent gets a warning; under a second is refused.
+- Loading an audio file instead of recording one is the next step.
+
 ### The voices
 
 The voice notes are generated here, once, by

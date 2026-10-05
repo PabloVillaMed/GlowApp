@@ -19,8 +19,10 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
+import android.webkit.PermissionRequest;
 import android.webkit.ServiceWorkerClient;
 import android.webkit.ServiceWorkerController;
+import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -33,6 +35,9 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.ref.WeakReference;
@@ -78,6 +83,9 @@ public class MainActivity extends Activity {
   private static final Pattern RGB =
       Pattern.compile("rgba?[(]([0-9]+),[ ]*([0-9]+),[ ]*([0-9]+)");
 
+  private static final int REQUEST_NOTIFICATIONS = 1;
+  private static final int REQUEST_MIC = 2;
+
   /** The activity on screen, if any, so a receiver can tell the page something changed. */
   private static WeakReference<MainActivity> resumed = new WeakReference<>(null);
 
@@ -85,6 +93,8 @@ public class MainActivity extends Activity {
   private WebView webView;
   private boolean pageReady;
   private String pendingRoute;
+  /** The page's request for the microphone, waiting on Android's own permission dialog. */
+  private PermissionRequest pendingMic;
 
   @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
   @Override
@@ -157,6 +167,21 @@ public class MainActivity extends Activity {
       }
     });
 
+    // The page asks for the microphone to record a voice note, and for
+    // nothing else. Android's own permission is asked on the spot, the first
+    // time the record button is pressed.
+    webView.setWebChromeClient(new WebChromeClient() {
+      @Override
+      public void onPermissionRequest(PermissionRequest request) {
+        runOnUiThread(() -> answerPermission(request));
+      }
+
+      @Override
+      public void onPermissionRequestCanceled(PermissionRequest request) {
+        if (pendingMic == request) pendingMic = null;
+      }
+    });
+
     // The page registers a service worker in a browser; its fetches bypass
     // WebViewClient and need their own interceptor.
     ServiceWorkerController controller = ServiceWorkerController.getInstance();
@@ -172,6 +197,38 @@ public class MainActivity extends Activity {
       webView.restoreState(savedInstanceState);
     } else {
       webView.loadUrl(START_URL);
+    }
+  }
+
+  /** Grants the microphone to the app's own page once Android has granted it to the app. */
+  private void answerPermission(PermissionRequest request) {
+    final String[] wanted = request.getResources();
+    final boolean micOnly = wanted.length == 1 && PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(wanted[0]);
+    if (!micOnly || !isOurs(request.getOrigin())) {
+      request.deny();
+      return;
+    }
+    if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+      request.grant(wanted);
+      return;
+    }
+    if (pendingMic != null) pendingMic.deny();
+    pendingMic = request;
+    requestPermissions(new String[] { Manifest.permission.RECORD_AUDIO }, REQUEST_MIC);
+  }
+
+  @Override
+  public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] results) {
+    super.onRequestPermissionsResult(requestCode, permissions, results);
+    if (requestCode != REQUEST_MIC || pendingMic == null) return;
+    final PermissionRequest request = pendingMic;
+    pendingMic = null;
+    // Refused, or refused for good (no dialog at all): the page explains, and
+    // offers Android's settings page for the app.
+    if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) {
+      request.grant(request.getResources());
+    } else {
+      request.deny();
     }
   }
 
@@ -285,7 +342,7 @@ public class MainActivity extends Activity {
       if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
           == PackageManager.PERMISSION_GRANTED) return;
       runOnUiThread(() ->
-          requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS }, 1));
+          requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS }, REQUEST_NOTIFICATIONS));
     }
 
     /** False when Android would hide the reminders: app notifications or the character channel off. */
@@ -332,6 +389,30 @@ public class MainActivity extends Activity {
       } catch (JSONException malformed) {
         // Nothing to send.
       }
+    }
+
+    /** Keeps a voice note the user recorded: `base64` is the WebM file, `id` its name. */
+    @JavascriptInterface
+    public boolean saveVoiceNote(String id, String base64) {
+      return OwnNotes.save(MainActivity.this, id, base64);
+    }
+
+    @JavascriptInterface
+    public void deleteVoiceNote(String id) {
+      OwnNotes.delete(MainActivity.this, id);
+    }
+
+    /** The ids of every recorded note on the phone, as a JSON array. */
+    @JavascriptInterface
+    public String listVoiceNotes() {
+      return OwnNotes.list(MainActivity.this);
+    }
+
+    /** Android's page for this app, where a permission refused for good can still be given. */
+    @JavascriptInterface
+    public void openAppSettings() {
+      openSettings(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+          Uri.parse("package:" + getPackageName())));
     }
 
     /** Hands over ticks made from the widget or a notification, and clears them. */
@@ -410,10 +491,22 @@ public class MainActivity extends Activity {
     if (path == null || path.isEmpty() || path.equals("/")) path = "/index.html";
     if (path.contains("..")) return notFound();
 
+    Map<String, String> headers = new HashMap<>();
+    headers.put("Cache-Control", "no-cache");
+
+    // The user's own recordings come from the app's private storage, not the APK.
+    if (OwnNotes.idOf(path.substring(1)) != null) {
+      final File note = OwnNotes.existing(this, path.substring(1));
+      if (note == null) return notFound();
+      try {
+        return new WebResourceResponse("audio/webm", null, 200, "OK", headers, new FileInputStream(note));
+      } catch (FileNotFoundException gone) {
+        return notFound();
+      }
+    }
+
     try {
       InputStream stream = getAssets().open(ASSET_ROOT + path);
-      Map<String, String> headers = new HashMap<>();
-      headers.put("Cache-Control", "no-cache");
       return new WebResourceResponse(mimeOf(path), "utf-8", 200, "OK", headers, stream);
     } catch (IOException missing) {
       return notFound();

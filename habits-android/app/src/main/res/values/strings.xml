@@ -10,6 +10,9 @@
   <string name="cast_channel_desc">Reminders sent as chat messages, with a voice note</string>
   <string name="reminder_channel">Reminders</string>
   <string name="reminder_channel_desc">Plain daily nudges for the habits you scheduled</string>
+  <string name="own_channel">Your voice notes</string>
+  <string name="own_channel_desc">Reminders that play a note you recorded yourself</string>
+  <string name="own_voice">Your voice note</string>
   <string name="reminder_title">Done with “%1$s” yet?</string>
   <string name="reminder_body">Mark it done from here, or open GlowApp.</string>
   <string name="mark_done">Done</string>

@@ -6,6 +6,9 @@
   <string name="cast_channel_desc">Recordatorios en forma de mensaje, con nota de voz</string>
   <string name="reminder_channel">Recordatorios</string>
   <string name="reminder_channel_desc">Avisos diarios sencillos de los hábitos que programaste</string>
+  <string name="own_channel">Tus notas de voz</string>
+  <string name="own_channel_desc">Recordatorios que reproducen una nota que grabaste tú</string>
+  <string name="own_voice">Tu nota de voz</string>
   <string name="reminder_title">¿Ya hiciste «%1$s»?</string>
   <string name="reminder_body">Márcalo como hecho desde aquí o abre GlowApp.</string>
   <string name="mark_done">Hecho</string>

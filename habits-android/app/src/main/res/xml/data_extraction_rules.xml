@@ -5,9 +5,11 @@
   <cloud-backup>
     <include domain="root" path="app_webview/Default/Local Storage" />
     <include domain="sharedpref" path="glow_shell.xml" />
+    <include domain="file" path="notes" />
   </cloud-backup>
   <device-transfer>
     <include domain="root" path="app_webview/Default/Local Storage" />
     <include domain="sharedpref" path="glow_shell.xml" />
+    <include domain="file" path="notes" />
   </device-transfer>
 </data-extraction-rules>

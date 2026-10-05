@@ -13,12 +13,14 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 
 /**
- * Plays a character's voice note straight from the APK, without opening the
- * app: by itself whenever a message arrives, or from a notification's Listen
- * button.
+ * Plays a voice note without opening the app — a character's, straight from
+ * the APK, or one the user recorded (OwnNotes): by itself whenever a message
+ * arrives, or from a notification's Listen button.
  *
  * A note that plays on arrival is part of the notification, so it plays at
  * the notification volume, right after the notification's own sound. Listen
@@ -31,7 +33,11 @@ import java.io.IOException;
  */
 final class VoicePlayer {
 
-  private static final long WATCHDOG = 20_000L;
+  /**
+   * Long enough for the longest note — a recording of your own runs to 30 s —
+   * and well inside the minute Android gives a background broadcast.
+   */
+  private static final long WATCHDOG = 40_000L;
   private static final Handler MAIN = new Handler(Looper.getMainLooper());
 
   private static MediaPlayer player;
@@ -45,10 +51,10 @@ final class VoicePlayer {
    * Whether a note may play by itself right now. It plays every time a
    * message arrives, except when the phone has been told to keep quiet:
    * ringer on silent or vibrate, a call in progress, Do Not Disturb, or the
-   * app's notifications switched off (a voice out of nowhere, with no message
-   * to go with it, would only confuse).
+   * app's notifications or that message's channel switched off (a voice out
+   * of nowhere, with no message to go with it, would only confuse).
    */
-  static boolean mayAutoplay(Context context) {
+  static boolean mayAutoplay(Context context, String channelId) {
     final AudioManager manager = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
     final NotificationManager notifications =
         (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
@@ -58,7 +64,7 @@ final class VoicePlayer {
     if (notifications.getCurrentInterruptionFilter() != NotificationManager.INTERRUPTION_FILTER_ALL) return false;
     if (!notifications.areNotificationsEnabled()) return false;
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-      final NotificationChannel channel = notifications.getNotificationChannel(ReminderNotifier.CHANNEL_CAST);
+      final NotificationChannel channel = notifications.getNotificationChannel(channelId);
       if (channel != null && channel.getImportance() == NotificationManager.IMPORTANCE_NONE) return false;
     }
     return true;
@@ -88,11 +94,9 @@ final class VoicePlayer {
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
         .build();
     final MediaPlayer media = new MediaPlayer();
-    // Voice notes are uncompressed in the APK (see noCompress in build.gradle),
-    // which is what lets openFd() hand the player a plain file range.
-    try (AssetFileDescriptor file = app.getAssets().openFd(MainActivity.ASSET_ROOT + "/" + path)) {
+    try {
       media.setAudioAttributes(attributes);
-      media.setDataSource(file.getFileDescriptor(), file.getStartOffset(), file.getLength());
+      setSource(app, media, path);
     } catch (IOException | RuntimeException unplayable) {
       media.release();
       finish(result);
@@ -115,6 +119,25 @@ final class VoicePlayer {
       if (player == media) media.prepareAsync();
     }, delayMs);
     MAIN.postDelayed(VoicePlayer::stop, WATCHDOG + delayMs);
+  }
+
+  /**
+   * A recording the user made lives in the app's storage; every other note
+   * is in the APK, stored uncompressed (see noCompress in build.gradle),
+   * which is what lets openFd() hand the player a plain file range.
+   */
+  private static void setSource(Context app, MediaPlayer media, String path) throws IOException {
+    if (OwnNotes.idOf(path) != null) {
+      final File own = OwnNotes.existing(app, path);
+      if (own == null) throw new IOException("recording deleted: " + path);
+      try (FileInputStream in = new FileInputStream(own)) {
+        media.setDataSource(in.getFD());
+      }
+      return;
+    }
+    try (AssetFileDescriptor file = app.getAssets().openFd(MainActivity.ASSET_ROOT + "/" + path)) {
+      media.setDataSource(file.getFileDescriptor(), file.getStartOffset(), file.getLength());
+    }
   }
 
   /** The same, from any thread: the player and its callbacks live on the main one. */

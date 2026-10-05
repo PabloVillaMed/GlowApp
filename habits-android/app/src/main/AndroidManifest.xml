@@ -8,6 +8,13 @@
   <!-- Lets a reminder arrive on the minute. Since Android 14 the user grants it
        from the app's settings screen; without it reminders get a short window. -->
   <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+  <!-- Recording your own voice note for a habit's reminders. Asked for the
+       first time the record button is pressed, never at launch. The WebView
+       also needs to adjust audio settings to capture from the microphone. -->
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+  <!-- A phone without a microphone still gets everything else. -->
+  <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
   <application
       android:allowBackup="true"

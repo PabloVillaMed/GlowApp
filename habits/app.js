@@ -166,6 +166,8 @@
       if (!Array.isArray(habit.reminders)) habit.reminders = habit.reminder ? [habit.reminder] : [];
       delete habit.reminder;
       habit.reminders = cleanTimes(habit.reminders);
+      // Your own voice note (2.10): only an id and what the editor draws.
+      if (habit.voiceNote !== undefined && !hasOwnNote(habit)) delete habit.voiceNote;
     });
     // Until 2.9 each habit had one recorded line, h-<habit>; it is now the first of three.
     state.chat.forEach((message) => {
@@ -980,7 +982,8 @@
     const meta = document.createElement('span');
     meta.className = 'habit-meta';
     meta.textContent = scheduleLabel(habit) + ' · ' +
-      (habit.type === 'quantity' ? targetOf(habit) + ' ' + (habit.unit || '') : t('typeBinary'));
+      (habit.type === 'quantity' ? targetOf(habit) + ' ' + (habit.unit || '') : t('typeBinary')) +
+      (shell && hasOwnNote(habit) ? ' · 🎙️' : '');
     open.append(name, meta);
     open.addEventListener('click', () => openHabitDialog(habit.id));
 
@@ -1139,6 +1142,7 @@
       unit: '',
       reminders: [],
       schedule: { kind: 'daily', days: [1, 3, 5], times: 3 },
+      voiceNote: null,
     };
   }
 
@@ -1238,9 +1242,15 @@
           unit: existing.unit || '',
           reminders: (existing.reminders || []).slice(),
           schedule: Object.assign({ kind: 'daily', days: [1, 3, 5], times: 3 }, existing.schedule),
+          voiceNote: hasOwnNote(existing) ? Object.assign({}, existing.voiceNote) : null,
         }
       : blankDraft();
     if (!Array.isArray(draft.schedule.days)) draft.schedule.days = [1, 3, 5];
+    // A recording made in this editor stays in memory until Save; dropNote
+    // marks the saved one for removal, also only on Save.
+    draft.newNote = null;
+    draft.dropNote = false;
+    noteError = null;
 
     $('#habitDialogTitle').textContent = existing ? t('editHabit') : t('addHabit');
     $('#fName').value = draft.name;
@@ -1255,6 +1265,7 @@
     // Reminders need the shell to schedule an alarm, so hide them in a browser.
     $('#reminderField').hidden = !shell;
     renderReminderTimes();
+    renderOwnVoice();
 
     buildEmojiGrid();
     buildColorRow();
@@ -1303,9 +1314,14 @@
       list.appendChild(row);
     });
     $('#btnAddReminder').hidden = draft.reminders.length >= MAX_REMINDERS;
+    renderReminderHint();
+  }
 
+  /* Who will speak at these times: your own note, the character, or nobody. */
+  function renderReminderHint() {
     const lines = castLines(state.character);
     $('#reminderHint').textContent = !draft.reminders.length ? t('reminderNone')
+      : draftNote() ? t('reminderOwn')
       : lines ? t('reminderFrom', lines.name) : t('reminderPlain');
   }
 
@@ -1323,6 +1339,7 @@
   }
 
   function saveHabit() {
+    if (recording || noteBusy) return false;        // a take is still on its way
     readDialog();
     const fail = (msg) => {
       const box = $('#formError');
@@ -1333,6 +1350,22 @@
     if (!draft.name) return fail(t('errName'));
     if (draft.type === 'quantity' && draft.target < 1) return fail(t('errTarget'));
     if (draft.schedule.kind === 'days' && draft.schedule.days.length === 0) return fail(t('errDays'));
+
+    // A new recording goes to the phone's storage before the habit points at
+    // it; the note it replaces, or one removed, is deleted once saved.
+    const existing = editingId ? habitById(editingId) : null;
+    const previousNote = hasOwnNote(existing) ? existing.voiceNote.id : null;
+    let voiceNote = draft.dropNote ? null : draft.voiceNote;
+    if (draft.newNote) {
+      let stored = false;
+      try {
+        stored = !!shell.saveVoiceNote(draft.newNote.id, draft.newNote.base64);
+      } catch (err) {
+        stored = false;
+      }
+      if (!stored) return fail(t('ownVoiceSaveFailed'));
+      voiceNote = { id: draft.newNote.id, d: draft.newNote.d, w: draft.newNote.w };
+    }
 
     const payload = {
       name: draft.name,
@@ -1351,13 +1384,16 @@
       reminders: draft.reminders,
       schedule: draft.schedule,
     };
+    if (voiceNote) payload.voiceNote = voiceNote;
 
-    if (editingId) {
-      Object.assign(habitById(editingId), payload);
+    if (existing) {
+      Object.assign(existing, payload);
+      if (!voiceNote) delete existing.voiceNote;
     } else {
       state.habits.push(Object.assign({ id: uid(), createdAt: todayKey(), archived: false }, payload));
     }
     save();
+    if (previousNote && (!voiceNote || voiceNote.id !== previousNote)) deleteNoteFile(previousNote);
     // Ask for notification access only once the user actually wants a reminder.
     if (draft.reminders.length && shell && shell.requestNotificationPermission) {
       try { shell.requestNotificationPermission(); } catch (err) { /* older shell */ }
@@ -1366,6 +1402,7 @@
     renderHabitsView();
     renderToday();
     renderProgressIfVisible();
+    renderCastSettings();             // the voice-note switch shows once any habit has a note
     toast(t(draft.reminders.length ? 'reminderSaved' : 'habitSaved'));
     return true;
   }
@@ -1812,14 +1849,20 @@
       days: days,
       reminders: habits.reduce((out, h) => {
         (h.reminders || []).forEach((time, slot) => {
-          out.push({
+          const reminder = {
             // `slot` lets the shell give each of a habit's times a different line.
             id: h.id, time: time, slot: slot, name: habitName(h), emoji: h.emoji || '✅',
             msgs: cast ? reminderMessages(h, cast.id) : [],
-          });
+          };
+          // Your own recording plays instead of the character's note (2.10).
+          if (hasOwnNote(h)) reminder.own = notePath(h.voiceNote.id);
+          out.push(reminder);
         });
         return out;
       }, []),
+      // Whether notes play by themselves. Also inside `character` below, which
+      // is where shells before 2.10 look; a habit's own note needs no character.
+      autoplay: !!state.voiceAutoplay,
       character: cast ? {
         id: cast.id,
         name: lines.name,
@@ -1845,6 +1888,7 @@
         done: t('ntfDone'),
         listen: t('ntfListen'),
         voice: t('ntfVoice'),
+        ownVoice: t('ownVoiceLabel'),
         you: t('ntfYou'),
         plainTitle: t('ntfPlainTitle'),
         plainBody: t('ntfPlainBody'),
@@ -2039,7 +2083,7 @@
     if (tick) tick(0, true);
   }
 
-  function playVoice(path, onTick) {
+  function playVoice(path, onTick, knownLength) {
     const again = voice.path === path;
     stopVoice();
     if (again) return;                       // a second tap stops it
@@ -2049,7 +2093,10 @@
     voice.onTick = onTick || null;
     const frame = () => {
       if (voice.audio !== audio) return;
-      if (voice.onTick && audio.duration) voice.onTick(Math.min(1, audio.currentTime / audio.duration), false);
+      // A note recorded in the app carries no length of its own (the browser's
+      // recorder never writes one), so the measured one stands in.
+      const total = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : knownLength;
+      if (voice.onTick && total) voice.onTick(Math.min(1, audio.currentTime / total), false);
       voice.raf = requestAnimationFrame(frame);
     };
     const end = () => { if (voice.audio === audio) stopVoice(); };
@@ -2151,11 +2198,13 @@
   }
 
   /* A voice note drawn the way a messaging app draws one: play button,
-     waveform that fills as it plays, and the length. */
-  function voiceNote(path) {
+     waveform that fills as it plays, and the length. A recording of your own
+     brings its length and waveform along (`known`); the characters' come
+     from the index. */
+  function voiceNote(path, known) {
     const box = document.createElement('div');
     box.className = 'vn';
-    const info = clipInfo(path);
+    const info = known || clipInfo(path);
     const play = button('vn-play', null, { 'aria-label': t('voicePlay') });
     play.innerHTML = iconSvg('i-play', 18);
     const wave = document.createElement('div');
@@ -2180,9 +2229,306 @@
       bars.forEach((bar, i) => bar.classList.toggle('is-played', i < lit));
       if (info) time.textContent = fmtClock(ended ? info.d : info.d * fraction);
     };
-    play.addEventListener('click', () => playVoice(path, paint));
+    play.addEventListener('click', () => playVoice(path, paint, info && info.d));
     box.append(play, wave, time);
     return box;
+  }
+
+  /* ══ Your own voice note ═════════════════════════════════════════════
+     A habit's reminders can play a note you record yourself instead of the
+     character's. It is recorded here with the microphone and kept by the
+     Android shell in the app's private storage (OwnNotes), where reminders
+     play it with the app closed and this page reads it back as
+     mine/<id>.webm. Until the habit is saved the take lives only in memory,
+     so cancelling the editor simply lets it go. A browser has no reminders,
+     so it gets no recorder either. */
+  const NOTE_MAX = 30;                                  // seconds
+  const NOTE_ID_RE = /^[a-z0-9]{6,40}$/;
+  const notePath = (id) => 'mine/' + id + '.webm';
+  const hasOwnNote = (habit) => !!(habit && habit.voiceNote && typeof habit.voiceNote.id === 'string' &&
+    NOTE_ID_RE.test(habit.voiceNote.id));
+  const canRecord = () => !!(shell && shell.saveVoiceNote && navigator.mediaDevices &&
+    navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+  /* What the editor shows: a take just recorded, else the saved note unless removed. */
+  const draftNote = () => (draft ? draft.newNote || (draft.dropNote ? null : draft.voiceNote) : null);
+  const noteId = () => 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const stopTracks = (stream) => { if (stream) stream.getTracks().forEach((track) => track.stop()); };
+
+  let recording = null;      // the take in progress
+  let noteBusy = false;      // between Stop and the take being ready to keep
+  let noteError = null;      // 'denied', 'failed' or 'short', shown under the recorder
+
+  function deleteNoteFile(id) {
+    if (!shell || !shell.deleteVoiceNote || !NOTE_ID_RE.test(id || '')) return;
+    try {
+      shell.deleteVoiceNote(id);
+    } catch (err) { /* an older shell */ }
+  }
+
+  /* Recordings live on the phone, not in this record. A file no habit points
+     at (the app closed mid-save, a habit deleted) is removed, and a habit
+     whose file is gone (a backup imported on another phone) forgets it. */
+  function reconcileVoiceNotes() {
+    if (!shell || !shell.listVoiceNotes) return false;
+    let onPhone;
+    try {
+      onPhone = new Set(JSON.parse(shell.listVoiceNotes() || '[]'));
+    } catch (err) {
+      return false;
+    }
+    let changed = false;
+    const used = new Set();
+    state.habits.forEach((habit) => {
+      if (!hasOwnNote(habit)) return;
+      if (onPhone.has(habit.voiceNote.id)) {
+        used.add(habit.voiceNote.id);
+      } else {
+        delete habit.voiceNote;
+        changed = true;
+      }
+    });
+    onPhone.forEach((id) => { if (!used.has(id)) deleteNoteFile(id); });
+    return changed;
+  }
+
+  async function startRecording() {
+    if (recording || noteBusy || !draft) return;
+    stopVoice();
+    noteError = null;
+    const forDraft = draft;
+    let stream;
+    try {
+      // A memo, not a call: echo cancelling would put the phone in call mode
+      // for nothing, while an even level and less hiss do help.
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true },
+      });
+    } catch (err) {
+      noteError = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError') ? 'denied' : 'failed';
+      renderOwnVoice();
+      return;
+    }
+    // The editor may have closed while Android asked for the permission.
+    if (draft !== forDraft || !$('#habitDialog').open) {
+      stopTracks(stream);
+      return;
+    }
+    const mime = ['audio/webm;codecs=opus', 'audio/webm'].find((type) => MediaRecorder.isTypeSupported(type));
+    let media = null;
+    try {
+      if (mime) media = new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 32000 });
+    } catch (err) {
+      media = null;
+    }
+    if (!media) {
+      stopTracks(stream);
+      noteError = 'failed';
+      renderOwnVoice();
+      return;
+    }
+    const take = {
+      media: media, stream: stream, mime: mime, draft: forDraft, chunks: [], levels: [],
+      started: performance.now(), timer: 0, raf: 0, ctx: null, analyser: null, discarded: false, finished: false,
+    };
+    recording = take;
+    media.addEventListener('dataavailable', (evt) => { if (evt.data && evt.data.size) take.chunks.push(evt.data); });
+    media.addEventListener('stop', () => finishRecording(take));
+    try {
+      take.ctx = new AudioContext();
+      take.analyser = take.ctx.createAnalyser();
+      take.analyser.fftSize = 1024;
+      take.ctx.createMediaStreamSource(stream).connect(take.analyser);
+    } catch (err) {
+      take.analyser = null;    // it records all the same, without the live level
+    }
+    media.start(250);
+    take.timer = setTimeout(() => stopRecording(), NOTE_MAX * 1000);
+    renderOwnVoice();
+    meter(take);
+  }
+
+  /* Stops the take in progress: kept, or thrown away when `discard`. */
+  function stopRecording(discard) {
+    const take = recording;
+    if (!take) return;
+    recording = null;
+    take.discarded = !!discard;
+    noteBusy = !discard;
+    clearTimeout(take.timer);
+    cancelAnimationFrame(take.raf);
+    try {
+      if (take.media.state !== 'inactive') take.media.stop();     // its 'stop' event finishes the take
+      else finishRecording(take);
+    } catch (err) {
+      finishRecording(take);
+    }
+    if (!discard) renderOwnVoice();
+  }
+
+  async function finishRecording(take) {
+    if (take.finished) return;
+    take.finished = true;
+    stopTracks(take.stream);                       // the microphone indicator goes off
+    const stale = () => take.discarded || draft !== take.draft || !$('#habitDialog').open;
+    let info = null;
+    let blob = null;
+    let base64 = null;
+    if (!stale()) {
+      blob = new Blob(take.chunks, { type: take.mime });
+      try {
+        take.ctx = take.ctx || new AudioContext();
+        info = describeRecording(await take.ctx.decodeAudioData(await blob.arrayBuffer()));
+        if (info.d >= 1) base64 = await blobBase64(blob);
+      } catch (err) {
+        info = null;
+      }
+    }
+    if (take.ctx) take.ctx.close().catch(() => {});
+    if (take.discarded) return;
+    noteBusy = false;
+    if (stale()) return;
+    if (!info || (info.d >= 1 && !base64)) {
+      noteError = 'failed';
+    } else if (info.d < 1) {
+      noteError = 'short';
+    } else {
+      if (draft.newNote) URL.revokeObjectURL(draft.newNote.url);
+      draft.newNote = {
+        id: noteId(), d: info.d, w: info.w, quiet: info.peak < 0.05,
+        url: URL.createObjectURL(blob), base64: base64,
+      };
+    }
+    renderOwnVoice();
+  }
+
+  /* Length, a 28-bar waveform in the voice index's digits, and the loudest
+     sample of a decoded take. */
+  function describeRecording(audio) {
+    const data = audio.getChannelData(0);
+    const BARS = 28;
+    const rms = [];
+    let peak = 0;
+    for (let i = 0; i < BARS; i++) {
+      const from = Math.floor((i * data.length) / BARS);
+      const to = Math.floor(((i + 1) * data.length) / BARS);
+      let sum = 0;
+      for (let j = from; j < to; j++) {
+        sum += data[j] * data[j];
+        if (Math.abs(data[j]) > peak) peak = Math.abs(data[j]);
+      }
+      rms.push(Math.sqrt(sum / Math.max(1, to - from)));
+    }
+    const top = Math.max(...rms) || 1;
+    return {
+      d: Math.round(audio.duration * 100) / 100,
+      w: rms.map((r) => Math.min(9, Math.round((r / top) * 9))).join(''),
+      peak: peak,
+    };
+  }
+
+  const blobBase64 = (blob) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+
+  /* While recording: the clock, and one bar per tenth of a second with the
+     newest on the right. */
+  function meter(take) {
+    if (recording !== take) return;
+    const elapsed = (performance.now() - take.started) / 1000;
+    if (take.analyser) {
+      const data = new Uint8Array(take.analyser.fftSize);
+      take.analyser.getByteTimeDomainData(data);
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) sum += ((data[i] - 128) / 128) ** 2;
+      const level = Math.sqrt(sum / data.length);
+      while (take.levels.length < Math.floor(elapsed * 10)) take.levels.push(level);
+    }
+    const clock = $('#ownVoiceBody .rec-time');
+    if (clock) clock.textContent = fmtClock(Math.floor(elapsed)) + ' / ' + fmtClock(NOTE_MAX);
+    const bars = $$('#ownVoiceBody .rec-wave i');
+    const recent = take.levels.slice(-bars.length);
+    const offset = bars.length - recent.length;
+    bars.forEach((bar, i) => {
+      const level = i < offset ? 0 : recent[i - offset];
+      bar.style.height = (12 + Math.min(1, Math.sqrt(level * 6)) * 88) + '%';
+    });
+    take.raf = requestAnimationFrame(() => meter(take));
+  }
+
+  function renderOwnVoice() {
+    const box = $('#ownVoice');
+    box.hidden = !draft || !canRecord();
+    $('#btnSaveHabit').disabled = !!(recording || noteBusy);
+    if (!draft) return;
+    renderReminderHint();
+    if (box.hidden) return;
+
+    const body = $('#ownVoiceBody');
+    body.innerHTML = '';
+    const note = draftNote();
+    let hint = t('ownVoiceHint');
+
+    if (recording) {
+      const row = document.createElement('div');
+      row.className = 'rec-row';
+      const dot = document.createElement('span');
+      dot.className = 'rec-dot';
+      dot.setAttribute('aria-hidden', 'true');
+      const clock = document.createElement('span');
+      clock.className = 'rec-time';
+      clock.textContent = '0:00 / ' + fmtClock(NOTE_MAX);
+      const wave = document.createElement('div');
+      wave.className = 'vn-wave rec-wave';
+      wave.setAttribute('aria-hidden', 'true');
+      for (let i = 0; i < 28; i++) wave.appendChild(document.createElement('i'));
+      const stop = button('btn btn-sm btn-primary', t('ownVoiceStop'));
+      stop.addEventListener('click', () => stopRecording());
+      row.append(dot, clock, wave, stop);
+      body.appendChild(row);
+      hint = t('ownVoiceRecording') + '…';
+      stop.focus();
+    } else if (noteBusy) {
+      hint = '…';
+    } else if (note) {
+      const path = draft.newNote ? draft.newNote.url : notePath(note.id);
+      const actions = document.createElement('div');
+      actions.className = 'own-voice-actions';
+      const redo = button('btn btn-sm', t('ownVoiceRedo'));
+      redo.addEventListener('click', startRecording);
+      const remove = button('btn btn-sm btn-danger ghost', t('ownVoiceRemove'));
+      remove.addEventListener('click', () => {
+        stopVoice();
+        if (draft.newNote) URL.revokeObjectURL(draft.newNote.url);
+        draft.newNote = null;
+        draft.dropNote = true;
+        noteError = null;
+        renderOwnVoice();
+      });
+      actions.append(redo, remove);
+      body.append(voiceNote(path, note), actions);
+      if (draft.newNote) hint = draft.newNote.quiet ? t('ownVoiceQuiet') : t('ownVoiceUnsaved');
+    } else {
+      const record = button('btn btn-sm own-voice-record', null);
+      record.innerHTML = iconSvg('i-mic', 18);
+      record.append(t('ownVoiceRecord'));
+      record.addEventListener('click', startRecording);
+      body.appendChild(record);
+    }
+
+    if (noteError) {
+      hint = t({ denied: 'ownVoiceDenied', short: 'ownVoiceShort', failed: 'ownVoiceFailed' }[noteError]);
+      if (noteError === 'denied' && shell.openAppSettings) {
+        const open = button('btn btn-sm', t('ownVoiceOpenSettings'));
+        open.addEventListener('click', () => {
+          try { shell.openAppSettings(); } catch (err) { /* an older shell */ }
+        });
+        body.appendChild(open);
+      }
+    }
+    $('#ownVoiceHint').textContent = hint;
   }
 
   /* Habits the character reminded about today and that are still open,
@@ -2340,8 +2686,10 @@
     face.hidden = !cast;
     if (cast) face.src = GLOW_CAST.avatarPath(cast.id);
     $('#castCurrentName').textContent = cast ? castLines(cast.id).name : t('castNone');
-    $('#voiceAutoplayRow').hidden = !cast;
-    $('#voiceAutoplayHint').hidden = !cast;
+    // The switch covers every voice note: a character's, and your own.
+    const voices = !!cast || state.habits.some(hasOwnNote);
+    $('#voiceAutoplayRow').hidden = !voices;
+    $('#voiceAutoplayHint').hidden = !voices;
     $('#voiceAutoplay').checked = !!state.voiceAutoplay;
     $('#btnTestReminder').hidden = !shell.testReminder;
 
@@ -2387,6 +2735,8 @@
       name: habit ? habitName(habit) : t('appName'),
       emoji: habit ? habit.emoji || '✅' : '✅',
       msg: id ? (lines.length ? lines[testTurn++ % lines.length] : introMessage(id)) : null,
+      // A habit with your own note sends that, the way its reminders will.
+      own: hasOwnNote(habit) ? notePath(habit.voiceNote.id) : null,
     };
     try {
       if (shell.requestNotificationPermission) shell.requestNotificationPermission();
@@ -2582,9 +2932,20 @@
     $$('#habitDialog [data-close]').forEach((btn) => {
       btn.addEventListener('click', () => $('#habitDialog').close());
     });
+    // However the editor closes, the microphone is released and an unsaved
+    // recording is let go.
+    $('#habitDialog').addEventListener('close', () => {
+      stopRecording(true);
+      stopVoice();
+      if (draft && draft.newNote) URL.revokeObjectURL(draft.newNote.url);
+      if (draft) draft.newNote = null;
+      $('#btnSaveHabit').disabled = false;
+    });
     $('#btnDeleteHabit').addEventListener('click', async () => {
       const ok = await confirmDialog(t('deleteHabitTitle'), t('deleteHabitBody'));
       if (!ok) return;
+      const gone = habitById(editingId);
+      if (hasOwnNote(gone)) deleteNoteFile(gone.voiceNote.id);
       state.habits = state.habits.filter((h) => h.id !== editingId);
       delete state.entries[editingId];
       save();
@@ -2592,6 +2953,7 @@
       renderHabitsView();
       renderToday();
       renderProgressIfVisible();
+      renderCastSettings();
       toast(t('habitDeleted'));
     });
 
@@ -3273,7 +3635,9 @@
     load();
     const migrated = normalizeState();
     wire();
-    if (linkCatalogueKeys() || migrated) save();
+    const linked = linkCatalogueKeys();
+    const reconciled = reconcileVoiceNotes();
+    if (linked || migrated || reconciled) save();
     applyTheme();
     applySound();
     applyBackupNote();
