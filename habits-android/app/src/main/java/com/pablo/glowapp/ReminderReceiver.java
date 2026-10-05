@@ -64,7 +64,7 @@ public class ReminderReceiver extends BroadcastReceiver {
     }
 
     final String voice = ReminderNotifier.remind(context, habitId, reminder.optString("name"), date,
-        pickMessage(reminder.optJSONArray("msgs"), date));
+        pickMessage(reminder.optJSONArray("msgs"), date, reminder.optInt("slot")));
     autoplay(context, snapshot, voice);
   }
 
@@ -100,10 +100,9 @@ public class ReminderReceiver extends BroadcastReceiver {
   }
 
   private void autoplay(Context context, JSONObject snapshot, String voice) {
-    final JSONObject cast = ReminderNotifier.character(snapshot);
-    if (voice == null || cast == null || !cast.optBoolean("autoplay")) return;
+    if (!autoplayWanted(snapshot, voice)) return;
     if (!VoicePlayer.mayAutoplay(context)) return;
-    VoicePlayer.play(context, voice, goAsync(), AUTOPLAY_DELAY);
+    VoicePlayer.play(context, voice, goAsync(), AUTOPLAY_DELAY, true);
   }
 
   private static JSONObject findReminder(JSONObject snapshot, String habitId, String time) {
@@ -119,9 +118,25 @@ public class ReminderReceiver extends BroadcastReceiver {
     return null;
   }
 
-  /** The page sends a few lines per reminder; one a day, in turn. */
-  private static JSONObject pickMessage(JSONArray messages, String date) {
+  /**
+   * On unless the user turned it off. A snapshot written by 2.8 (v2) says off
+   * for everyone who never touched the switch, its old default; 2.9 turns
+   * the notes on for them, and so does this until the page has run once and
+   * sent its own choice.
+   */
+  static boolean autoplayWanted(JSONObject snapshot, String voice) {
+    final JSONObject cast = ReminderNotifier.character(snapshot);
+    if (voice == null || cast == null) return false;
+    return snapshot.optInt("v") < 3 || cast.optBoolean("autoplay", true);
+  }
+
+  /**
+   * The page sends several lines per reminder. They take turns by day, and a
+   * habit with several times a day (water at 10, 13 and 16) starts each time
+   * at a different line, so no two reminders in a day say the same thing.
+   */
+  private static JSONObject pickMessage(JSONArray messages, String date, int slot) {
     if (messages == null || messages.length() == 0) return null;
-    return messages.optJSONObject(Math.floorMod(GlowStore.dayNumber(date), messages.length()));
+    return messages.optJSONObject(Math.floorMod(GlowStore.dayNumber(date) + slot, messages.length()));
   }
 }

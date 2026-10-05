@@ -14,7 +14,11 @@
 
    A clip is only re-recorded when its text or its sound changes, so editing
    one line costs one recording. Pass --force to redo everything, or
-   --only=crack/es,zen/en/intro to limit a run to those prefixes. */
+   --only=crack/es,zen/en/intro to limit a run to those prefixes.
+
+   Every clip is measured again after encoding. One that misses the target
+   loudness is reported as failed and deleted, so check.js holds the
+   release — 2.8 shipped twelve of Abuela Rosa's at -44 to -6 LUFS. */
 'use strict';
 
 const { execFile } = require('child_process');
@@ -37,7 +41,7 @@ const ONLY = (args.find((a) => a.startsWith('--only=')) || '').slice(7).split(',
 const JOBS = 3;
 
 /* Bump when the processing below changes in a way every clip should hear. */
-const SOUND_VERSION = 4;
+const SOUND_VERSION = 5;
 
 require(path.join(ROOT, 'habits', 'characters.js'));
 const { LINES } = globalThis.GLOW_CAST;
@@ -90,11 +94,12 @@ const FX = {
   },
 
   /* Lower, slower and in a cellar: two and a half semitones down, a long
-     echo, and a dark rumble underneath the whole story. */
+     echo, and a dark rumble underneath the whole story. The rumble has a
+     fixed seed, so every pass over a clip hears the same one. */
   narrator() {
     const k = 0.865;
     return {
-      sources: ['anoisesrc=color=brown:amplitude=0.6:sample_rate=' + SR],
+      sources: ['anoisesrc=color=brown:amplitude=0.6:seed=1:sample_rate=' + SR],
       graph: '[v]asetrate=' + Math.round(SR * k) + ',aresample=' + SR + ',atempo=' + (1 / k).toFixed(4) + ',' +
         'lowpass=f=6200,apad=pad_dur=0.7,aecho=0.8:0.85:70|130:0.3|0.18[vv];' +
         '[s0]lowpass=f=320,volume=0.05[bed];' +
@@ -102,14 +107,21 @@ const FX = {
     };
   },
 
-  /* A touch lower and warmer, with the faint waver of an older voice. */
+  /* A touch lower and warmer, with the faint waver of an older voice.
+     ffmpeg's vibrato reads its delay line before it has written it, so its
+     first few milliseconds are whatever was left in memory: usually
+     silence, sometimes a full-scale click or Infinity, and the loudness
+     pass then set the whole clip by that click. It now runs over 40 ms of
+     added silence, cut away again before any other filter hears it. */
   grandma() {
     const k = 0.95;
+    const lead = Math.round(SR * 0.04);
     return {
       sources: [],
       graph: '[v]asetrate=' + Math.round(SR * k) + ',aresample=' + SR + ',atempo=' + (1 / k).toFixed(4) + ',' +
-        'vibrato=f=5.2:d=0.035,equalizer=f=260:t=q:w=1:g=2.5,lowpass=f=7800,' +
-        'aecho=0.8:0.4:25:0.08[fx]',
+        'asetpts=N/SR/TB,adelay=' + lead + 'S:all=1,vibrato=f=5.2:d=0.035,' +
+        'atrim=start_sample=' + lead + ',asetpts=PTS-STARTPTS,' +
+        'equalizer=f=260:t=q:w=1:g=2.5,lowpass=f=7800,aecho=0.8:0.4:25:0.08[fx]',
     };
   },
 
@@ -149,23 +161,70 @@ const FX = {
 };
 
 /* ── The work list ─────────────────────────────────────────────────────── */
-function jobs() {
+/* Every line there is, named the way characters.js names its recordings:
+   intro, h-<habit>-<n>, g<n> and p<n>. */
+function allClips() {
   const list = [];
   for (const id of Object.keys(LINES)) {
     for (const lang of Object.keys(LINES[id])) {
       const L = LINES[id][lang];
-      const add = (clip, text) => {
-        const key = id + '/' + lang + '/' + clip;
-        if (ONLY.length && !ONLY.some((prefix) => key.startsWith(prefix))) return;
-        list.push({ id, lang, clip, text: spoken(text) });
-      };
+      const add = (clip, text) => list.push({ id, lang, clip, key: id + '/' + lang + '/' + clip, text: spoken(text) });
       add('intro', L.intro);
-      for (const key of Object.keys(L.habits)) add('h-' + key, L.habits[key]);
+      for (const habit of Object.keys(L.habits)) {
+        L.habits[habit].forEach((line, i) => add('h-' + habit + '-' + (i + 1), line));
+      }
       L.generic.forEach((g, i) => add('g' + (i + 1), g.voice));
       L.praise.forEach((p, i) => add('p' + (i + 1), p));
     }
   }
   return list;
+}
+
+function jobs() {
+  return allClips().filter((job) => !ONLY.length || ONLY.some((prefix) => job.key.startsWith(prefix)));
+}
+
+const hashOf = (job) => crypto.createHash('sha1')
+  .update(JSON.stringify([job.text, PROFILES[job.id][job.lang], SOUND_VERSION, FX[job.id].toString()]))
+  .digest('hex').slice(0, 10);
+
+/* Until 2.9 each habit had one line, recorded as h-<habit>. That line is now
+   h-<habit>-1 with the same words and sound, so the file is renamed rather
+   than recorded again. */
+function adoptSingleLineRecordings(index) {
+  let adopted = 0;
+  for (const job of allClips()) {
+    const match = /^h-([A-Za-z]+)-1$/.exec(job.clip);
+    if (!match || index.clips[job.key]) continue;
+    const oldKey = job.id + '/' + job.lang + '/h-' + match[1];
+    const oldFile = path.join(OUT, oldKey + '.webm');
+    if (!index.clips[oldKey] || index.clips[oldKey].h !== hashOf(job) || !fs.existsSync(oldFile)) continue;
+    fs.renameSync(oldFile, path.join(OUT, job.key + '.webm'));
+    index.clips[job.key] = index.clips[oldKey];
+    delete index.clips[oldKey];
+    adopted++;
+  }
+  return adopted;
+}
+
+/* Recordings of lines that no longer exist would ship in the APK for nothing. */
+function removeStaleRecordings(live) {
+  let removed = 0;
+  const walk = (dir) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith('.webm')) {
+        const key = path.relative(OUT, full).split(path.sep).join('/').replace(/\.webm$/, '');
+        if (!live.has(key)) {
+          fs.unlinkSync(full);
+          removed++;
+        }
+      }
+    }
+  };
+  if (fs.existsSync(OUT)) walk(OUT);
+  return removed;
 }
 
 /* What the engine should actually read: no guillemets or curly quotes. */
@@ -179,16 +238,25 @@ const run = (cmd, argv, input) => new Promise((resolve, reject) => {
   if (input !== undefined) { child.stdin.write(input); child.stdin.end(); }
 });
 
-/* The tail of every chain: trim the silence Piper leaves at both ends,
-   breathe a little either side, and land on a common loudness. */
-const tail = (loud) => '[fx]aformat=sample_fmts=flt,silenceremove=start_periods=1:start_threshold=-52dB,' +
+/* The tail of every chain: trim the silence Piper leaves at both ends and
+   breathe a little either side. */
+const TAIL = '[fx]aformat=sample_fmts=flt,silenceremove=start_periods=1:start_threshold=-52dB,' +
   'areverse,silenceremove=start_periods=1:start_threshold=-56dB,areverse,' +
-  'adelay=110:all=1,apad=pad_dur=0.22,aresample=48000,' + loud + '[out]';
+  'adelay=110:all=1,apad=pad_dur=0.22,aresample=48000[out]';
+
+/* Every clip lands on one loudness, with its peaks under a ceiling — and is
+   checked as it will be heard, after encoding. */
+const LOUDNESS = -16;     // LUFS
+const CEILING = -1.5;     // dBTP, for loudnorm
+const PEAK_AIM = -1;      // dBTP in the encoded clip: one over it is taken down a little
+const PEAK_LIMIT = 0;     // dBTP in the encoded clip: one still over it has failed
+const TOLERANCE = 2.5;    // LU either side of LOUDNESS before a clip counts as broken
 
 async function record(job) {
   const p = PROFILES[job.id][job.lang];
   const base = job.id + '-' + job.lang + '-' + job.clip;
   const raw = path.join(WORK, base + '.raw.wav');
+  const shaped = path.join(WORK, base + '.fx.wav');
   const wav = path.join(WORK, base + '.wav');
   const webm = path.join(OUT, job.id, job.lang, job.clip + '.webm');
   fs.mkdirSync(path.dirname(webm), { recursive: true });
@@ -199,26 +267,58 @@ async function record(job) {
   if (p.speaker !== undefined) piperArgs.push('--speaker', String(p.speaker));
   await run(PIPER, piperArgs, job.text);
 
+  // The character's sound, rendered once, so that both loudness passes
+  // below hear exactly the same signal.
   const fx = FX[job.id](job.clip);
-  const inputs = ['-y', '-hide_banner', '-loglevel', 'info', '-i', raw];
+  const inputs = ['-y', '-hide_banner', '-loglevel', 'error', '-i', raw];
   fx.sources.forEach((src) => inputs.push('-f', 'lavfi', '-i', src));
   const relabel = fx.graph.replace(/\[s(\d)\]/g, (m, n) => '[' + (Number(n) + 1) + ':a]').replace('[v]', '[0:a]aformat=sample_fmts=flt,');
+  await run(FFMPEG, inputs.concat(['-filter_complex', relabel + ';' + TAIL, '-map', '[out]', '-c:a', 'pcm_f32le', shaped]));
 
-  // Two passes: measure, then normalise linearly to the measured loudness.
-  const measure = await run(FFMPEG, inputs.concat(['-filter_complex',
-    relabel + ';' + tail('loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json'), '-map', '[out]', '-f', 'null', '-']));
+  // Two passes: measure, then normalise linearly to the measured loudness
+  // (loudnorm turns dynamic instead when that would break the ceiling).
+  const target = 'loudnorm=I=' + LOUDNESS + ':TP=' + CEILING + ':LRA=11';
+  const measure = await run(FFMPEG, ['-hide_banner', '-loglevel', 'info', '-i', shaped,
+    '-af', target + ':print_format=json', '-f', 'null', '-']);
   const open = measure.stderr.lastIndexOf('{');
   const m = JSON.parse(measure.stderr.slice(open, measure.stderr.indexOf('}', open) + 1));
-  const loud = 'loudnorm=I=-16:TP=-1.5:LRA=11:linear=true:measured_I=' + m.input_i + ':measured_TP=' + m.input_tp +
+  const loud = target + ':linear=true:measured_I=' + m.input_i + ':measured_TP=' + m.input_tp +
     ':measured_LRA=' + m.input_lra + ':measured_thresh=' + m.input_thresh + ':offset=' + m.target_offset;
-  await run(FFMPEG, inputs.concat(['-filter_complex', relabel + ';' + tail(loud) ,
-    '-map', '[out]', '-ar', '48000', '-ac', '1', '-c:a', 'pcm_s16le', wav]));
+  await run(FFMPEG, ['-y', '-hide_banner', '-loglevel', 'error', '-i', shaped,
+    '-af', loud, '-ar', '48000', '-ac', '1', '-c:a', 'pcm_s16le', wav]);
 
-  await run(FFMPEG, ['-y', '-hide_banner', '-loglevel', 'error', '-i', wav,
-    '-c:a', 'libopus', '-b:a', '24k', '-vbr', 'on', '-compression_level', '10', '-application', 'audio',
-    '-frame_duration', '20', '-map_metadata', '-1', '-fflags', '+bitexact', webm]);
+  // Opus at this bitrate puts the peaks back up by as much as two decibels,
+  // so a clip over the aim comes down by up to a decibel at a time. Far from
+  // the target loudness, or still clipping, it is a broken render and fails
+  // the run rather than ship.
+  let gain = 0;
+  let heard = await encode(wav, webm, gain);
+  for (let tries = 0; heard.peak > PEAK_AIM && tries < 3; tries++) {
+    gain -= Math.min(1, heard.peak - PEAK_AIM + 0.2);
+    heard = await encode(wav, webm, gain);
+  }
+  if (!(Math.abs(heard.loudness - LOUDNESS) <= TOLERANCE) || !(heard.peak <= PEAK_LIMIT)) {
+    throw new Error('came out at ' + heard.loudness + ' LUFS, peak ' + heard.peak + ' dBTP');
+  }
 
   return { ...measureWav(wav), bytes: fs.statSync(webm).size };
+}
+
+/* Encodes, then decodes again to measure what a listener gets. The encoder
+   always gets float samples: fed the 16-bit file directly, libopus once
+   turned the middle of a Zen line into a +9 dBTP burst that the same
+   samples as floats did not produce. */
+async function encode(wav, webm, gain) {
+  await run(FFMPEG, ['-y', '-hide_banner', '-loglevel', 'error', '-i', wav,
+    '-af', 'volume=' + gain.toFixed(2) + 'dB,aformat=sample_fmts=flt',
+    '-c:a', 'libopus', '-b:a', '24k', '-vbr', 'on', '-compression_level', '10', '-application', 'audio',
+    '-frame_duration', '20', '-map_metadata', '-1', '-fflags', '+bitexact', webm]);
+  const { stderr } = await run(FFMPEG, ['-hide_banner', '-nostats', '-i', webm, '-af', 'ebur128=peak=true', '-f', 'null', '-']);
+  const summary = stderr.slice(stderr.lastIndexOf('Summary:'));
+  return {
+    loudness: parseFloat((/I:\s+(-?[\d.]+) LUFS/.exec(summary) || [])[1]),
+    peak: parseFloat((/Peak:\s+(-?[\d.]+|-inf) dBFS/.exec(summary) || [])[1]),
+  };
 }
 
 /* Duration, plus a 28-bar waveform for the chat bubble, one digit per bar. */
@@ -261,6 +361,8 @@ async function main() {
   }
   fs.mkdirSync(WORK, { recursive: true });
   const index = fs.existsSync(INDEX) ? JSON.parse(fs.readFileSync(INDEX, 'utf8')) : { clips: {} };
+  const adopted = adoptSingleLineRecordings(index);
+  if (adopted) console.log(adopted + ' single-line recordings kept as the first of three\n');
   const list = jobs();
   let done = 0;
   let skipped = 0;
@@ -271,10 +373,8 @@ async function main() {
   async function worker() {
     while (queue.length) {
       const job = queue.shift();
-      const key = job.id + '/' + job.lang + '/' + job.clip;
-      const hash = crypto.createHash('sha1')
-        .update(JSON.stringify([job.text, PROFILES[job.id][job.lang], SOUND_VERSION, FX[job.id].toString()]))
-        .digest('hex').slice(0, 10);
+      const key = job.key;
+      const hash = hashOf(job);
       const file = path.join(OUT, job.id, job.lang, job.clip + '.webm');
       if (!FORCE && index.clips[key] && index.clips[key].h === hash && fs.existsSync(file)) {
         skipped++;
@@ -288,29 +388,25 @@ async function main() {
         console.log(key.padEnd(28), (r.d.toFixed(2) + 's').padStart(7), (Math.round(r.bytes / 1024) + 'KB').padStart(6), warn);
       } catch (err) {
         failures.push(key + ': ' + err.message);
+        // Without its file the clip cannot ship: check.js stops the release.
+        fs.rmSync(file, { force: true });
+        delete index.clips[key];
       }
     }
   }
   await Promise.all(Array.from({ length: JOBS }, worker));
 
-  // Drop entries for lines that no longer exist, and sort for a stable diff.
-  const live = new Set();
-  for (const id of Object.keys(LINES)) {
-    for (const lang of Object.keys(LINES[id])) {
-      const L = LINES[id][lang];
-      ['intro'].concat(Object.keys(L.habits).map((k) => 'h-' + k),
-        L.generic.map((g, i) => 'g' + (i + 1)), L.praise.map((p, i) => 'p' + (i + 1)))
-        .forEach((clip) => live.add(id + '/' + lang + '/' + clip));
-    }
-  }
+  // Drop entries and files for lines that no longer exist; sort for a stable diff.
+  const live = new Set(allClips().map((job) => job.key));
   const clips = {};
   Object.keys(index.clips).sort().forEach((k) => {
     if (live.has(k)) clips[k] = index.clips[k];
   });
   fs.writeFileSync(INDEX, JSON.stringify({ version: 1, clips: clips }) + '\n');
+  const removed = ONLY.length ? 0 : removeStaleRecordings(live);
 
-  console.log('\n' + done + ' recorded, ' + skipped + ' unchanged, ' + failures.length + ' failed in ' +
-    Math.round((Date.now() - started) / 1000) + 's');
+  console.log('\n' + done + ' recorded, ' + skipped + ' unchanged, ' + removed + ' removed, ' +
+    failures.length + ' failed in ' + Math.round((Date.now() - started) / 1000) + 's');
   failures.forEach((f) => console.log('  ' + f));
   process.exit(failures.length ? 1 : 0);
 }

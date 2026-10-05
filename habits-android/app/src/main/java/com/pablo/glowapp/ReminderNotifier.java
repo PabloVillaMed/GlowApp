@@ -112,12 +112,18 @@ final class ReminderNotifier {
     return answer == null ? null : answer.voice;
   }
 
-  /** A message sent straight away from the app's settings, to try it out. */
+  /**
+   * A message sent straight away from the app's settings, to try it out. It
+   * behaves like a real one, voice note on arrival included.
+   */
   static void test(Context context, JSONObject request) {
     final String habitId = request.optString("id");
     final JSONObject message = request.optJSONObject("msg");
     final String key = habitId.isEmpty() ? "test" : habitId;
-    remind(context, key, request.optString("name"), GlowStore.today(), message);
+    final String voice = remind(context, key, request.optString("name"), GlowStore.today(), message);
+    if (ReminderReceiver.autoplayWanted(GlowStore.readSnapshot(context), voice) && VoicePlayer.mayAutoplay(context)) {
+      VoicePlayer.playFromAnyThread(context, voice, 1500L, true);
+    }
   }
 
   /* ── Building the conversation ── */

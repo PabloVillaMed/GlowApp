@@ -98,6 +98,11 @@ public class MainActivity extends Activity {
     }
 
     webView = new WebView(this);
+    // The WebView draws its own scroll bar, and flashes it as the page first
+    // lays out — right across the launch screen, which CSS cannot reach. It
+    // stays off until the page says the launch screen has gone (splashDone).
+    webView.setVerticalScrollBarEnabled(false);
+    webView.setHorizontalScrollBarEnabled(false);
     root = new FrameLayout(this);
     root.addView(webView, new FrameLayout.LayoutParams(
         FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
@@ -254,6 +259,14 @@ public class MainActivity extends Activity {
 
   /** The page's window onto the native shell. */
   private class ShellBridge {
+
+    /** The launch screen has left; scrolling may show its bar again. */
+    @JavascriptInterface
+    public void splashDone() {
+      runOnUiThread(() -> {
+        if (webView != null) webView.setVerticalScrollBarEnabled(true);
+      });
+    }
 
     /** Called after every save so the widget and alarms have current data. */
     @JavascriptInterface

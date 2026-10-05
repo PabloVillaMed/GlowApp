@@ -10,4 +10,5 @@
   <color name="widget_accent">#3987E5</color>
   <color name="widget_pill">#3A2519</color>
   <color name="widget_streak">#F28C5A</color>
+  <color name="widget_press">#29F0F6FC</color>
 </resources>

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Today's widget: the day's ring and progress, then one row per habit.
-     Rows are added in code (GlowWidgetProvider.buildViews). The root carries
+<!-- Today's widget: the day's ring and progress stay put at the top, and the
+     habits scroll underneath, however many there are. The root carries
      @android:id/background so Android 12+ rounds it like every other widget. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@android:id/background"
@@ -8,7 +8,10 @@
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="@drawable/widget_background"
-    android:padding="12dp">
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp"
+    android:paddingTop="12dp"
+    android:paddingBottom="6dp">
 
   <LinearLayout
       android:id="@+id/w_header"
@@ -77,22 +80,21 @@
         android:visibility="gone" />
   </LinearLayout>
 
-  <LinearLayout
-      android:id="@+id/w_rows"
+  <!-- Scrolls. The faded edges hint that there is more above or below. -->
+  <ListView
+      android:id="@+id/w_list"
       android:layout_width="match_parent"
-      android:layout_height="wrap_content"
+      android:layout_height="0dp"
+      android:layout_weight="1"
       android:layout_marginTop="4dp"
-      android:orientation="vertical" />
-
-  <TextView
-      android:id="@+id/w_more"
-      android:layout_width="match_parent"
-      android:layout_height="22dp"
-      android:gravity="center"
-      android:textColor="@color/widget_muted"
-      android:textSize="12sp"
-      android:textStyle="bold"
-      android:visibility="gone" />
+      android:divider="@null"
+      android:dividerHeight="0dp"
+      android:listSelector="@android:color/transparent"
+      android:requiresFadingEdge="vertical"
+      android:fadingEdgeLength="18dp"
+      android:scrollbarStyle="outsideOverlay"
+      android:clipToPadding="false"
+      android:paddingBottom="6dp" />
 
   <TextView
       android:id="@+id/w_message"

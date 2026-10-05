@@ -6,7 +6,7 @@ truth — edit the app there, rebuild, and the APK picks the changes up.
 
 ## The built APK
 
-`GlowApp-2.8.apk` sits at the repository root. It is signed with the release key
+`GlowApp-2.9.apk` sits at the repository root. It is signed with the release key
 in `keystore/` (not committed), targets API 36 (Android 16), and needs Android
 7.0 or newer.
 
@@ -47,7 +47,7 @@ installs once they are answered. Some phones add their own layer on top:
 Over USB with developer options and USB debugging on:
 
 ```sh
-adb install GlowApp-2.8.apk
+adb install GlowApp-2.9.apk
 ```
 
 ## Native features
@@ -69,16 +69,25 @@ do them:
   long-lived shortcut so it is filed under Conversations). **Escuchar** plays
   the voice note from the APK with `MediaPlayer` without opening the app;
   **Hecho** records the tick and the character answers. Messages and replies
-  are filed in an inbox the page collects for its chat. Playing on arrival is
-  opt-in and only happens with the ringer on, outside calls and outside Do
-  Not Disturb.
-- **Home-screen widget.** A progress ring for the day, then one row per habit:
-  its colour and emoji, a progress bar for counted habits, its streak, and two
-  tap targets — the name opens the app, the circle ticks the habit (or adds one
-  glass of water) without opening anything. Rows are nested views, not a
-  scrolling list: a list's single click template cannot both open an activity
-  and send a broadcast. The widget shows as many rows as its height allows,
-  open habits first, and says how many more there are.
+  are filed in an inbox the page collects for its chat. The voice note also
+  plays by itself on arrival, at the notification volume, a moment after the
+  notification's own sound — every time, unless the user turns it off or the
+  phone is on silent or vibrate, in a call or in Do Not Disturb.
+  Android 16 already refuses audio focus to an app in the background, so
+  music keeps its volume under the note, and its log says a stricter mode
+  "would mute" background playback. If a later Android turns that on, the
+  note will have to play from a short foreground service (an exact alarm is
+  allowed to start one).
+- **Home-screen widget.** A progress ring for the day that stays put, then a
+  scrolling list with every habit due: its colour and emoji, a progress bar
+  for counted habits, its streak, and two tap targets — the name opens the
+  app, the circle ticks the habit (or adds one glass of water) without opening
+  anything. A list item cannot carry PendingIntents of its own, only fill-ins
+  for one shared broadcast template, so both taps reach
+  `WidgetActionReceiver`, which opens the app for a name — launchers allow a
+  widget's broadcast to start its app — and ticks for a circle.
+  (2.8 used fixed rows instead, which could not scroll: a widget too short for
+  the day simply hid the rest.)
 
 ### How the widget and reminders see your data
 
@@ -135,11 +144,18 @@ then write `keystore/keystore.properties` with `storeFile`, `storePassword`,
 
 ## Testing the widget
 
-Binding a widget to a launcher needs the signature-level BIND_APPWIDGET
-permission, so a home screen cannot be scripted. Debug builds therefore carry a
-`WidgetPreviewActivity` that inflates the **real** provider views at three
-heights. Its `date` extra draws another day, which is how the after-midnight
-behaviour is checked without touching the clock:
+Binding a widget from code needs the signature-level BIND_APPWIDGET
+permission, but the launcher's own picker can be driven over adb: long-press
+an empty spot on the home screen → *Widgets* → search "GlowApp" → tap the
+preview → *Add*. That is how 2.9's scrolling list, ticks and row taps were
+checked on Android 16. A list recycles its rows, so a row that sets something
+in one state has to set it back in the other: the first 2.9 build drew a done
+circle painted over by the colour filter of the habit shown in that row
+before, which only a real launcher showed.
+
+Debug builds also carry a `WidgetPreviewActivity` that inflates the **real**
+provider views at three heights. Its `date` extra draws another day, which is
+how the after-midnight behaviour is checked without touching the clock:
 
 ```sh
 adb shell am start -n com.pablo.glowapp/.WidgetPreviewActivity --es date 2026-10-06
@@ -160,7 +176,10 @@ outside a secure context.
 The window is edge to edge on Android 11 and later (and has to be from
 targetSdk 36): the root view is padded by the system bars and the keyboard, and
 the page reports its background colour so the bars show it, with light or dark
-icons to match. Back closes whatever the page has open — a dialog, the chat, a
+icons to match. The WebView's own scroll bar starts switched off and comes on
+when the page reports the launch screen gone (`splashDone`): it flashes as the
+page first lays out, which put a grey bar down the side of the launch screen
+that no CSS could reach. Back closes whatever the page has open — a dialog, the chat, a
 tab other than Today — and only then leaves; from Android 13 that goes through
 `OnBackInvokedCallback`, since Android 16 no longer calls `onBackPressed()` for
 apps that target it.

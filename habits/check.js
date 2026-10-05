@@ -74,7 +74,11 @@ loaded.forEach((asset) => {
 });
 
 // The cast: every character speaks both languages with the same lines, every
-// catalogue habit has a line, and every line has its recording and portrait.
+// catalogue habit has its three lines, and every line has its recording and
+// portrait.
+const LINES_PER_HABIT = 3;
+const GENERIC_LINES = 4;
+const PRAISE_LINES = 5;
 require('./characters.js');
 const CAST = global.window.GLOW_CAST;
 const appText = fs.readFileSync('app.js', 'utf8');
@@ -89,18 +93,26 @@ CAST.CAST.forEach(({ id }) => {
     if (!L) { fail('characters.js', 0, id + ' no habla ' + lang); return; }
     ['name', 'tagline', 'intro'].forEach((k) => { if (!L[k]) fail('characters.js', 0, id + '/' + lang + ' sin ' + k); });
     catalogue.forEach((habit) => {
-      if (!L.habits[habit]) fail('characters.js', 0, id + '/' + lang + ' sin línea para ' + habit);
+      const own = L.habits[habit];
+      if (!Array.isArray(own) || own.length !== LINES_PER_HABIT || own.some((line) => !line)) {
+        fail('characters.js', 0, id + '/' + lang + ' necesita ' + LINES_PER_HABIT + ' líneas para ' + habit);
+      } else if (new Set(own).size !== own.length) {
+        fail('characters.js', 0, id + '/' + lang + ' repite una línea de ' + habit);
+      }
     });
     Object.keys(L.habits).forEach((habit) => {
       if (!catalogue.includes(habit)) fail('characters.js', 0, id + '/' + lang + ' habla de un hábito que no existe: ' + habit);
     });
-    if (L.generic.length !== 2 || L.praise.length !== 2) fail('characters.js', 0, id + '/' + lang + ' necesita 2 genéricas y 2 felicitaciones');
+    if (L.generic.length !== GENERIC_LINES || L.praise.length !== PRAISE_LINES) {
+      fail('characters.js', 0, id + '/' + lang + ' necesita ' + GENERIC_LINES + ' genéricas y ' + PRAISE_LINES + ' felicitaciones');
+    }
     L.generic.forEach((g, i) => {
       if (!g.text.includes('{habit}')) fail('characters.js', 0, id + '/' + lang + ' g' + (i + 1) + ': el texto no nombra el hábito');
       if (g.voice.includes('{habit}')) fail('characters.js', 0, id + '/' + lang + ' g' + (i + 1) + ': la voz no puede decir el nombre');
     });
-    const clips = ['intro'].concat(Object.keys(L.habits).map((k) => 'h-' + k),
-      L.generic.map((g, i) => 'g' + (i + 1)), L.praise.map((p, i) => 'p' + (i + 1)));
+    const clips = ['intro']
+      .concat(...Object.keys(L.habits).map((k) => (L.habits[k] || []).map((line, i) => 'h-' + k + '-' + (i + 1))))
+      .concat(L.generic.map((g, i) => 'g' + (i + 1)), L.praise.map((p, i) => 'p' + (i + 1)));
     clips.forEach((clip) => {
       const key = id + '/' + lang + '/' + clip;
       if (!fs.existsSync('voices/' + key + '.webm')) fail('voices', 0, 'falta la grabación ' + key + ' (node tools/voices/make-voices.js)');

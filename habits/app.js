@@ -101,7 +101,8 @@
     /* Who sends the reminders (an id from characters.js, or null for plain
        notifications), and the conversation they leave behind. */
     character: null,
-    voiceAutoplay: false,
+    voiceAutoplay: true,
+    autoplayDefaulted: true,
     chat: [],
     chatUnread: 0,
     castPromoDismissed: false,
@@ -154,7 +155,9 @@
   /* Brings a record written by an older version, or imported from a file, up
      to the current shape. Returns true when anything had to change. */
   function normalizeState() {
-    const before = JSON.stringify([state.chat, state.chatUnread, state.character, state.habits]);
+    const snapshot = () => JSON.stringify([state.chat, state.chatUnread, state.character, state.habits,
+      state.voiceAutoplay, state.autoplayDefaulted]);
+    const before = snapshot();
     state.chat = Array.isArray(state.chat) ? state.chat : [];
     state.chatUnread = Math.max(0, Number(state.chatUnread) || 0);
     if (state.character && !GLOW_CAST.byId(state.character)) state.character = null;
@@ -164,7 +167,18 @@
       delete habit.reminder;
       habit.reminders = cleanTimes(habit.reminders);
     });
-    return JSON.stringify([state.chat, state.chatUnread, state.character, state.habits]) !== before;
+    // Until 2.9 each habit had one recorded line, h-<habit>; it is now the first of three.
+    state.chat.forEach((message) => {
+      if (message.voice) message.voice = GLOW_CAST.upgradeVoicePath(message.voice);
+    });
+    // 2.8 shipped with voice notes off unless switched on. From 2.9 they play
+    // by themselves; anyone who already had a character gets that once too,
+    // and can still switch it off in Ajustes.
+    if (!state.autoplayDefaulted) {
+      state.voiceAutoplay = true;
+      state.autoplayDefaulted = true;
+    }
+    return snapshot() !== before;
   }
 
   /**
@@ -1775,7 +1789,9 @@
     const plural = (k) => t(k, 1000).replace('1000', '%d');
 
     return {
-      v: 2,
+      // 3 from 2.9: each reminder carries its slot, and character.autoplay is
+      // a real choice. In a v2 snapshot, false was mostly 2.8's default.
+      v: 3,
       lang: lang,
       generated: today,
       weekStart: state.weekStart,
@@ -1795,9 +1811,10 @@
       }),
       days: days,
       reminders: habits.reduce((out, h) => {
-        (h.reminders || []).forEach((time) => {
+        (h.reminders || []).forEach((time, slot) => {
           out.push({
-            id: h.id, time: time, name: habitName(h), emoji: h.emoji || '✅',
+            // `slot` lets the shell give each of a habit's times a different line.
+            id: h.id, time: time, slot: slot, name: habitName(h), emoji: h.emoji || '✅',
             msgs: cast ? reminderMessages(h, cast.id) : [],
           });
         });
@@ -1906,7 +1923,8 @@
         habitId: item.habitId || null,
         date: item.date || todayKey(),
         text: String(item.text || ''),
-        voice: typeof item.voice === 'string' && /^voices\/[\w/-]+\.webm$/.test(item.voice) ? item.voice : null,
+        voice: typeof item.voice === 'string' && /^voices\/[\w/-]+\.webm$/.test(item.voice)
+          ? GLOW_CAST.upgradeVoicePath(item.voice) : null,
       });
       if (item.from !== 'me') unread++;
     });
@@ -1943,9 +1961,9 @@
   const castLines = (id) => (id ? GLOW_CAST.lines(id, I18N.getLang()) : null);
   const currentCast = () => (state.character ? GLOW_CAST.byId(state.character) : null);
 
-  /* What a character says about a habit: its own line when it came from the
-     catalogue, a generic one that names it otherwise. A few candidates, so
-     the shell can rotate them from one day to the next. */
+  /* What a character says about a habit: its own three lines when it came
+     from the catalogue, generic ones that name it otherwise. The shell takes
+     them in turn, a different one each day and for each of a habit's times. */
   function reminderMessages(habit, id) {
     const lines = castLines(id);
     if (!lines) return [];
@@ -1956,8 +1974,12 @@
     }));
     const key = GLOW_CAST.lineKeyFor(habit.nameKey);
     if (!key) return generic;
-    const own = { text: lines.habits[key], voice: GLOW_CAST.voicePath(id, lang, 'h-' + key) };
-    return [own, generic[0], own, generic[1]];
+    const own = lines.habits[key].map((text, i) => ({
+      text: text,
+      voice: GLOW_CAST.voicePath(id, lang, 'h-' + key + '-' + (i + 1)),
+    }));
+    // Mostly its own lines, with a generic one now and then for variety.
+    return [own[0], own[1], generic[0], own[2], generic[2]];
   }
 
   function praiseMessage(id) {
@@ -2319,6 +2341,7 @@
     if (cast) face.src = GLOW_CAST.avatarPath(cast.id);
     $('#castCurrentName').textContent = cast ? castLines(cast.id).name : t('castNone');
     $('#voiceAutoplayRow').hidden = !cast;
+    $('#voiceAutoplayHint').hidden = !cast;
     $('#voiceAutoplay').checked = !!state.voiceAutoplay;
     $('#btnTestReminder').hidden = !shell.testReminder;
 
@@ -2349,17 +2372,21 @@
       activeHabits().length === 0;
   }
 
-  /* Sends one message now, with whichever habit is still open today. */
+  /* Sends one message now, with whichever habit is still open today. Each
+     press says the next of that habit's lines, so trying it twice shows the
+     variety rather than the same sentence again. */
+  let testTurn = 0;
   function sendTestReminder() {
     if (!shell || !shell.testReminder) return;
     const today = todayKey();
     const habit = habitsFor(today).find((h) => !isComplete(h, today)) || activeHabits()[0] || null;
     const id = state.character;
+    const lines = id && habit ? reminderMessages(habit, id) : [];
     const payload = {
       id: habit ? habit.id : '',
       name: habit ? habitName(habit) : t('appName'),
       emoji: habit ? habit.emoji || '✅' : '✅',
-      msg: id ? (habit ? reminderMessages(habit, id)[0] : introMessage(id)) : null,
+      msg: id ? (lines.length ? lines[testTurn++ % lines.length] : introMessage(id)) : null,
     };
     try {
       if (shell.requestNotificationPermission) shell.requestNotificationPermission();
@@ -3185,6 +3212,17 @@
     return phrases[index];
   }
 
+  /* In the Android app the WebView keeps its own scroll bar off while the
+     launch screen shows (it used to flash across it); this turns it back on. */
+  let splashGoneSent = false;
+  function splashGone() {
+    if (splashGoneSent) return;
+    splashGoneSent = true;
+    if (shell && shell.splashDone) {
+      try { shell.splashDone(); } catch (err) { /* an older shell */ }
+    }
+  }
+
   function runSplash() {
     const splash = $('#splash');
     setBackgroundInert(true);          // the splash covers the app too
@@ -3192,6 +3230,7 @@
       document.documentElement.classList.remove('is-splashing');
       if (needsOnboarding()) startOnboarding();
       else setBackgroundInert(false);
+      splashGone();
       return;
     }
 
@@ -3216,9 +3255,13 @@
         // After the splash leaves the DOM, so routeTo() does not wait again.
         setTimeout(() => routeTo(route), 620);
       }
-      splash.addEventListener('transitionend', () => splash.remove(), { once: true });
+      const remove = () => {
+        splash.remove();
+        splashGone();
+      };
+      splash.addEventListener('transitionend', remove, { once: true });
       // Belt and braces: a missed transitionend must not leave it on screen.
-      setTimeout(() => splash.remove(), 600);
+      setTimeout(remove, 600);
     };
 
     splash.addEventListener('click', dismiss);

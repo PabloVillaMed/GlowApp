@@ -3,13 +3,16 @@ plugins {
 }
 
 /* The web app in ../habits is the single source of truth. It is copied into the
-   APK's assets at build time so the two can never drift apart. */
+   APK's assets at build time so the two can never drift apart. A Sync rather
+   than a Copy, so a file deleted there leaves the APK too: with a Copy, any
+   build without a clean still carried the 230 voice notes 2.9 renamed. */
 def webAppDir = file("$rootDir/../habits")
 def generatedAssets = layout.buildDirectory.dir("generated/webAssets").get().asFile
 
-tasks.register('copyWebApp', Copy) {
+tasks.register('copyWebApp', Sync) {
   from(webAppDir) {
     exclude 'README.md'
+    exclude 'check.js'      // the pre-ship checks run on a computer, not in the app
     exclude '**/.*'
   }
   into "$generatedAssets/www"
@@ -26,8 +29,8 @@ android {
     applicationId 'com.pablo.glowapp'
     minSdk 24
     targetSdk 36
-    versionCode 11
-    versionName '2.8'
+    versionCode 12
+    versionName '2.9'
   }
 
   /* Voice notes are played natively straight from the APK with openFd(),

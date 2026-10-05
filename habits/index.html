@@ -9,6 +9,21 @@
   <title>GlowApp</title>
   <meta name="description" content="Seguimiento de hábitos, ejercicio y estado de ánimo, sin conexión y sin cuentas.">
   <meta name="theme-color" content="#0D1117">
+  <script>
+    /* The saved theme, resolved as applyTheme() in app.js resolves it, before
+       anything paints: until app.js ran, a light theme opened on a dark
+       launch screen that turned light halfway through. */
+    (function () {
+      try {
+        var theme = JSON.parse(localStorage.getItem('glow.v1') || '{}').theme || 'system';
+        if (theme === 'system') theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', theme);
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', theme === 'dark' ? '#0D1117' : '#F4F5F7');
+      } catch (err) {
+        /* Dark until app.js applies the theme, as before. */
+      }
+    })();
+  </script>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -16,8 +31,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="GlowApp">
-  <link rel="stylesheet" href="styles.css?v=2.8">
-  <script src="i18n.js?v=2.8"></script>
+  <link rel="stylesheet" href="styles.css?v=2.9">
+  <script src="i18n.js?v=2.9"></script>
 </head>
 <body>
   <!-- Launch screen. The mark draws itself, then a phrase lands under it.
@@ -329,6 +344,7 @@
             <label for="voiceAutoplay" data-i18n="setAutoplay">Reproducir la nota de voz al llegar</label>
             <label class="switch-inline"><input type="checkbox" id="voiceAutoplay"></label>
           </div>
+          <p class="muted small" id="voiceAutoplayHint" data-i18n="setAutoplayHint"></p>
           <div class="setting-warning" id="notifWarning" hidden>
             <span data-i18n="notifOff"></span>
             <button type="button" class="btn btn-sm" id="btnNotifSettings" data-i18n="notifTurnOn">Activar</button>
@@ -601,9 +617,9 @@
     </symbol>
   </svg>
 
-  <script src="sounds.js?v=2.8"></script>
-  <script src="charts.js?v=2.8"></script>
-  <script src="characters.js?v=2.8"></script>
-  <script src="app.js?v=2.8"></script>
+  <script src="sounds.js?v=2.9"></script>
+  <script src="charts.js?v=2.9"></script>
+  <script src="characters.js?v=2.9"></script>
+  <script src="app.js?v=2.9"></script>
 </body>
 </html>

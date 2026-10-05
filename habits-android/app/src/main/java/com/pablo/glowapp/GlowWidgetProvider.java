@@ -8,49 +8,34 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.ColorStateList;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
-import android.os.Bundle;
 import android.view.View;
 import android.widget.RemoteViews;
 
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Calendar;
-import java.util.List;
 import java.util.Locale;
 
 /**
- * Home-screen widget for today: a progress ring, then one row per habit due.
- * Tapping a habit's name opens the app; tapping its circle ticks it (or adds
- * one unit to a counted habit) without opening anything.
+ * Home-screen widget for today: a progress ring that stays at the top, and a
+ * scrolling list with every habit due, however small the widget is. Tapping
+ * a habit's circle ticks it (or adds one unit to a counted habit) without
+ * opening anything; tapping its name opens the app.
  *
- * Rows are plain nested views rather than a scrolling list. A list gives every
- * row a single click template, which cannot both open an activity and send a
- * broadcast; separate rows can, each with its own intents. The widget shows as
- * many rows as its height allows and says how many more there are.
+ * A list item cannot carry PendingIntents of its own, only "fill-ins" for one
+ * shared template, so both taps go to WidgetActionReceiver, which tells them
+ * apart. The header is outside the list and opens the app directly.
  *
  * "Today" always comes from the device clock (see GlowStore), and an alarm
  * redraws the widget just after midnight.
  */
 public class GlowWidgetProvider extends AppWidgetProvider {
 
-  /* Layout budget, in dp, mirrored from widget_today.xml and widget_row.xml. */
-  private static final int PADDING = 24;
-  private static final int HEADER = 54;
-  private static final int ROW = 50;
-  private static final int MORE_LINE = 22;
-  private static final int MAX_ROWS = 8;
-
   @Override
   public void onUpdate(Context context, AppWidgetManager manager, int[] widgetIds) {
     refresh(context);
-  }
-
-  @Override
-  public void onAppWidgetOptionsChanged(Context context, AppWidgetManager manager, int widgetId, Bundle options) {
-    // Resized: the number of rows that fit has changed.
-    manager.updateAppWidget(widgetId, buildViews(context, widgetId, GlowStore.today(), heightOf(manager, widgetId)));
   }
 
   @Override
@@ -60,22 +45,16 @@ public class GlowWidgetProvider extends AppWidgetProvider {
   }
 
   /** Redraws every placed widget; called after any change to the snapshot. */
+  @SuppressWarnings("deprecation")
   static void refresh(Context context) {
     final AppWidgetManager manager = AppWidgetManager.getInstance(context);
     final int[] ids = manager.getAppWidgetIds(new ComponentName(context, GlowWidgetProvider.class));
     if (ids == null || ids.length == 0) return;
     final String today = GlowStore.today();
-    for (int id : ids) {
-      manager.updateAppWidget(id, buildViews(context, id, today, heightOf(manager, id)));
-    }
+    for (int id : ids) manager.updateAppWidget(id, buildViews(context, id, today));
+    // The rows come from GlowWidgetService; this makes it read them again.
+    manager.notifyAppWidgetViewDataChanged(ids, R.id.w_list);
     scheduleMidnight(context);
-  }
-
-  /** The height the launcher gives the widget in portrait, or a sensible guess. */
-  private static int heightOf(AppWidgetManager manager, int widgetId) {
-    final Bundle options = manager.getAppWidgetOptions(widgetId);
-    final int height = options == null ? 0 : options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0);
-    return height > 0 ? height : 180;
   }
 
   /**
@@ -101,15 +80,24 @@ public class GlowWidgetProvider extends AppWidgetProvider {
     return PendingIntent.getBroadcast(context, 0, intent, ReminderScheduler.flags());
   }
 
-  static RemoteViews buildViews(Context context, int widgetId, String date, int heightDp) {
+  /** The header and the list for one widget, as of `date`. */
+  @SuppressWarnings("deprecation")
+  static RemoteViews buildViews(Context context, int widgetId, String date) {
     final RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.widget_today);
     final GlowDay day = GlowDay.load(context, date);
 
     views.setOnClickPendingIntent(R.id.w_header, openApp(context, "today"));
-    views.removeAllViews(R.id.w_rows);
-    views.setViewVisibility(R.id.w_more, View.GONE);
-    views.setViewVisibility(R.id.w_message, View.GONE);
     views.setViewVisibility(R.id.w_streak, View.GONE);
+
+    // The rows. One service intent per widget and day: the system keeps one
+    // list adapter per distinct intent, so a new day starts a fresh one.
+    final Intent rows = new Intent(context, GlowWidgetService.class)
+        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
+        .putExtra(GlowWidgetService.EXTRA_DATE, date)
+        .setData(Uri.parse("glowapp://widget/" + widgetId + "/" + date));
+    views.setRemoteAdapter(R.id.w_list, rows);
+    views.setEmptyView(R.id.w_list, R.id.w_message);
+    views.setPendingIntentTemplate(R.id.w_list, rowTemplate(context));
 
     final int dueCount = day.due.size();
     final int doneCount = day.doneCount();
@@ -120,19 +108,19 @@ public class GlowWidgetProvider extends AppWidgetProvider {
     if (day.state == GlowDay.State.NO_DATA) {
       views.setTextViewText(R.id.w_title, context.getString(R.string.app_name));
       views.setTextViewText(R.id.w_sub, "");
-      showMessage(views, context.getString(R.string.widget_empty));
+      views.setTextViewText(R.id.w_message, context.getString(R.string.widget_empty));
       return views;
     }
 
     views.setTextViewText(R.id.w_title, day.ui("today", "Hoy") + " · " + dayLabel(date, day.lang));
     if (day.state == GlowDay.State.STALE) {
       views.setTextViewText(R.id.w_sub, "");
-      showMessage(views, day.ui("stale", context.getString(R.string.widget_empty)));
+      views.setTextViewText(R.id.w_message, day.ui("stale", context.getString(R.string.widget_empty)));
       return views;
     }
     if (dueCount == 0) {
       views.setTextViewText(R.id.w_sub, "");
-      showMessage(views, day.ui("free", ""));
+      views.setTextViewText(R.id.w_message, day.ui("free", ""));
       return views;
     }
 
@@ -142,39 +130,11 @@ public class GlowWidgetProvider extends AppWidgetProvider {
       views.setViewVisibility(R.id.w_streak, View.VISIBLE);
       views.setTextViewText(R.id.w_streak, "🔥 " + best);
     }
-
-    // As many rows as fit. When some must be left out, the open ones come
-    // first: a widget is for ticking things off, not admiring what is done.
-    int capacity = Math.max(0, (heightDp - PADDING - HEADER) / ROW);
-    if (capacity < dueCount) capacity = Math.max(0, (heightDp - PADDING - HEADER - MORE_LINE) / ROW);
-    capacity = Math.min(capacity, MAX_ROWS);
-    final List<GlowDay.Habit> shown = new ArrayList<>(day.due);
-    if (shown.size() > capacity) {
-      final List<GlowDay.Habit> open = new ArrayList<>();
-      final List<GlowDay.Habit> closed = new ArrayList<>();
-      for (GlowDay.Habit habit : shown) (habit.done() ? closed : open).add(habit);
-      shown.clear();
-      shown.addAll(open);
-      shown.addAll(closed);
-    }
-    final int count = Math.min(capacity, shown.size());
-    for (int i = 0; i < count; i++) {
-      views.addView(R.id.w_rows, row(context, day, shown.get(i)));
-    }
-    if (count < dueCount) {
-      views.setViewVisibility(R.id.w_more, View.VISIBLE);
-      views.setTextViewText(R.id.w_more, day.ui("more", "+%d").replace("%d", String.valueOf(dueCount - count)));
-      views.setOnClickPendingIntent(R.id.w_more, openApp(context, "today"));
-    }
     return views;
   }
 
-  private static void showMessage(RemoteViews views, String message) {
-    views.setViewVisibility(R.id.w_message, View.VISIBLE);
-    views.setTextViewText(R.id.w_message, message);
-  }
-
-  private static RemoteViews row(Context context, GlowDay day, GlowDay.Habit habit) {
+  /** One habit's row, for GlowWidgetService. */
+  static RemoteViews row(Context context, GlowDay day, GlowDay.Habit habit) {
     final RemoteViews row = new RemoteViews(context.getPackageName(), R.layout.widget_row);
     final int color = WidgetArt.habitColor(habit.color);
 
@@ -204,21 +164,27 @@ public class GlowWidgetProvider extends AppWidgetProvider {
     row.setViewVisibility(R.id.r_meta, meta.length() == 0 ? View.GONE : View.VISIBLE);
 
     // The circle: done, add one, or tick. A finished habit steps back a little.
-    if (habit.done()) {
-      row.setImageViewResource(R.id.r_check, R.drawable.widget_check_done);
-      row.setFloat(R.id.r_name, "setAlpha", 0.62f);
-      row.setFloat(R.id.r_meta, "setAlpha", 0.62f);
-    } else {
-      row.setImageViewResource(R.id.r_check,
-          habit.quantity ? R.drawable.widget_check_plus : R.drawable.widget_check_ring);
-      row.setInt(R.id.r_check, "setColorFilter", color);
-    }
-    final String label = habit.done() ? day.ui("isDone", "%s ✓")
+    // The list recycles its rows, and a recycled row keeps whatever the last
+    // habit drawn in it set, so both states set everything either one
+    // changes: an unticked habit's colour filter left on a done circle
+    // painted out its tick.
+    final boolean done = habit.done();
+    row.setImageViewResource(R.id.r_check, done ? R.drawable.widget_check_done
+        : habit.quantity ? R.drawable.widget_check_plus : R.drawable.widget_check_ring);
+    row.setInt(R.id.r_check, "setColorFilter", done ? Color.TRANSPARENT : color);   // transparent: drawn as is
+    row.setFloat(R.id.r_name, "setAlpha", done ? 0.62f : 1f);
+    row.setFloat(R.id.r_meta, "setAlpha", done ? 0.62f : 1f);
+    final String label = done ? day.ui("isDone", "%s ✓")
         : habit.quantity ? day.ui("addOne", "+1 %s") : day.ui("mark", "%s");
     row.setContentDescription(R.id.r_check, label.replace("%s", habit.name));
 
-    row.setOnClickPendingIntent(R.id.r_open, openApp(context, "today"));
-    row.setOnClickPendingIntent(R.id.r_check, tapIntent(context, habit.id));
+    // Fill-ins for the list's shared template: which habit, and which tap.
+    row.setOnClickFillInIntent(R.id.r_open, new Intent()
+        .putExtra(WidgetActionReceiver.EXTRA_HABIT_ID, habit.id)
+        .putExtra(WidgetActionReceiver.EXTRA_OP, WidgetActionReceiver.OP_OPEN));
+    row.setOnClickFillInIntent(R.id.r_check, new Intent()
+        .putExtra(WidgetActionReceiver.EXTRA_HABIT_ID, habit.id)
+        .putExtra(WidgetActionReceiver.EXTRA_OP, WidgetActionReceiver.OP_TICK));
     return row;
   }
 
@@ -238,10 +204,9 @@ public class GlowWidgetProvider extends AppWidgetProvider {
 
   /** "Vas muy bien · 3/5", with the phrase stepping up as the day fills. */
   private static String progressLine(GlowDay day, int done, int due) {
-    final String[] fallback = { "", "", "", "", "" };
     final org.json.JSONArray phrases = day.ui.optJSONArray("progress");
     final int step = done >= due ? 4 : done == 0 ? 0 : done * 2 < due ? 1 : done * 4 < due * 3 ? 2 : 3;
-    final String phrase = phrases != null && phrases.length() == 5 ? phrases.optString(step) : fallback[step];
+    final String phrase = phrases != null && phrases.length() == 5 ? phrases.optString(step) : "";
     return (phrase.isEmpty() ? "" : phrase + "  ·  ") + done + "/" + due;
   }
 
@@ -258,19 +223,28 @@ public class GlowWidgetProvider extends AppWidgetProvider {
    * intents do; the request code keeps one per screen.
    */
   static PendingIntent openApp(Context context, String route) {
-    final Intent intent = new Intent(context, MainActivity.class)
+    return PendingIntent.getActivity(context, route.hashCode(), openIntent(context, route),
+        ReminderScheduler.flags());
+  }
+
+  static Intent openIntent(Context context, String route) {
+    return new Intent(context, MainActivity.class)
         .setAction(Intent.ACTION_MAIN)
         .addCategory(Intent.CATEGORY_LAUNCHER)
         .putExtra(MainActivity.EXTRA_ROUTE, route)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-    return PendingIntent.getActivity(context, route.hashCode(), intent, ReminderScheduler.flags());
   }
 
-  private static PendingIntent tapIntent(Context context, String habitId) {
+  /**
+   * The list's shared click target. It has to be mutable so each row can add
+   * its habit and its tap; it names its receiver explicitly, which is what
+   * keeps a mutable PendingIntent from being pointed anywhere else.
+   */
+  private static PendingIntent rowTemplate(Context context) {
     final Intent intent = new Intent(context, WidgetActionReceiver.class)
-        .setAction(WidgetActionReceiver.ACTION_TAP)
-        .setData(Uri.parse("glowapp://tap/" + Uri.encode(habitId)))
-        .putExtra(WidgetActionReceiver.EXTRA_HABIT_ID, habitId);
-    return PendingIntent.getBroadcast(context, 0, intent, ReminderScheduler.flags());
+        .setAction(WidgetActionReceiver.ACTION_ROW);
+    int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) flags |= PendingIntent.FLAG_MUTABLE;
+    return PendingIntent.getBroadcast(context, 0, intent, flags);
   }
 }

@@ -64,26 +64,30 @@ humour) and **Maestro Zen**. They are invented for GlowApp — no real person's
 name, voice, likeness or catchphrase is used.
 
 Each reminder arrives as a chat message: the character's face and name, a line
-written for that habit, and a **voice note** that can be played straight from
-the notification. **Hecho** ticks the habit without opening the app, and the
-character answers. Everything also lands in an in-app conversation (the bubble
-button in the bar), with a one-tap "ya lo hice" for anything still open.
+written for that habit, and a **voice note** that plays by itself as the
+message arrives (and again from the notification's **Escuchar**). **Hecho**
+ticks the habit without opening the app, and the character answers.
+Everything also lands in an in-app conversation (the bubble button in the
+bar), with a one-tap "ya lo hice" for anything still open.
 
 - A habit can have up to four reminder times (*Hábitos → a habit →
-  Recordatorios*).
-- **Ajustes → Recordatorios** picks the character, turns on playing the voice
-  note on arrival (only with the ringer on, outside calls and Do Not Disturb),
-  sends a test message, and says when Android is blocking notifications or
-  exact alarms.
-- Every line lives in `characters.js`, in both languages: 23 habit lines per
-  character, two generic ones for habits the user typed (the text names the
-  habit; the recording cannot), two answers to "done" and an introduction.
+  Recordatorios*). Each time gets a different line, and the lines take turns
+  from day to day, so water at 10, 13 and 16 never says the same thing twice.
+- **Ajustes → Recordatorios** picks the character, can switch the voice notes
+  off, sends a test message, and says when Android is blocking notifications
+  or exact alarms. A voice note plays at the notification volume, every time,
+  unless the phone is on silent or vibrate, in a call or in Do Not Disturb —
+  then only the message arrives.
+- Every line lives in `characters.js`, in both languages: three lines per
+  habit and character, four generic ones for habits the user typed (the text
+  names the habit; the recording cannot), five answers to "done" and an
+  introduction.
 
 ### The voices
 
 The voice notes are generated here, once, by
 [`tools/voices/make-voices.js`](../tools/voices/make-voices.js), and shipped
-as Opus audio in `voices/` (about 6.5 MB for 280 clips). They are spoken by
+as Opus audio in `voices/` (about 16 MB for 790 clips). They are spoken by
 [Piper](https://github.com/rhasspy/piper), an open-source text-to-speech
 engine, using stock voices from its catalogue — none of them cloned from a
 person — and then given each character's sound with ffmpeg: a compressor and
@@ -106,6 +110,13 @@ To change a line, edit `characters.js` and run `node tools/voices/make-voices.js
 from the repository root: only clips whose text or sound changed are recorded
 again. The first run needs `bash tools/voices/fetch.sh`, which downloads Piper,
 ffmpeg and the ten voice models (about 900 MB) into an ignored cache folder.
+
+Every clip is measured again after it is encoded, as it will be heard, and one
+that misses the target loudness (−16 LUFS) fails the run and is deleted, so
+`check.js` stops the release. Before that check existed, 2.8 shipped twelve of
+Abuela Rosa's notes at anything from −44 to −6 LUFS: ffmpeg's `vibrato` filter
+sometimes starts with a few milliseconds of leftover memory, and the loudness
+pass set the whole clip by that click.
 
 ## Layout and size
 
