@@ -1,96 +1,127 @@
 package com.pablo.glowapp;
 
-import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.os.Build;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 /**
- * Posts a habit's reminder, with a Mark done action that records the tick
- * without opening the app. The tick is queued for the page to apply.
+ * Fires reminders and answers the notification's buttons: Done records the
+ * tick without opening the app, Listen plays the voice note. Ticks are queued
+ * for the page to apply; messages are filed for its chat.
  */
 public class ReminderReceiver extends BroadcastReceiver {
 
   static final String ACTION_MARK_DONE = "com.pablo.glowapp.MARK_DONE";
-  private static final String CHANNEL_ID = "glow_reminders";
+  static final String ACTION_PLAY = "com.pablo.glowapp.PLAY_VOICE";
+  static final String EXTRA_VOICE = "voice";
+  static final String EXTRA_DATE = "date";
+  static final String EXTRA_TEXT = "text";
+
+  /** A reminder delivered this late (the phone was off) would only be noise. */
+  private static final long TOO_LATE = 2 * 60 * 60_000L;
+  /** Lets the notification's own sound finish before the character speaks. */
+  private static final long AUTOPLAY_DELAY = 1500L;
 
   @Override
   public void onReceive(Context context, Intent intent) {
     final String action = intent.getAction();
+    if (ACTION_PLAY.equals(action)) {
+      VoicePlayer.play(context, intent.getStringExtra(EXTRA_VOICE), goAsync());
+      return;
+    }
     final String habitId = intent.getStringExtra(ReminderScheduler.EXTRA_HABIT_ID);
-    final String habitName = intent.getStringExtra(ReminderScheduler.EXTRA_HABIT_NAME);
     if (habitId == null) return;
 
     if (ACTION_MARK_DONE.equals(action)) {
-      GlowStore.queueAction(context, habitId, GlowStore.todayDate(context), "toggle");
-      GlowStore.completeInSnapshot(context, habitId);
-      GlowWidgetProvider.refresh(context);
-      manager(context).cancel(habitId.hashCode());
+      markDone(context, intent, habitId);
+    } else if (ReminderScheduler.ACTION_FIRE.equals(action)) {
+      if (intent.getData() == null) fireLegacy(context, intent, habitId);
+      else fire(context, intent, habitId);
+    }
+  }
+
+  private void fire(Context context, Intent intent, String habitId) {
+    final String time = intent.getStringExtra(ReminderScheduler.EXTRA_TIME);
+    final long at = intent.getLongExtra(ReminderScheduler.EXTRA_AT, System.currentTimeMillis());
+    // Tomorrow's alarm first, whatever happens below.
+    GlowStore.markFired(context, habitId + "@" + time, GlowStore.dateKey(at));
+    ReminderScheduler.schedule(context, habitId, time);
+    if (System.currentTimeMillis() - at > TOO_LATE) return;
+
+    final JSONObject snapshot = GlowStore.readSnapshot(context);
+    final JSONObject reminder = findReminder(snapshot, habitId, time);
+    if (reminder == null) return;                         // removed since it was armed
+
+    // The day the reminder was for, which is not always the day it arrives.
+    final String date = GlowStore.dateKey(at);
+    final GlowDay day = GlowDay.from(snapshot, date);
+    if (day.state == GlowDay.State.READY) {
+      final GlowDay.Habit habit = day.find(habitId);
+      if (habit == null || habit.done()) return;         // not due that day, or already done
+    }
+
+    final String voice = ReminderNotifier.remind(context, habitId, reminder.optString("name"), date,
+        pickMessage(reminder.optJSONArray("msgs"), date));
+    autoplay(context, snapshot, voice);
+  }
+
+  /**
+   * An alarm armed by 2.7 or earlier: one per habit, repeating, with no data
+   * URI. Once the page has sent the new snapshot those are replaced, so the
+   * old one is cancelled; before that it still reminds, so updating the app
+   * never loses a reminder.
+   */
+  private void fireLegacy(Context context, Intent intent, String habitId) {
+    if (GlowStore.isCurrent(GlowStore.readSnapshot(context))) {
+      ReminderScheduler.cancelLegacy(context, habitId);
+      ReminderScheduler.rescheduleAll(context);
       return;
     }
-
-    notifyReminder(context, habitId, habitName == null ? "" : habitName);
+    ReminderNotifier.remind(context, habitId, intent.getStringExtra(ReminderScheduler.EXTRA_HABIT_NAME),
+        GlowStore.today(), null);
   }
 
-  private void notifyReminder(Context context, String habitId, String habitName) {
-    ensureChannel(context);
-
-    final Intent open = new Intent(context, MainActivity.class)
-        .setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-    final PendingIntent openApp = PendingIntent.getActivity(
-        context, habitId.hashCode(), open, ReminderScheduler.flags());
-
-    final Intent done = new Intent(context, ReminderReceiver.class)
-        .setAction(ACTION_MARK_DONE)
-        .putExtra(ReminderScheduler.EXTRA_HABIT_ID, habitId);
-    final PendingIntent markDone = PendingIntent.getBroadcast(
-        context, ("done" + habitId).hashCode(), done, ReminderScheduler.flags());
-
-    final String title = context.getString(R.string.reminder_title, habitName);
-
-    final Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-        ? new Notification.Builder(context, CHANNEL_ID)
-        : new Notification.Builder(context);
-
-    builder.setSmallIcon(R.drawable.ic_notification)
-        .setContentTitle(title)
-        .setContentText(context.getString(R.string.reminder_body))
-        .setAutoCancel(true)
-        .setContentIntent(openApp)
-        .addAction(buildAction(context, markDone));
-
-    try {
-      manager(context).notify(habitId.hashCode(), builder.build());
-    } catch (SecurityException denied) {
-      // Notification permission was revoked; nothing else to do here.
+  private void markDone(Context context, Intent intent, String habitId) {
+    if ("test".equals(habitId)) {                       // the settings' sample, tied to no habit
+      ReminderNotifier.cancel(context, habitId);
+      return;
     }
+    final String requested = intent.getStringExtra(EXTRA_DATE);
+    final String date = requested == null ? GlowStore.today() : requested;
+    GlowStore.complete(context, habitId, date);
+    GlowStore.queueAction(context, habitId, date, "complete");
+    GlowWidgetProvider.refresh(context);
+    final String voice = ReminderNotifier.answerDone(context, habitId, date, intent.getStringExtra(EXTRA_TEXT));
+    MainActivity.pokePage();
+    autoplay(context, GlowStore.readSnapshot(context), voice);
   }
 
-  private Notification.Action buildAction(Context context, PendingIntent intent) {
-    final String label = context.getString(R.string.mark_done);
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      return new Notification.Action.Builder(
-          android.graphics.drawable.Icon.createWithResource(context, R.drawable.ic_notification),
-          label, intent).build();
+  private void autoplay(Context context, JSONObject snapshot, String voice) {
+    final JSONObject cast = ReminderNotifier.character(snapshot);
+    if (voice == null || cast == null || !cast.optBoolean("autoplay")) return;
+    if (!VoicePlayer.mayAutoplay(context)) return;
+    VoicePlayer.play(context, voice, goAsync(), AUTOPLAY_DELAY);
+  }
+
+  private static JSONObject findReminder(JSONObject snapshot, String habitId, String time) {
+    final JSONArray reminders = snapshot == null ? null : snapshot.optJSONArray("reminders");
+    if (reminders == null) return null;
+    for (int i = 0; i < reminders.length(); i++) {
+      final JSONObject reminder = reminders.optJSONObject(i);
+      if (reminder != null && habitId.equals(reminder.optString("id"))
+          && (time == null || time.equals(reminder.optString("time")))) {
+        return reminder;
+      }
     }
-    return new Notification.Action.Builder(R.drawable.ic_notification, label, intent).build();
+    return null;
   }
 
-  private static void ensureChannel(Context context) {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
-    final NotificationChannel channel = new NotificationChannel(
-        CHANNEL_ID,
-        context.getString(R.string.reminder_channel),
-        NotificationManager.IMPORTANCE_DEFAULT);
-    channel.setDescription(context.getString(R.string.reminder_channel_desc));
-    manager(context).createNotificationChannel(channel);
-  }
-
-  private static NotificationManager manager(Context context) {
-    return (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+  /** The page sends a few lines per reminder; one a day, in turn. */
+  private static JSONObject pickMessage(JSONArray messages, String date) {
+    if (messages == null || messages.length() == 0) return null;
+    return messages.optJSONObject(Math.floorMod(GlowStore.dayNumber(date), messages.length()));
   }
 }

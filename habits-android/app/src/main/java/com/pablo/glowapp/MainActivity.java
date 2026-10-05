@@ -3,14 +3,20 @@ package com.pablo.glowapp;
 import android.annotation.SuppressLint;
 import android.Manifest;
 import android.app.Activity;
-import android.content.pm.PackageManager;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.graphics.Color;
 import android.graphics.Insets;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.view.View;
 import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.ServiceWorkerClient;
@@ -20,18 +26,23 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.window.OnBackInvokedDispatcher;
 import android.widget.FrameLayout;
+
+import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.ref.WeakReference;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Native shell for the Hábitos web app.
+ * Native shell for the GlowApp web app.
  *
  * The page is served from a synthetic https origin rather than a file:// URL.
  * That matters: local storage on file:// is treated as an opaque origin by some
@@ -41,9 +52,16 @@ import java.util.regex.Pattern;
  */
 public class MainActivity extends Activity {
 
+  static final String ASSET_ROOT = "www";
+  /** Which screen to open: "chat" from a character's message, "today" from the widget. */
+  static final String EXTRA_ROUTE = "route";
+
   private static final String ORIGIN = "https://appassets.androidplatform.net";
-  private static final String ASSET_ROOT = "www";
   private static final String START_URL = ORIGIN + "/index.html";
+
+  /** Pulls in whatever happened natively: widget ticks, notification replies, new messages. */
+  private static final String POKE =
+      "window.__glow && window.__glow.applyPending && window.__glow.applyPending()";
 
   /** Reports the page's own background colour so the bars behind the insets match it. */
   private static final String THEME_WATCHER =
@@ -60,8 +78,13 @@ public class MainActivity extends Activity {
   private static final Pattern RGB =
       Pattern.compile("rgba?[(]([0-9]+),[ ]*([0-9]+),[ ]*([0-9]+)");
 
+  /** The activity on screen, if any, so a receiver can tell the page something changed. */
+  private static WeakReference<MainActivity> resumed = new WeakReference<>(null);
+
   private FrameLayout root;
   private WebView webView;
+  private boolean pageReady;
+  private String pendingRoute;
 
   @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
   @Override
@@ -80,7 +103,8 @@ public class MainActivity extends Activity {
         FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
     setContentView(root);
 
-    applyWindowInsets();
+    goEdgeToEdge();
+    registerBack();
 
     WebSettings settings = webView.getSettings();
     settings.setJavaScriptEnabled(true);
@@ -112,19 +136,24 @@ public class MainActivity extends Activity {
         Uri uri = request.getUrl();
         if (isOurs(uri)) return false;
         // Anything outside the bundled app belongs in the browser.
-        startActivity(new Intent(Intent.ACTION_VIEW, uri));
+        try {
+          startActivity(new Intent(Intent.ACTION_VIEW, uri));
+        } catch (ActivityNotFoundException noBrowser) {
+          // Nothing can open it; stay put.
+        }
         return true;
       }
 
       @Override
       public void onPageFinished(WebView view, String url) {
         view.evaluateJavascript(THEME_WATCHER, null);
+        pageReady = true;
+        deliverRoute();
       }
     });
 
-    // The page registers a service worker; its fetches bypass WebViewClient and
-    // need their own interceptor, otherwise registration fails against the
-    // network that this app never uses.
+    // The page registers a service worker in a browser; its fetches bypass
+    // WebViewClient and need their own interceptor.
     ServiceWorkerController controller = ServiceWorkerController.getInstance();
     controller.setServiceWorkerClient(new ServiceWorkerClient() {
       @Override
@@ -133,6 +162,7 @@ public class MainActivity extends Activity {
       }
     });
 
+    pendingRoute = routeOf(getIntent());
     if (savedInstanceState != null) {
       webView.restoreState(savedInstanceState);
     } else {
@@ -140,33 +170,89 @@ public class MainActivity extends Activity {
     }
   }
 
+  @Override
+  protected void onNewIntent(Intent intent) {
+    super.onNewIntent(intent);
+    setIntent(intent);
+    pendingRoute = routeOf(intent);
+    deliverRoute();
+  }
+
+  private static String routeOf(Intent intent) {
+    final String route = intent == null ? null : intent.getStringExtra(EXTRA_ROUTE);
+    return route != null && route.matches("[a-z]{1,16}") ? route : null;
+  }
+
+  /** Hands a screen request to the page once it can take it. */
+  private void deliverRoute() {
+    if (!pageReady || pendingRoute == null || webView == null) return;
+    final String route = pendingRoute;
+    pendingRoute = null;
+    webView.evaluateJavascript("window.__glow && window.__glow.route && window.__glow.route('" + route + "')", null);
+  }
+
   /**
-   * From targetSdk 35 the system no longer insets the window, so the app draws
-   * behind the status and navigation bars. Padding the root keeps the page
-   * clear of them while the bars themselves show the page's own colour.
+   * From targetSdk 35 Android draws every app edge to edge, and from 36 there
+   * is no opting out. The page is padded clear of the bars (and of the
+   * keyboard, which edge to edge no longer resizes the window for) while the
+   * bars themselves show the page's own colour.
    */
-  private void applyWindowInsets() {
-    root.setOnApplyWindowInsetsListener((view, insets) -> {
-      int left, top, right, bottom;
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-        Insets bars = insets.getInsets(
-            WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-        left = bars.left;
-        top = bars.top;
-        right = bars.right;
-        bottom = bars.bottom;   // the keyboard is handled by adjustResize
-      } else {
-        left = insets.getSystemWindowInsetLeft();
-        top = insets.getSystemWindowInsetTop();
-        right = insets.getSystemWindowInsetRight();
-        bottom = insets.getSystemWindowInsetBottom();
+  private void goEdgeToEdge() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      getWindow().setDecorFitsSystemWindows(false);
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
+        getWindow().setStatusBarColor(Color.TRANSPARENT);
+        getWindow().setNavigationBarColor(Color.TRANSPARENT);
       }
-      view.setPadding(left, top, right, bottom);
+    }
+    root.setOnApplyWindowInsetsListener((view, insets) -> {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        final Insets bars = insets.getInsets(
+            WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+        final Insets keyboard = insets.getInsets(WindowInsets.Type.ime());
+        view.setPadding(bars.left, bars.top, bars.right, Math.max(bars.bottom, keyboard.bottom));
+        return WindowInsets.CONSUMED;
+      }
+      view.setPadding(insets.getSystemWindowInsetLeft(), insets.getSystemWindowInsetTop(),
+          insets.getSystemWindowInsetRight(), insets.getSystemWindowInsetBottom());
       return insets;
     });
   }
 
-  /** The page's window onto the native shell: theme, snapshot and tick queue. */
+  /**
+   * Back closes whatever the page has open first — a dialog, the chat, a tab
+   * other than Today — and only then leaves. From Android 16 the old
+   * onBackPressed() is no longer called for apps that target it, so the
+   * callback route is registered wherever it exists.
+   */
+  private void registerBack() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+      getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+          OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::handleBack);
+    }
+  }
+
+  @Override
+  @SuppressWarnings("deprecation")
+  public void onBackPressed() {
+    handleBack();      // only reached before Android 13
+  }
+
+  private void handleBack() {
+    if (webView == null) {
+      finish();
+      return;
+    }
+    webView.evaluateJavascript(
+        "(window.__glow && window.__glow.back) ? window.__glow.back() : 'exit'",
+        value -> {
+          // Like any launcher app since Android 12: leave without finishing,
+          // so coming back is instant and keeps the page as it was.
+          if (value == null || value.contains("exit")) moveTaskToBack(true);
+        });
+  }
+
+  /** The page's window onto the native shell. */
   private class ShellBridge {
 
     /** Called after every save so the widget and alarms have current data. */
@@ -176,9 +262,10 @@ public class MainActivity extends Activity {
       GlowStore.writeSnapshot(MainActivity.this, json);
       GlowWidgetProvider.refresh(MainActivity.this);
       ReminderScheduler.rescheduleAll(MainActivity.this);
+      ReminderNotifier.clearDone(MainActivity.this);
     }
 
-    /** Asked for the first time the user sets a reminder, not at launch. */
+    /** Asked for the first time the user sets a reminder or picks a character, not at launch. */
     @JavascriptInterface
     public void requestNotificationPermission() {
       if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return;
@@ -188,10 +275,62 @@ public class MainActivity extends Activity {
           requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS }, 1));
     }
 
+    /** False when Android would hide the reminders: app notifications or the character channel off. */
+    @JavascriptInterface
+    public boolean notificationsEnabled() {
+      final NotificationManager manager =
+          (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+      if (manager == null || !manager.areNotificationsEnabled()) return false;
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        final NotificationChannel channel = manager.getNotificationChannel(ReminderNotifier.CHANNEL_CAST);
+        if (channel != null && channel.getImportance() == NotificationManager.IMPORTANCE_NONE) return false;
+      }
+      return true;
+    }
+
+    @JavascriptInterface
+    public void openNotificationSettings() {
+      final Intent intent = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+          ? new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+              .putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName())
+          : new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+              Uri.parse("package:" + getPackageName()));
+      openSettings(intent);
+    }
+
+    /** "granted" or "denied": whether reminders can be on the minute. */
+    @JavascriptInterface
+    public String exactAlarmState() {
+      return ReminderScheduler.exactState(MainActivity.this);
+    }
+
+    @JavascriptInterface
+    public void openExactAlarmSettings() {
+      if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return;
+      openSettings(new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
+          Uri.parse("package:" + getPackageName())));
+    }
+
+    /** Sends one reminder now, from the page's settings, so it can be tried out. */
+    @JavascriptInterface
+    public void testReminder(String json) {
+      try {
+        ReminderNotifier.test(MainActivity.this, new JSONObject(json));
+      } catch (JSONException malformed) {
+        // Nothing to send.
+      }
+    }
+
     /** Hands over ticks made from the widget or a notification, and clears them. */
     @JavascriptInterface
     public String takePending() {
       return GlowStore.takePending(MainActivity.this);
+    }
+
+    /** Hands over messages the characters sent, and replies made from notifications. */
+    @JavascriptInterface
+    public String takeInbox() {
+      return GlowStore.takeInbox(MainActivity.this);
     }
 
     @JavascriptInterface
@@ -199,15 +338,51 @@ public class MainActivity extends Activity {
       if (css == null) return;
       final Matcher match = RGB.matcher(css);
       if (!match.find()) return;
-      final int color = 0xFF000000
-          | (Integer.parseInt(match.group(1)) << 16)
-          | (Integer.parseInt(match.group(2)) << 8)
-          | Integer.parseInt(match.group(3));
+      final int red = Integer.parseInt(match.group(1));
+      final int green = Integer.parseInt(match.group(2));
+      final int blue = Integer.parseInt(match.group(3));
+      final int color = 0xFF000000 | (red << 16) | (green << 8) | blue;
+      // Dark icons on a light page, light icons on a dark one.
+      final boolean lightPage = (0.299 * red + 0.587 * green + 0.114 * blue) > 150;
       runOnUiThread(() -> {
         root.setBackgroundColor(color);
         getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(color));
+        tintBars(lightPage, color);
       });
     }
+  }
+
+  private void openSettings(Intent intent) {
+    try {
+      startActivity(intent);
+    } catch (ActivityNotFoundException missing) {
+      startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+          Uri.parse("package:" + getPackageName())));
+    }
+  }
+
+  /**
+   * Edge to edge, the bars are transparent over the page's colour and only
+   * their icons need to follow it. Before Android 11 the bars are painted
+   * the page's colour instead.
+   */
+  @SuppressWarnings("deprecation")
+  private void tintBars(boolean lightPage, int color) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      final WindowInsetsController controller = getWindow().getInsetsController();
+      if (controller == null) return;
+      final int both = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+          | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+      controller.setSystemBarsAppearance(lightPage ? both : 0, both);
+      return;
+    }
+    final View decor = getWindow().getDecorView();
+    int light = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) light |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+    final int flags = decor.getSystemUiVisibility();
+    decor.setSystemUiVisibility(lightPage ? (flags | light) : (flags & ~light));
+    getWindow().setStatusBarColor(color);
+    getWindow().setNavigationBarColor(color);
   }
 
   private boolean isOurs(Uri uri) {
@@ -245,32 +420,36 @@ public class MainActivity extends Activity {
     if (path.endsWith(".json")) return "application/json";
     if (path.endsWith(".png")) return "image/png";
     if (path.endsWith(".svg")) return "image/svg+xml";
+    if (path.endsWith(".webm")) return "audio/webm";
     return "application/octet-stream";
+  }
+
+  /** Called by receivers when something changed natively while the app may be on screen. */
+  static void pokePage() {
+    final MainActivity activity = resumed.get();
+    if (activity == null) return;
+    activity.runOnUiThread(() -> {
+      if (activity.webView != null && activity.pageReady) activity.webView.evaluateJavascript(POKE, null);
+    });
   }
 
   @Override
   protected void onResume() {
     super.onResume();
-    if (webView != null) {
-      webView.evaluateJavascript(
-          "window.__glow && window.__glow.applyPending && window.__glow.applyPending()", null);
-    }
+    resumed = new WeakReference<>(this);
+    if (webView != null && pageReady) webView.evaluateJavascript(POKE, null);
+  }
+
+  @Override
+  protected void onPause() {
+    if (resumed.get() == this) resumed = new WeakReference<>(null);
+    super.onPause();
   }
 
   @Override
   protected void onSaveInstanceState(Bundle outState) {
     super.onSaveInstanceState(outState);
     webView.saveState(outState);
-  }
-
-  @Override
-  public void onBackPressed() {
-    // Back returns to the Today tab first, and only then leaves the app.
-    webView.evaluateJavascript(
-        "(location.hash && location.hash !== '#today') ? (location.hash = '#today', 'handled') : 'exit'",
-        value -> {
-          if (value == null || value.contains("exit")) finish();
-        });
   }
 
   @Override

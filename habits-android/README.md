@@ -6,55 +6,93 @@ truth — edit the app there, rebuild, and the APK picks the changes up.
 
 ## The built APK
 
-`GlowApp-2.0.apk` sits at the repository root. It is signed with the release key
-in `keystore/` (not committed), targets API 35 (Android 15), and needs Android
+`GlowApp-2.8.apk` sits at the repository root. It is signed with the release key
+in `keystore/` (not committed), targets API 36 (Android 16), and needs Android
 7.0 or newer.
 
 The target matters. The first build targeted API 32 and Google Play Protect
 refused to install it — "This app was built for an older version of Android and
 doesn't include the latest privacy protections." Play Protect gates sideloads on
 `targetSdkVersion`, so the fix was to build against a current platform rather
-than to click past the warning.
+than to click past the warning. 2.8 moves to 36 for the same reason.
+
+## Installing on a phone
+
+Send the APK to the phone (WhatsApp, Drive, email, USB) and open it. On a
+current Android two screens come up, and both are expected for an app that
+does not come from the Play Store — neither means the phone rejected it:
+
+1. **"For your security, your phone isn't allowed to install unknown apps from
+   this source"** → *Settings* → turn on **Allow from this source** for the app
+   that opened the file (WhatsApp, Chrome, Files…) → go back.
+2. **Google Play Protect — "App scan recommended"** → **Scan app**. After a few
+   seconds it says *"This app looks safe"* → **Install**. Tapping *Don't install
+   app* here is the easy mistake.
+
+Both were reproduced on an Android 16 emulator with Google Play: the 2.7 APK
+installs once they are answered. Some phones add their own layer on top:
+
+- **Samsung (One UI 6 and later): Auto Blocker.** *Settings → Security and
+  privacy → Auto Blocker → off* while installing; it can be turned back on.
+- **Xiaomi / Redmi / POCO:** their own security scan asks for confirmation;
+  choose to install anyway.
+- **"App not installed as package conflicts with an existing package":** an
+  older copy signed with a different key is installed. Uninstall it first
+  (export a JSON backup before, from Ajustes).
+- **"Developer not verified"** (Google's verification for sideloaded apps,
+  rolling out by country from 2026): the publisher has to register the
+  package and signing key in Google's Android Developer Console; until then
+  the phone's advanced install flow is the only way through.
+
+Over USB with developer options and USB debugging on:
+
+```sh
+adb install GlowApp-2.8.apk
+```
 
 ## Native features
 
 Three things live in the shell rather than the page, because a web page cannot
 do them:
 
-- **Per-habit reminders.** A time set on a habit schedules a daily *inexact*
-  alarm — inexact on purpose, since exact alarms need the SCHEDULE_EXACT_ALARM
-  special access on API 31+, which a habit nudge does not warrant. The
-  notification carries a **Mark done** action. `BootReceiver` re-arms alarms
-  after a restart, and notification permission is requested the first time a
-  reminder is set, not at launch.
-- **Home-screen widget.** `GlowWidgetProvider` plus `GlowWidgetService` list
-  today's habits, each tappable to complete.
-- **The bridge between them.** See below — it is the part worth understanding.
+- **Reminders.** A habit can have up to four times. Each is a one-shot alarm
+  that arms the next day's when it fires: *exact* when Android allows it
+  (from Android 14 the user grants "Alarms & reminders", and Ajustes offers the
+  button), otherwise with a ten-minute window. Up to 2.7 these were inexact
+  repeating alarms, and `dumpsys alarm` showed Android giving them an 18-hour
+  window — a "9:00" reminder could arrive in the afternoon. `BootReceiver`
+  re-arms everything after a reboot, an app update, a clock or time-zone
+  change, and when exact alarms are granted. The old repeating alarms are
+  found and cancelled on the update itself, before the app is even opened.
+- **Characters.** With one chosen, a reminder is a chat-style notification
+  (`MessagingStyle`, with the character as a `Person` and, from Android 11, a
+  long-lived shortcut so it is filed under Conversations). **Escuchar** plays
+  the voice note from the APK with `MediaPlayer` without opening the app;
+  **Hecho** records the tick and the character answers. Messages and replies
+  are filed in an inbox the page collects for its chat. Playing on arrival is
+  opt-in and only happens with the ringer on, outside calls and outside Do
+  Not Disturb.
+- **Home-screen widget.** A progress ring for the day, then one row per habit:
+  its colour and emoji, a progress bar for counted habits, its streak, and two
+  tap targets — the name opens the app, the circle ticks the habit (or adds one
+  glass of water) without opening anything. Rows are nested views, not a
+  scrolling list: a list's single click template cannot both open an activity
+  and send a broadcast. The widget shows as many rows as its height allows,
+  open habits first, and says how many more there are.
 
 ### How the widget and reminders see your data
 
 Habit data lives in the WebView's local storage, which native code cannot read.
-So the page pushes a compact snapshot of today into `SharedPreferences` after
-every save (`GlowStore`), and anything ticked from the widget or a notification
-is **queued** rather than written directly.
+So the page pushes a snapshot into `SharedPreferences` after every save
+(`GlowStore`), and anything ticked from the widget or a notification is
+**queued** rather than written directly; the page applies the queue through
+its own write path when it next runs, so streaks and charts stay correct.
 
-That makes widget ticks *eventually consistent*: the widget updates immediately
-and optimistically, and the real change is applied through the page's own write
-path the next time GlowApp opens, so streaks and charts stay correct. Making it
-instant would mean moving the database out of local storage — a much larger
-change than this feature justifies.
-
-## Installing on a phone
-
-Copy the APK to the phone (USB, Drive, email to yourself) and tap it. Android
-will ask you to allow installs from whichever app is opening it — that prompt is
-expected for an app that does not come from the Play Store.
-
-Over USB with developer options and USB debugging on:
-
-```sh
-adb install Habitos-1.0.apk
-```
+The snapshot covers this week and the next two, with each habit's streak as
+of the day before. The date always comes from the phone's clock (`GlowDay`),
+never from the snapshot — through 2.7 the widget took "today" from the last
+sync, so after midnight it kept showing, and ticking, yesterday until the app
+was opened. A non-waking alarm redraws it just after midnight.
 
 ## Rebuilding
 
@@ -64,12 +102,16 @@ cd habits-android
 ```
 
 `local.properties` points at the Android SDK; it is machine-specific and not
-committed. The build needs JDK 17 and an SDK with platform 35 and build-tools
-35.0.1, driven by Gradle 8.7 and Android Gradle Plugin 8.6.1.
+committed. The build needs JDK 17 and an SDK with platform 36 and build-tools
+36.1.0, driven by Gradle 8.7 and Android Gradle Plugin 8.6.1 (which predates
+API 36 but builds against it; `gradle.properties` silences its notice).
+
+The voice notes in `../habits/voices` are generated, not hand-made: see
+`../tools/voices/make-voices.js`. They are stored uncompressed in the APK
+(`noCompress` in `app/build.gradle`) so the native player can read them in
+place; Opus gains nothing from zip compression anyway.
 
 To bump the version, edit `versionCode` and `versionName` in `app/build.gradle`.
-The package ID changed from `com.pablo.habitos` to `com.pablo.glowapp` with
-the rename, so this installs as a new app rather than updating the old one.
 Android only replaces an installed app when the new APK is signed with the same
 key **and** has a higher `versionCode`.
 
@@ -95,9 +137,16 @@ then write `keystore/keystore.properties` with `storeFile`, `storePassword`,
 
 Binding a widget to a launcher needs the signature-level BIND_APPWIDGET
 permission, so a home screen cannot be scripted. Debug builds therefore carry a
-`WidgetPreviewActivity` that inflates the **real** provider views and factory
-rows, which is what makes the widget's layout verifiable at all. It is in
-`src/debug` and never reaches a release APK, as is the WebView DevTools hook.
+`WidgetPreviewActivity` that inflates the **real** provider views at three
+heights. Its `date` extra draws another day, which is how the after-midnight
+behaviour is checked without touching the clock:
+
+```sh
+adb shell am start -n com.pablo.glowapp/.WidgetPreviewActivity --es date 2026-10-06
+```
+
+It is in `src/debug` and never reaches a release APK, as is the WebView
+DevTools hook.
 
 ## How the shell works
 
@@ -108,25 +157,18 @@ deliberate: local storage on `file://` is treated as an opaque origin by some
 WebView versions and can be discarded, and service workers refuse to register
 outside a secure context.
 
-Service worker requests bypass `WebViewClient`, so they get their own
-interceptor via `ServiceWorkerController`.
+The window is edge to edge on Android 11 and later (and has to be from
+targetSdk 36): the root view is padded by the system bars and the keyboard, and
+the page reports its background colour so the bars show it, with light or dark
+icons to match. Back closes whatever the page has open — a dialog, the chat, a
+tab other than Today — and only then leaves; from Android 13 that goes through
+`OnBackInvokedCallback`, since Android 16 no longer calls `onBackPressed()` for
+apps that target it.
 
-The back button returns to the Today tab first and leaves the app only from
-there.
-
-### Window insets
-
-From targetSdk 35 Android stops insetting the window and apps draw behind the
-system bars. `MainActivity` pads its root view by the window insets to handle
-that, and the page reports its own background colour over a JavaScript bridge so
-the bar areas match the active theme.
-
-That path could not be exercised here — the installed emulator binary predates
-API 35 images and cannot boot one — so this build also sets
-`windowOptOutEdgeToEdgeEnforcement`, keeping the system's own insetting and
-therefore the layout that was actually tested. The attribute is ignored from
-targetSdk 36 onwards; whoever raises the target next should drop it and verify
-the inset code on a real API 35+ device.
+Receivers that only this app should reach (`ReminderReceiver`,
+`WidgetActionReceiver`) are not exported and declare no intent filter. The
+widget provider must stay exported for the system's updates, which is why its
+taps go to a separate receiver.
 
 ## Where the data lives
 
@@ -135,5 +177,7 @@ shared with the same app opened in Chrome — those are separate storage areas, 
 installing the APK does not import anything you already logged in the browser.
 Move history across with **Ajustes → Exportar JSON** and *Importar JSON*.
 
-Uninstalling deletes it. Android's auto-backup covers the WebView directory
-(see `res/xml/backup_rules.xml`), but treat the JSON export as the real backup.
+Uninstalling deletes it. Android's backup includes that storage
+(`res/xml/backup_rules.xml` and `data_extraction_rules.xml`; up to 2.7 the rules
+pointed at the wrong folder and carried nothing useful), but treat the JSON
+export as the real backup.

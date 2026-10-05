@@ -16,8 +16,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="GlowApp">
-  <link rel="stylesheet" href="styles.css?v=2.7">
-  <script src="i18n.js?v=2.7"></script>
+  <link rel="stylesheet" href="styles.css?v=2.8">
+  <script src="i18n.js?v=2.8"></script>
 </head>
 <body>
   <!-- Launch screen. The mark draws itself, then a phrase lands under it.
@@ -83,6 +83,11 @@
       <h1 id="viewTitle">Hoy</h1>
     </div>
     <div class="app-bar-actions">
+      <!-- Messages from the reminder character. Android app only. -->
+      <button type="button" class="icon-btn chat-btn" id="chatOpen" hidden>
+        <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20"><use href="#i-chat"></use></svg>
+        <span class="chat-badge" id="chatBadge" hidden></span>
+      </button>
       <button type="button" class="icon-btn" id="langToggle" title="Language" aria-label="Language">
         <span id="langToggleLabel">EN</span>
       </button>
@@ -97,6 +102,23 @@
     <section class="view" id="view-today" aria-labelledby="todayHeading">
       <div class="view-inner">
         <div class="day-strip" id="dayStrip" role="tablist" aria-label="Días"></div>
+
+        <!-- Introduces the reminder characters, once, inside the Android app. -->
+        <section class="card cast-promo" id="castPromo" hidden aria-labelledby="promoTitle">
+          <div class="cast-promo-faces" aria-hidden="true">
+            <img src="avatars/crack.svg" alt="" loading="lazy">
+            <img src="avatars/grandma.svg" alt="" loading="lazy">
+            <img src="avatars/bip.svg" alt="" loading="lazy">
+          </div>
+          <div class="cast-promo-text">
+            <h3 id="promoTitle" data-i18n="promoTitle">Nuevo: recordatorios con personaje</h3>
+            <p data-i18n="promoBody"></p>
+            <div class="button-row">
+              <button type="button" class="btn btn-primary btn-sm" id="btnPromoPick" data-i18n="promoPick">Elegir personaje</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btnPromoLater" data-i18n="promoLater">Ahora no</button>
+            </div>
+          </div>
+        </section>
 
         <h2 class="sr-only" id="todayHeading" data-i18n="navToday">Hoy</h2>
 
@@ -292,6 +314,35 @@
           </div>
         </section>
 
+        <!-- Only inside the APK: reminders need its alarms and notifications. -->
+        <section class="card setting-group" id="castSettings" hidden aria-labelledby="setReminders">
+          <h3 id="setReminders" data-i18n="setReminders">Recordatorios</h3>
+          <div class="setting-row">
+            <span class="setting-label" data-i18n="setCharacter">Quién te escribe</span>
+            <button type="button" class="cast-current" id="btnPickCast">
+              <img id="castCurrentAvatar" alt="" hidden>
+              <span id="castCurrentName"></span>
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><use href="#i-chevron"></use></svg>
+            </button>
+          </div>
+          <div class="setting-row" id="voiceAutoplayRow">
+            <label for="voiceAutoplay" data-i18n="setAutoplay">Reproducir la nota de voz al llegar</label>
+            <label class="switch-inline"><input type="checkbox" id="voiceAutoplay"></label>
+          </div>
+          <div class="setting-warning" id="notifWarning" hidden>
+            <span data-i18n="notifOff"></span>
+            <button type="button" class="btn btn-sm" id="btnNotifSettings" data-i18n="notifTurnOn">Activar</button>
+          </div>
+          <div class="setting-warning" id="exactWarning" hidden>
+            <span data-i18n="exactOff"></span>
+            <button type="button" class="btn btn-sm" id="btnExactSettings" data-i18n="exactAllow">Permitir</button>
+          </div>
+          <div class="button-row">
+            <button type="button" class="btn" id="btnTestReminder" data-i18n="testReminder">Enviar un mensaje de prueba</button>
+          </div>
+          <p class="muted small" data-i18n="remindersHowTo"></p>
+        </section>
+
         <section class="card setting-group" aria-labelledby="setData">
           <h3 id="setData" data-i18n="setData">Tus datos</h3>
           <p class="muted" data-i18n="dataBlurb">Todo se guarda solo en este navegador. No hay cuentas ni servidores. Exporta de vez en cuando para no perder nada.</p>
@@ -317,7 +368,8 @@
             <button type="button" class="btn btn-primary" id="btnInstall" hidden data-i18n="installApp">Instalar app</button>
           </div>
           <p class="muted small" id="installHint"></p>
-          <p class="muted small" data-i18n="version">Hábitos v1.0 · offline</p>
+          <p class="muted small" data-i18n="version">GlowApp</p>
+          <p class="muted small credits" id="voiceCredits" hidden data-i18n="voiceCredits"></p>
         </section>
       </div>
     </section>
@@ -412,11 +464,14 @@
 
         <!-- Reminders need the Android shell to schedule an alarm, so this is
              revealed only when the native bridge is present. -->
-        <label class="field" id="reminderField" hidden>
-          <span class="field-label" data-i18n="fieldReminder">Recordatorio</span>
-          <input type="time" id="fReminder">
+        <div class="field" id="reminderField" hidden>
+          <span class="field-label" data-i18n="fieldReminders">Recordatorios</span>
+          <div class="reminder-list" id="reminderList"></div>
+          <button type="button" class="btn btn-sm reminder-add" id="btnAddReminder">
+            <span aria-hidden="true">+</span> <span data-i18n="reminderAdd">Añadir hora</span>
+          </button>
           <span class="field-hint" id="reminderHint"></span>
-        </label>
+        </div>
 
         <p class="form-error" id="formError" hidden role="alert"></p>
       </div>
@@ -441,6 +496,47 @@
       <button type="button" class="btn btn-danger" id="confirmOk" data-i18n="confirm">Confirmar</button>
     </footer>
   </dialog>
+
+  <!-- ── WHO MESSAGES YOU ────────────────────────────────────────────── -->
+  <dialog class="sheet" id="castDialog" aria-labelledby="castTitle">
+    <form method="dialog">
+      <header class="sheet-head">
+        <h2 id="castTitle" data-i18n="castTitle">Elige quién te escribe</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Cerrar">
+          <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20"><use href="#i-close"></use></svg>
+        </button>
+      </header>
+      <div class="sheet-body">
+        <p class="muted small" data-i18n="castBlurb"></p>
+        <div class="cast-list" id="castList" role="radiogroup" aria-labelledby="castTitle"></div>
+      </div>
+      <footer class="sheet-foot">
+        <span class="spacer"></span>
+        <button type="button" class="btn btn-primary" data-close data-i18n="castDone">Listo</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <!-- ── THE CONVERSATION ────────────────────────────────────────────── -->
+  <div class="chat" id="chat" hidden>
+    <div class="chat-panel" role="dialog" aria-modal="true" aria-labelledby="chatName">
+      <header class="chat-head">
+        <button type="button" class="icon-btn" id="chatBack" data-i18n-label="chatBack" aria-label="Volver">
+          <svg viewBox="0 0 24 24" aria-hidden="true" width="22" height="22"><use href="#i-back"></use></svg>
+        </button>
+        <img class="chat-avatar" id="chatAvatar" alt="">
+        <div class="chat-who">
+          <strong id="chatName"></strong>
+          <span id="chatStatus"></span>
+        </div>
+        <button type="button" class="icon-btn" id="chatSwitch" data-i18n-label="chatSwitch" aria-label="Cambiar de personaje">
+          <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20"><use href="#i-swap"></use></svg>
+        </button>
+      </header>
+      <div class="chat-log" id="chatLog" role="log" aria-live="polite"></div>
+      <footer class="chat-foot" id="chatFoot"></footer>
+    </div>
+  </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
@@ -482,13 +578,32 @@
       <circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/>
       <circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/>
     </symbol>
+    <symbol id="i-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 11.5a8 8 0 0 1-11.6 7.1L4 20l1.4-4.1A8 8 0 1 1 20 11.5z"/><path d="M8.5 11.5h.01M12 11.5h.01M15.5 11.5h.01"/>
+    </symbol>
+    <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M8 5.6v12.8a1 1 0 0 0 1.5.9l10-6.4a1 1 0 0 0 0-1.8l-10-6.4A1 1 0 0 0 8 5.6z"/>
+    </symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="6.5" y="5" width="4" height="14" rx="1.2"/><rect x="13.5" y="5" width="4" height="14" rx="1.2"/>
+    </symbol>
+    <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M15 5l-7 7 7 7"/>
+    </symbol>
+    <symbol id="i-swap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M7 4 3.5 7.5 7 11"/><path d="M3.5 7.5H17"/><path d="m17 13 3.5 3.5L17 20"/><path d="M20.5 16.5H7"/>
+    </symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>
+    </symbol>
     <symbol id="i-restore" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
       <path d="M4 10a8 8 0 1 1 1.2 5"/><path d="M4 4.5V10h5.5"/>
     </symbol>
   </svg>
 
-  <script src="sounds.js?v=2.7"></script>
-  <script src="charts.js?v=2.7"></script>
-  <script src="app.js?v=2.7"></script>
+  <script src="sounds.js?v=2.8"></script>
+  <script src="charts.js?v=2.8"></script>
+  <script src="characters.js?v=2.8"></script>
+  <script src="app.js?v=2.8"></script>
 </body>
 </html>

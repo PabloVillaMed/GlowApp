@@ -1,11 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Four cells by three by default: the ring and two or three habits. It can
+     shrink to the ring alone, or grow to show every habit of the day. -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:minWidth="250dp"
-    android:minHeight="110dp"
+    android:minHeight="180dp"
     android:minResizeWidth="180dp"
-    android:minResizeHeight="70dp"
+    android:minResizeHeight="80dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="3"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen"
     android:initialLayout="@layout/widget_today"
     android:previewImage="@drawable/widget_preview"
+    android:description="@string/widget_description"
     android:updatePeriodMillis="1800000" />

@@ -17,15 +17,24 @@ tasks.register('copyWebApp', Copy) {
 
 android {
   namespace 'com.pablo.glowapp'
-  compileSdk 35
-  buildToolsVersion '35.0.1'
+  /* Android 16. Targeting it is what current Play Protect expects of an
+     installable app; 2.7 targeted 15 and an Android 16 phone refused it. */
+  compileSdk 36
+  buildToolsVersion '36.1.0'
 
   defaultConfig {
     applicationId 'com.pablo.glowapp'
     minSdk 24
-    targetSdk 35
-    versionCode 10
-    versionName '2.7'
+    targetSdk 36
+    versionCode 11
+    versionName '2.8'
+  }
+
+  /* Voice notes are played natively straight from the APK with openFd(),
+     which needs them stored uncompressed. Opus is compressed audio already,
+     so nothing is lost. */
+  androidResources {
+    noCompress += ['webm']
   }
 
   sourceSets {

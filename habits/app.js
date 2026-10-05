@@ -98,6 +98,13 @@
     density: 'default',
     sound: true,
     onboarding: null,
+    /* Who sends the reminders (an id from characters.js, or null for plain
+       notifications), and the conversation they leave behind. */
+    character: null,
+    voiceAutoplay: false,
+    chat: [],
+    chatUnread: 0,
+    castPromoDismissed: false,
     habits: [],
     entries: {},
     moods: {},
@@ -139,6 +146,25 @@
     } catch (err) {
       console.warn('Could not read saved data', err);
     }
+  }
+
+  const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const cleanTimes = (list) => Array.from(new Set((list || []).filter((x) => TIME_RE.test(x)))).sort();
+
+  /* Brings a record written by an older version, or imported from a file, up
+     to the current shape. Returns true when anything had to change. */
+  function normalizeState() {
+    const before = JSON.stringify([state.chat, state.chatUnread, state.character, state.habits]);
+    state.chat = Array.isArray(state.chat) ? state.chat : [];
+    state.chatUnread = Math.max(0, Number(state.chatUnread) || 0);
+    if (state.character && !GLOW_CAST.byId(state.character)) state.character = null;
+    state.habits.forEach((habit) => {
+      // One reminder time per habit until 2.8; now a short list of them.
+      if (!Array.isArray(habit.reminders)) habit.reminders = habit.reminder ? [habit.reminder] : [];
+      delete habit.reminder;
+      habit.reminders = cleanTimes(habit.reminders);
+    });
+    return JSON.stringify([state.chat, state.chatUnread, state.character, state.habits]) !== before;
   }
 
   /**
@@ -824,6 +850,7 @@
   }
 
   function renderToday() {
+    renderCastPromo();
     renderDayStrip();
     renderSummary();
     renderMood();
@@ -859,7 +886,7 @@
           chip.appendChild(document.createTextNode(habitName(habit)));
           chip.addEventListener('click', () => {
             state.habits.push(Object.assign({
-              id: uid(), reminder: '', schedule: { kind: 'daily' },
+              id: uid(), reminders: [], schedule: { kind: 'daily' },
               createdAt: todayKey(), archived: false,
             }, {
               name: habit.name, nameKey: habit.nameKey || '',
@@ -1096,7 +1123,7 @@
       type: 'binary',
       target: 1,
       unit: '',
-      reminder: '',
+      reminders: [],
       schedule: { kind: 'daily', days: [1, 3, 5], times: 3 },
     };
   }
@@ -1195,7 +1222,7 @@
           type: existing.type || 'binary',
           target: existing.target || 1,
           unit: existing.unit || '',
-          reminder: existing.reminder || '',
+          reminders: (existing.reminders || []).slice(),
           schedule: Object.assign({ kind: 'daily', days: [1, 3, 5], times: 3 }, existing.schedule),
         }
       : blankDraft();
@@ -1213,8 +1240,7 @@
 
     // Reminders need the shell to schedule an alarm, so hide them in a browser.
     $('#reminderField').hidden = !shell;
-    $('#fReminder').value = draft.reminder || '';
-    $('#reminderHint').textContent = draft.reminder ? '' : t('reminderNone');
+    renderReminderTimes();
 
     buildEmojiGrid();
     buildColorRow();
@@ -1229,8 +1255,57 @@
     draft.target = parseInt($('#fTarget').value, 10) || 0;
     draft.unit = $('#fUnit').value.trim();
     draft.category = $('#fCategory').value;
-    draft.reminder = shell ? $('#fReminder').value : (draft.reminder || '');
+    draft.reminders = cleanTimes(shell
+      ? $$('#reminderList input').map((input) => input.value)
+      : draft.reminders);
     draft.schedule.times = Math.max(1, Math.min(7, parseInt($('#fTimes').value, 10) || 3));
+  }
+
+  const MAX_REMINDERS = 4;
+
+  /* The editor's reminder times. Each row is a real time input, so the
+     platform's own picker does the work. */
+  function renderReminderTimes() {
+    const list = $('#reminderList');
+    list.innerHTML = '';
+    draft.reminders.forEach((time, index) => {
+      const row = document.createElement('div');
+      row.className = 'reminder-row';
+      const input = document.createElement('input');
+      input.type = 'time';
+      input.value = time;
+      input.setAttribute('aria-label', t('fieldReminders') + ' ' + (index + 1));
+      input.addEventListener('change', () => {
+        if (TIME_RE.test(input.value)) draft.reminders[index] = input.value;
+      });
+      const remove = button('icon-btn', null, { 'aria-label': t('reminderRemove'), title: t('reminderRemove') });
+      remove.innerHTML = iconSvg('i-close', 16);
+      remove.addEventListener('click', () => {
+        draft.reminders = $$('#reminderList input').map((field) => field.value);
+        draft.reminders.splice(index, 1);
+        renderReminderTimes();
+      });
+      row.append(input, remove);
+      list.appendChild(row);
+    });
+    $('#btnAddReminder').hidden = draft.reminders.length >= MAX_REMINDERS;
+
+    const lines = castLines(state.character);
+    $('#reminderHint').textContent = !draft.reminders.length ? t('reminderNone')
+      : lines ? t('reminderFrom', lines.name) : t('reminderPlain');
+  }
+
+  function addReminderTime() {
+    draft.reminders = $$('#reminderList input').map((field) => field.value);
+    if (draft.reminders.length >= MAX_REMINDERS) return;
+    // Nine in the morning, or three hours after the last one.
+    const last = draft.reminders[draft.reminders.length - 1];
+    draft.reminders.push(last && TIME_RE.test(last)
+      ? pad((parseInt(last, 10) + 3) % 24) + last.slice(2)
+      : '09:00');
+    renderReminderTimes();
+    const inputs = $$('#reminderList input');
+    if (inputs.length) inputs[inputs.length - 1].focus();
   }
 
   function saveHabit() {
@@ -1259,7 +1334,7 @@
       type: draft.type,
       target: draft.type === 'quantity' ? draft.target : 1,
       unit: draft.type === 'quantity' ? draft.unit : '',
-      reminder: draft.reminder || '',
+      reminders: draft.reminders,
       schedule: draft.schedule,
     };
 
@@ -1270,14 +1345,14 @@
     }
     save();
     // Ask for notification access only once the user actually wants a reminder.
-    if (draft.reminder && shell && shell.requestNotificationPermission) {
+    if (draft.reminders.length && shell && shell.requestNotificationPermission) {
       try { shell.requestNotificationPermission(); } catch (err) { /* older shell */ }
     }
     $('#habitDialog').close();
     renderHabitsView();
     renderToday();
     renderProgressIfVisible();
-    toast(t(draft.reminder ? 'reminderSaved' : 'habitSaved'));
+    toast(t(draft.reminders.length ? 'reminderSaved' : 'habitSaved'));
     return true;
   }
 
@@ -1564,6 +1639,11 @@
 
     $$('[data-i18n]').forEach((node) => { node.textContent = t(node.dataset.i18n); });
     $$('[data-i18n-placeholder]').forEach((node) => { node.placeholder = t(node.dataset.i18nPlaceholder); });
+    $$('[data-i18n-label]').forEach((node) => {
+      const label = t(node.dataset.i18nLabel);
+      node.setAttribute('aria-label', label);
+      node.title = label;
+    });
 
     $('#langToggleLabel').textContent = state.lang === 'es' ? 'EN' : 'ES';
     $('#langSelect').value = state.lang;
@@ -1571,6 +1651,9 @@
     applySound();                     // its label is translated
     fillCategorySelect();
     buildLayoutPickers();
+    renderCastSettings();
+    renderChatButton();
+    if (isChatOpen()) renderChat();
     updateViewTitle();
     updateStorageInfo();
     renderAll();
@@ -1624,32 +1707,139 @@
   /* ── Android shell bridge ──────────────────────────────────────────────
      Habit data lives in this page's localStorage, which native code cannot
      read. The shell needs a copy to render its widget and schedule
-     reminders, so push a compact snapshot of today after every save. */
-  function syncToShell() {
-    if (!shell || !shell.syncState) return;
-    try {
-      const key = todayKey();
-      const due = habitsFor(key);
-      shell.syncState(JSON.stringify({
-        date: key,
-        done: due.filter((h) => isComplete(h, key)).length,
-        due: due.length,
-        lang: state.lang,
-        habits: due.map((h) => ({
+     reminders, so a snapshot goes over after every save.
+
+     The snapshot covers two weeks ahead, not just today. The widget used to
+     take "today" from the last sync, so after midnight it kept showing
+     yesterday — and ticked yesterday — until the app was opened. Now the
+     shell reads the real date and finds that day in the snapshot. */
+  const SNAPSHOT_DAYS = 14;
+
+  /* The streak as it stood the evening before `key`, so the shell can carry
+     it on from its own record of the days since. Days for daily habits,
+     whole weeks for the ones with a weekly quota, exactly as streakOf()
+     counts them. */
+  function streakBase(habit, key) {
+    const s = habit.schedule || { kind: 'daily' };
+    let count = 0;
+    if (s.kind === 'times') {
+      const quota = Math.max(1, Math.min(7, s.times || 3));
+      let cursor = addDays(weekStartOf(parseKey(key)), -7);
+      for (let guard = 0; guard < 200; guard++) {
+        if (habit.createdAt && keyOf(addDays(cursor, 6)) < habit.createdAt) break;
+        let done = 0;
+        for (let i = 0; i < 7; i++) {
+          const day = keyOf(addDays(cursor, i));
+          if (!(habit.createdAt && day < habit.createdAt) && isComplete(habit, day)) done++;
+        }
+        if (done < quota) break;
+        count++;
+        cursor = addDays(cursor, -7);
+      }
+      return count;
+    }
+    let cursor = addDays(parseKey(key), -1);
+    for (let guard = 0; guard < 800; guard++) {
+      const day = keyOf(cursor);
+      if (habit.createdAt && day < habit.createdAt) break;
+      if (isScheduled(habit, day)) {
+        if (!isComplete(habit, day)) break;
+        count++;
+      }
+      cursor = addDays(cursor, -1);
+    }
+    return count;
+  }
+
+  function buildSnapshot() {
+    const today = todayKey();
+    const habits = activeHabits();
+    const lang = I18N.getLang();
+
+    /* From the start of this week (a weekly quota needs the days already
+       behind us) to two weeks ahead. */
+    const days = {};
+    const last = keyOf(addDays(parseKey(today), SNAPSHOT_DAYS));
+    for (let d = weekStartOf(parseKey(today)); keyOf(d) <= last; d = addDays(d, 1)) {
+      const key = keyOf(d);
+      const values = {};
+      habits.forEach((h) => {
+        const v = valueOf(h, key);
+        if (v) values[h.id] = v;
+      });
+      days[key] = { due: habits.filter((h) => isScheduled(h, key)).map((h) => h.id), values: values };
+    }
+
+    const cast = currentCast();
+    const lines = cast ? castLines(cast.id) : null;
+    const plural = (k) => t(k, 1000).replace('1000', '%d');
+
+    return {
+      v: 2,
+      lang: lang,
+      generated: today,
+      weekStart: state.weekStart,
+      habits: habits.map((h) => {
+        const s = h.schedule || { kind: 'daily' };
+        return {
           id: h.id,
           name: habitName(h),
           emoji: h.emoji || '✅',
-          colorIndex: h.colorIndex || 1,
-          type: h.type,
+          color: h.colorIndex || 1,
+          type: h.type === 'quantity' ? 'quantity' : 'binary',
           target: targetOf(h),
           unit: h.unit || '',
-          value: valueOf(h, key),
-          done: isComplete(h, key),
-        })),
-        reminders: activeHabits()
-          .filter((h) => h.reminder)
-          .map((h) => ({ id: h.id, name: habitName(h), time: h.reminder })),
-      }));
+          weekly: s.kind === 'times' ? Math.max(1, Math.min(7, s.times || 3)) : 0,
+          base: streakBase(h, today),
+        };
+      }),
+      days: days,
+      reminders: habits.reduce((out, h) => {
+        (h.reminders || []).forEach((time) => {
+          out.push({
+            id: h.id, time: time, name: habitName(h), emoji: h.emoji || '✅',
+            msgs: cast ? reminderMessages(h, cast.id) : [],
+          });
+        });
+        return out;
+      }, []),
+      character: cast ? {
+        id: cast.id,
+        name: lines.name,
+        autoplay: !!state.voiceAutoplay,
+        praise: lines.praise.map((text, i) => ({ text: text, voice: GLOW_CAST.voicePath(cast.id, lang, 'p' + (i + 1)) })),
+      } : null,
+      /* Everything the widget and the notifications print, in the app's own
+         language rather than the phone's. */
+      ui: {
+        today: t('navToday'),
+        open: t('wgOpen'),
+        free: t('wgFree'),
+        stale: t('wgStale'),
+        more: t('wgMore'),
+        progress: [t('wgP0'), t('wgP1'), t('wgP2'), t('wgP3'), t('wgP4')],
+        mark: t('wgMark'),
+        addOne: t('wgAddOne'),
+        isDone: t('wgIsDone'),
+        day1: t('streakDays', 1),
+        dayN: plural('streakDays'),
+        week1: t('streakWeeks', 1),
+        weekN: plural('streakWeeks'),
+        done: t('ntfDone'),
+        listen: t('ntfListen'),
+        voice: t('ntfVoice'),
+        you: t('ntfYou'),
+        plainTitle: t('ntfPlainTitle'),
+        plainBody: t('ntfPlainBody'),
+        doneReply: t('chatDoneReply', '%s'),
+      },
+    };
+  }
+
+  function syncToShell() {
+    if (!shell || !shell.syncState) return;
+    try {
+      shell.syncState(JSON.stringify(buildSnapshot()));
     } catch (err) {
       console.warn('Could not sync to shell', err);
     }
@@ -1679,13 +1869,538 @@
       } else if (action.action === 'increment') {
         setValue(habit, key, valueOf(habit, key) + 1);
         changed = true;
+      } else if (action.action === 'complete') {
+        // A reminder's Done button: complete, never undo, whatever the app shows.
+        setValue(habit, key, Math.max(valueOf(habit, key), targetOf(habit)));
+        changed = true;
       }
     });
     if (changed) renderAll();
   }
 
-  // The activity calls this from onResume.
-  window.__glow = { applyPending: applyPendingFromShell };
+  /* Messages the shell posted while the app was closed, and replies made
+     from a notification. Each carries its own id, so a message handed over
+     twice is still shown once. */
+  function applyInboxFromShell() {
+    if (!shell || !shell.takeInbox) return;
+    let items;
+    try {
+      items = JSON.parse(shell.takeInbox() || '[]');
+    } catch (err) {
+      console.warn('Could not read the inbox', err);
+      return;
+    }
+    if (!Array.isArray(items) || !items.length) return;
+
+    const known = new Set(state.chat.map((m) => m.id));
+    let unread = 0;
+    items.forEach((item) => {
+      if (!item || !item.id || known.has(item.id) || !GLOW_CAST.byId(item.char)) return;
+      known.add(item.id);
+      state.chat.push({
+        id: String(item.id),
+        at: Number(item.at) || Date.now(),
+        from: item.from === 'me' ? 'me' : 'char',
+        char: item.char,
+        kind: String(item.kind || 'remind'),
+        habitId: item.habitId || null,
+        date: item.date || todayKey(),
+        text: String(item.text || ''),
+        voice: typeof item.voice === 'string' && /^voices\/[\w/-]+\.webm$/.test(item.voice) ? item.voice : null,
+      });
+      if (item.from !== 'me') unread++;
+    });
+    state.chat.sort((a, b) => a.at - b.at);
+    if (state.chat.length > CHAT_LIMIT) state.chat.splice(0, state.chat.length - CHAT_LIMIT);
+    if (isChatOpen()) renderChat();
+    else state.chatUnread += unread;
+    save();
+    renderChatButton();
+  }
+
+  /* What the activity calls: on resume, when a notification opens the app,
+     when a message arrives while it is open, and for the back button. */
+  window.__glow = {
+    applyPending: () => {
+      applyPendingFromShell();
+      applyInboxFromShell();
+      renderCastSettings();
+    },
+    applyInbox: applyInboxFromShell,
+    route: (name) => routeTo(name),
+    back: () => handleBack(),
+  };
+
+  /* ══ Reminder cast ═══════════════════════════════════════════════════
+     A character from characters.js sends each reminder as a chat message
+     with a voice note. The Android shell posts them while the app is
+     closed and hands them back through takeInbox(); the conversation is
+     kept here, in the same record as everything else.
+
+     Lines are chosen on this side, not natively, so one place knows how a
+     habit maps to a line in both languages. */
+  const CHAT_LIMIT = 150;
+  const castLines = (id) => (id ? GLOW_CAST.lines(id, I18N.getLang()) : null);
+  const currentCast = () => (state.character ? GLOW_CAST.byId(state.character) : null);
+
+  /* What a character says about a habit: its own line when it came from the
+     catalogue, a generic one that names it otherwise. A few candidates, so
+     the shell can rotate them from one day to the next. */
+  function reminderMessages(habit, id) {
+    const lines = castLines(id);
+    if (!lines) return [];
+    const lang = I18N.getLang();
+    const generic = lines.generic.map((g, i) => ({
+      text: g.text.replace('{habit}', habitName(habit)),
+      voice: GLOW_CAST.voicePath(id, lang, 'g' + (i + 1)),
+    }));
+    const key = GLOW_CAST.lineKeyFor(habit.nameKey);
+    if (!key) return generic;
+    const own = { text: lines.habits[key], voice: GLOW_CAST.voicePath(id, lang, 'h-' + key) };
+    return [own, generic[0], own, generic[1]];
+  }
+
+  function praiseMessage(id) {
+    const lines = castLines(id);
+    const i = Math.floor(Math.random() * lines.praise.length);
+    return { text: lines.praise[i], voice: GLOW_CAST.voicePath(id, I18N.getLang(), 'p' + (i + 1)) };
+  }
+
+  function introMessage(id) {
+    return { text: castLines(id).intro, voice: GLOW_CAST.voicePath(id, I18N.getLang(), 'intro') };
+  }
+
+  function pushChat(message) {
+    state.chat.push(Object.assign({
+      id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      at: Date.now(),
+      char: state.character,
+      date: todayKey(),
+    }, message));
+    if (state.chat.length > CHAT_LIMIT) state.chat.splice(0, state.chat.length - CHAT_LIMIT);
+  }
+
+  /* Duration and waveform of every recording, written by the generator.
+     Fetched once, the first time a voice note is drawn. */
+  let voiceIndex = null;
+  let voiceIndexLoading = null;
+
+  function loadVoiceIndex() {
+    if (voiceIndex || voiceIndexLoading) return;
+    voiceIndexLoading = fetch('voices/index.json')
+      .then((res) => (res.ok ? res.json() : {}))
+      .catch(() => ({}))
+      .then((data) => {
+        voiceIndex = (data && data.clips) || {};
+        if (isChatOpen()) renderChat();
+      });
+  }
+
+  const clipInfo = (path) =>
+    (voiceIndex && voiceIndex[path.replace(/^voices\//, '').replace(/\.webm$/, '')]) || null;
+  const fmtClock = (seconds) => {
+    const whole = Math.max(0, Math.round(seconds));
+    return Math.floor(whole / 60) + ':' + pad(whole % 60);
+  };
+
+  /* One player for the whole app: starting a note stops the one playing,
+     the way a messaging app behaves. onTick(fraction, ended) drives the UI. */
+  const voice = { audio: null, path: null, onTick: null, raf: 0 };
+
+  function stopVoice() {
+    if (voice.audio) voice.audio.pause();
+    cancelAnimationFrame(voice.raf);
+    const tick = voice.onTick;
+    voice.audio = null;
+    voice.path = null;
+    voice.onTick = null;
+    if (tick) tick(0, true);
+  }
+
+  function playVoice(path, onTick) {
+    const again = voice.path === path;
+    stopVoice();
+    if (again) return;                       // a second tap stops it
+    const audio = new Audio(path);
+    voice.audio = audio;
+    voice.path = path;
+    voice.onTick = onTick || null;
+    const frame = () => {
+      if (voice.audio !== audio) return;
+      if (voice.onTick && audio.duration) voice.onTick(Math.min(1, audio.currentTime / audio.duration), false);
+      voice.raf = requestAnimationFrame(frame);
+    };
+    const end = () => { if (voice.audio === audio) stopVoice(); };
+    audio.addEventListener('ended', end);
+    audio.addEventListener('error', end);
+    if (voice.onTick) voice.onTick(0, false);
+    audio.play().then(frame).catch(end);
+  }
+
+  /* ── The conversation ── */
+  const isChatOpen = () => !$('#chat').hidden;
+  let pendingRoute = null;
+
+  function openChat() {
+    if (!currentCast()) {
+      openCastPicker();
+      return;
+    }
+    applyInboxFromShell();
+    $('#chat').hidden = false;
+    document.documentElement.classList.add('is-splashing');   // the same scroll lock
+    setBackgroundInert(true);
+    state.chatUnread = 0;
+    save();
+    renderChatButton();
+    loadVoiceIndex();
+    renderChat();
+    const log = $('#chatLog');
+    log.scrollTop = log.scrollHeight;
+    $('#chatBack').focus();
+  }
+
+  function closeChat() {
+    stopVoice();
+    $('#chat').hidden = true;
+    document.documentElement.classList.remove('is-splashing');
+    setBackgroundInert(false);
+    const opener = $('#chatOpen');
+    if (opener && !opener.hidden) opener.focus();
+  }
+
+  function dayLabel(key) {
+    if (key === todayKey()) return t('chatToday');
+    if (key === keyOf(addDays(new Date(), -1))) return t('chatYesterday');
+    return sentenceCase(fmtDate(key));
+  }
+
+  function renderChat() {
+    const cast = currentCast();
+    if (!cast) return;
+    const lines = castLines(cast.id);
+    $('#chat').style.setProperty('--cast', cast.accent);
+    $('#chatAvatar').src = GLOW_CAST.avatarPath(cast.id);
+    $('#chatName').textContent = lines.name;
+    $('#chatStatus').textContent = lines.tagline;
+
+    const log = $('#chatLog');
+    log.innerHTML = '';
+    let lastDay = '';
+    state.chat.filter((m) => m.char === cast.id).forEach((m) => {
+      const day = keyOf(new Date(m.at));
+      if (day !== lastDay) {
+        lastDay = day;
+        const sep = document.createElement('p');
+        sep.className = 'chat-day';
+        sep.textContent = dayLabel(day);
+        log.appendChild(sep);
+      }
+      log.appendChild(chatBubble(m));
+    });
+    if (!log.children.length) {
+      const empty = document.createElement('p');
+      empty.className = 'chat-day';
+      empty.textContent = t('chatEmpty');
+      log.appendChild(empty);
+    }
+    renderQuickReplies(cast);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function chatBubble(m) {
+    const row = document.createElement('div');
+    row.className = 'chat-row ' + (m.from === 'me' ? 'is-me' : 'is-them');
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    if (m.text) {
+      const text = document.createElement('p');
+      text.className = 'bubble-text';
+      text.textContent = m.text;
+      bubble.appendChild(text);
+    }
+    if (m.voice) bubble.appendChild(voiceNote(m.voice));
+    const time = document.createElement('span');
+    time.className = 'bubble-time';
+    time.textContent = new Date(m.at).toLocaleTimeString(I18N.locale(), { hour: '2-digit', minute: '2-digit' });
+    bubble.appendChild(time);
+    row.appendChild(bubble);
+    return row;
+  }
+
+  /* A voice note drawn the way a messaging app draws one: play button,
+     waveform that fills as it plays, and the length. */
+  function voiceNote(path) {
+    const box = document.createElement('div');
+    box.className = 'vn';
+    const info = clipInfo(path);
+    const play = button('vn-play', null, { 'aria-label': t('voicePlay') });
+    play.innerHTML = iconSvg('i-play', 18);
+    const wave = document.createElement('div');
+    wave.className = 'vn-wave';
+    wave.setAttribute('aria-hidden', 'true');
+    const shape = info && info.w ? info.w : '2468765435678987654346787654';
+    const bars = Array.from(shape).map((digit) => {
+      const bar = document.createElement('i');
+      bar.style.height = (16 + Number(digit) * 9.3) + '%';
+      wave.appendChild(bar);
+      return bar;
+    });
+    const time = document.createElement('span');
+    time.className = 'vn-time';
+    time.textContent = info ? fmtClock(info.d) : '';
+
+    const paint = (fraction, ended) => {
+      play.innerHTML = iconSvg(ended ? 'i-play' : 'i-pause', 18);
+      play.setAttribute('aria-label', t(ended ? 'voicePlay' : 'voicePause'));
+      box.classList.toggle('is-playing', !ended);
+      const lit = ended ? 0 : Math.round(fraction * bars.length);
+      bars.forEach((bar, i) => bar.classList.toggle('is-played', i < lit));
+      if (info) time.textContent = fmtClock(ended ? info.d : info.d * fraction);
+    };
+    play.addEventListener('click', () => playVoice(path, paint));
+    box.append(play, wave, time);
+    return box;
+  }
+
+  /* Habits the character reminded about today and that are still open,
+     newest first: each gets a one-tap reply. */
+  function remindedAndPending(cast) {
+    const today = todayKey();
+    const seen = new Set();
+    const list = [];
+    state.chat.slice().reverse().forEach((m) => {
+      if (m.char !== cast.id || m.kind !== 'remind' || m.date !== today) return;
+      if (!m.habitId || seen.has(m.habitId)) return;
+      seen.add(m.habitId);
+      const habit = habitById(m.habitId);
+      if (habit && !habit.archived && isScheduled(habit, today) && !isComplete(habit, today)) list.push(habit);
+    });
+    return list.slice(0, 3);
+  }
+
+  function renderQuickReplies(cast) {
+    const foot = $('#chatFoot');
+    foot.innerHTML = '';
+    const pending = remindedAndPending(cast);
+    pending.forEach((habit) => {
+      const chip = button('chat-chip', '✓ ' + t('chatQuickDone', habitName(habit)));
+      chip.addEventListener('click', () => replyDone(habit));
+      foot.appendChild(chip);
+    });
+    if (!pending.length) {
+      const hint = document.createElement('p');
+      hint.className = 'chat-hint';
+      hint.textContent = t('chatHint');
+      foot.appendChild(hint);
+    }
+  }
+
+  function replyDone(habit) {
+    const today = todayKey();
+    const wasComplete = isComplete(habit, today);
+    setValue(habit, today, Math.max(valueOf(habit, today), targetOf(habit)));
+    pushChat({ from: 'me', kind: 'reply', habitId: habit.id, text: t('chatDoneReply', habitName(habit)) });
+    const praise = praiseMessage(state.character);
+    pushChat({ from: 'char', kind: 'praise', habitId: habit.id, text: praise.text, voice: praise.voice });
+    save();
+    if (!wasComplete) {
+      buzz(15);
+      Sounds.play('complete');
+    }
+    renderChat();
+    renderAll();
+    // The answer is a voice note; the tap that asked for it may start it.
+    if (state.sound !== false) {
+      const notes = $$('#chatLog .vn-play');
+      if (notes.length) notes[notes.length - 1].click();
+    }
+  }
+
+  /* ── Choosing who writes ── */
+  function openCastPicker() {
+    renderCastPicker();
+    $('#castDialog').showModal();
+  }
+
+  function renderCastPicker() {
+    const list = $('#castList');
+    list.innerHTML = '';
+    const lang = I18N.getLang();
+    GLOW_CAST.CAST.forEach((cast) => {
+      const lines = castLines(cast.id);
+      list.appendChild(castCard({
+        id: cast.id,
+        name: lines.name,
+        desc: lines.tagline,
+        accent: cast.accent,
+        avatar: GLOW_CAST.avatarPath(cast.id),
+        sample: GLOW_CAST.voicePath(cast.id, lang, 'intro'),
+      }));
+    });
+    list.appendChild(castCard({ id: null, name: t('castNone'), desc: t('castNoneDesc') }));
+  }
+
+  function castCard(spec) {
+    const selected = (state.character || null) === spec.id;
+    const card = document.createElement('div');
+    card.className = 'cast-card' + (selected ? ' is-selected' : '');
+    if (spec.accent) card.style.setProperty('--cast', spec.accent);
+
+    const pick = button('cast-pick', null, { role: 'radio', 'aria-checked': String(selected) });
+    let face;
+    if (spec.avatar) {
+      face = document.createElement('img');
+      face.src = spec.avatar;
+      face.alt = '';
+    } else {
+      face = document.createElement('span');
+      face.innerHTML = iconSvg('i-bell', 22);
+    }
+    face.className = 'cast-avatar' + (spec.avatar ? '' : ' cast-avatar-none');
+    const text = document.createElement('span');
+    text.className = 'cast-text';
+    const name = document.createElement('strong');
+    name.textContent = spec.name;
+    const desc = document.createElement('span');
+    desc.textContent = spec.desc;
+    text.append(name, desc);
+    pick.append(face, text);
+    pick.addEventListener('click', () => chooseCharacter(spec.id));
+    card.appendChild(pick);
+
+    if (spec.sample) {
+      const listen = button('cast-listen', null, { 'aria-label': t('castListen', spec.name), title: t('castListen', spec.name) });
+      listen.innerHTML = iconSvg('i-play', 18);
+      listen.addEventListener('click', () => {
+        playVoice(spec.sample, (fraction, ended) => {
+          listen.innerHTML = iconSvg(ended ? 'i-play' : 'i-pause', 18);
+          listen.classList.toggle('is-playing', !ended);
+        });
+      });
+      card.appendChild(listen);
+    }
+    return card;
+  }
+
+  function chooseCharacter(id) {
+    const changed = (state.character || null) !== id;
+    state.character = id;
+    if (changed && id) {
+      const intro = introMessage(id);
+      pushChat({ from: 'char', kind: 'intro', text: intro.text, voice: intro.voice });
+      if (shell && shell.requestNotificationPermission) {
+        try { shell.requestNotificationPermission(); } catch (err) { /* older shell */ }
+      }
+    }
+    save();
+    renderCastPicker();
+    renderCastSettings();
+    renderChatButton();
+    renderCastPromo();
+    if (!changed) return;
+    toast(id ? t('castPicked', castLines(id).name) : t('castNonePicked'));
+    // Picking someone is answered with their hello.
+    if (id && state.sound !== false) {
+      const hello = $('#castList .cast-card.is-selected .cast-listen');
+      if (hello) hello.click();
+    }
+  }
+
+  /* ── Settings, the bar button and the Today card ── */
+  function renderCastSettings() {
+    const group = $('#castSettings');
+    group.hidden = !shell;
+    $('#voiceCredits').hidden = !shell;
+    if (!shell) return;
+    const cast = currentCast();
+    const face = $('#castCurrentAvatar');
+    face.hidden = !cast;
+    if (cast) face.src = GLOW_CAST.avatarPath(cast.id);
+    $('#castCurrentName').textContent = cast ? castLines(cast.id).name : t('castNone');
+    $('#voiceAutoplayRow').hidden = !cast;
+    $('#voiceAutoplay').checked = !!state.voiceAutoplay;
+    $('#btnTestReminder').hidden = !shell.testReminder;
+
+    // What Android allows can change behind the app's back, so ask each time.
+    let notificationsOn = true;
+    let exact = 'granted';
+    try {
+      if (shell.notificationsEnabled) notificationsOn = shell.notificationsEnabled();
+      if (shell.exactAlarmState) exact = shell.exactAlarmState();
+    } catch (err) { /* an older shell without these */ }
+    $('#notifWarning').hidden = notificationsOn;
+    $('#exactWarning').hidden = exact !== 'denied';
+  }
+
+  function renderChatButton() {
+    const btn = $('#chatOpen');
+    btn.hidden = !(shell && currentCast());
+    const badge = $('#chatBadge');
+    badge.hidden = !state.chatUnread;
+    badge.textContent = state.chatUnread > 9 ? '9+' : String(state.chatUnread);
+    const label = state.chatUnread ? t('chatOpenUnread', state.chatUnread) : t('chatTitle');
+    btn.setAttribute('aria-label', label);
+    btn.title = label;
+  }
+
+  function renderCastPromo() {
+    $('#castPromo').hidden = !shell || !!state.character || !!state.castPromoDismissed ||
+      activeHabits().length === 0;
+  }
+
+  /* Sends one message now, with whichever habit is still open today. */
+  function sendTestReminder() {
+    if (!shell || !shell.testReminder) return;
+    const today = todayKey();
+    const habit = habitsFor(today).find((h) => !isComplete(h, today)) || activeHabits()[0] || null;
+    const id = state.character;
+    const payload = {
+      id: habit ? habit.id : '',
+      name: habit ? habitName(habit) : t('appName'),
+      emoji: habit ? habit.emoji || '✅' : '✅',
+      msg: id ? (habit ? reminderMessages(habit, id)[0] : introMessage(id)) : null,
+    };
+    try {
+      if (shell.requestNotificationPermission) shell.requestNotificationPermission();
+      shell.testReminder(JSON.stringify(payload));
+    } catch (err) {
+      console.warn('Test reminder failed', err);
+      return;
+    }
+    toast(t('testSent'));
+    applyInboxFromShell();
+  }
+
+  /* Android's back button closes whatever is on top before leaving. */
+  function handleBack() {
+    const dialogs = $$('dialog[open]');
+    if (dialogs.length) {
+      dialogs[dialogs.length - 1].close();
+      return 'handled';
+    }
+    if (isChatOpen()) {
+      closeChat();
+      return 'handled';
+    }
+    if (!$('#onboarding').hidden) return 'exit';
+    if (view !== 'today') {
+      setView('today');
+      return 'handled';
+    }
+    return 'exit';
+  }
+
+  /* A notification opens the app straight into the conversation — after
+     the launch screen, which would otherwise sit on top of it. */
+  function routeTo(name) {
+    if (name !== 'chat') return;
+    if ($('#splash') || !$('#onboarding').hidden) {
+      pendingRoute = name;
+      return;
+    }
+    openChat();
+  }
 
   function updateViewTitle() {
     const titles = { today: 'navToday', habits: 'navHabits', progress: 'navProgress', settings: 'navSettings' };
@@ -1752,6 +2467,7 @@
         state = Object.assign(defaultState(), parsed);
         state.entries = state.entries || {};
         state.moods = state.moods || {};
+        normalizeState();
         save();
         applyTheme();
         applyLang();
@@ -1889,6 +2605,37 @@
     });
 
     $('#btnRetakeTest').addEventListener('click', () => startOnboarding());
+
+    /* Reminder cast */
+    $('#btnAddReminder').addEventListener('click', addReminderTime);
+    $('#chatOpen').addEventListener('click', openChat);
+    $('#chatBack').addEventListener('click', closeChat);
+    $('#chatSwitch').addEventListener('click', openCastPicker);
+    $('#btnPickCast').addEventListener('click', openCastPicker);
+    $('#btnPromoPick').addEventListener('click', openCastPicker);
+    $('#btnPromoLater').addEventListener('click', () => {
+      state.castPromoDismissed = true;
+      save();
+      renderCastPromo();
+    });
+    $$('#castDialog [data-close]').forEach((btn) => {
+      btn.addEventListener('click', () => $('#castDialog').close());
+    });
+    $('#castDialog').addEventListener('close', () => {
+      stopVoice();
+      if (isChatOpen()) renderChat();
+    });
+    $('#voiceAutoplay').addEventListener('change', (evt) => {
+      state.voiceAutoplay = evt.target.checked;
+      save();
+    });
+    $('#btnTestReminder').addEventListener('click', sendTestReminder);
+    $('#btnNotifSettings').addEventListener('click', () => {
+      if (shell && shell.openNotificationSettings) shell.openNotificationSettings();
+    });
+    $('#btnExactSettings').addEventListener('click', () => {
+      if (shell && shell.openExactAlarmSettings) shell.openExactAlarmSettings();
+    });
     $('#btnExport').addEventListener('click', exportData);
     $('#btnImport').addEventListener('click', () => $('#importFile').click());
     $('#importFile').addEventListener('change', (evt) => {
@@ -1934,6 +2681,8 @@
       if (document.visibilityState !== 'visible') return;
       if (selectedDate < todayKey()) selectedDate = todayKey();
       applyPendingFromShell();
+      applyInboxFromShell();
+      renderCastSettings();
       renderAll();
     });
   }
@@ -2365,7 +3114,7 @@
         type: habit.type,
         target: habit.target,
         unit: habit.unit,
-        reminder: '',
+        reminders: [],
         schedule: { kind: 'daily' },
         createdAt: today,
         archived: false,
@@ -2461,6 +3210,12 @@
         setBackgroundInert(false);
       }
       splash.classList.add('is-leaving');
+      if (pendingRoute && !needsOnboarding()) {
+        const route = pendingRoute;
+        pendingRoute = null;
+        // After the splash leaves the DOM, so routeTo() does not wait again.
+        setTimeout(() => routeTo(route), 620);
+      }
       splash.addEventListener('transitionend', () => splash.remove(), { once: true });
       // Belt and braces: a missed transitionend must not leave it on screen.
       setTimeout(() => splash.remove(), 600);
@@ -2473,13 +3228,15 @@
   /* ── Boot ──────────────────────────────────────────────────────────── */
   function init() {
     load();
+    const migrated = normalizeState();
     wire();
-    if (linkCatalogueKeys()) save();
+    if (linkCatalogueKeys() || migrated) save();
     applyTheme();
     applySound();
     applyBackupNote();
     applyLayout();
     applyPendingFromShell();   // ticks made from the widget while the app was closed
+    applyInboxFromShell();     // messages the characters sent meanwhile
     applyLang();
     syncToShell();
     setView(location.hash.slice(1) || 'today', true);

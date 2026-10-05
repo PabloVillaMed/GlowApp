@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A counted habit's progress. The fill is scaled rather than clipped so its
+     rounded end survives; Android 12+ tints it with the habit's colour. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+  <item android:id="@android:id/background">
+    <shape android:shape="rectangle">
+      <corners android:radius="2dp" />
+      <solid android:color="@color/widget_track" />
+    </shape>
+  </item>
+  <item android:id="@android:id/progress">
+    <scale android:scaleWidth="100%">
+      <shape android:shape="rectangle">
+        <corners android:radius="2dp" />
+        <solid android:color="@color/widget_accent" />
+      </shape>
+    </scale>
+  </item>
+</layer-list>

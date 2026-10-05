@@ -3,12 +3,16 @@
   <!-- Matches the web app's light surface, so the launch window does not flash
        a different colour before the page paints. -->
   <color name="window_bg">#F4F5F7</color>
-  <color name="icon_bg">#12233A</color>
 
   <!-- Widgets are drawn by the launcher, not the app, so they carry their own
-       palette rather than reading the web page's CSS variables. -->
+       palette rather than reading the web page's CSS variables. These follow
+       the phone's light or dark theme. -->
   <color name="widget_bg">#F4F5F7</color>
+  <color name="widget_row">#FFFFFF</color>
   <color name="widget_ink">#0B0B0B</color>
-  <color name="widget_muted">#52514E</color>
-  <color name="widget_done">#0CA30C</color>
+  <color name="widget_muted">#5D6470</color>
+  <color name="widget_track">#E2E5EA</color>
+  <color name="widget_accent">#2A78D6</color>
+  <color name="widget_pill">#FDE8DE</color>
+  <color name="widget_streak">#C04E1C</color>
 </resources>

@@ -3,7 +3,11 @@
   <color name="window_bg">#0D1117</color>
 
   <color name="widget_bg">#161B22</color>
+  <color name="widget_row">#1F2632</color>
   <color name="widget_ink">#F0F6FC</color>
   <color name="widget_muted">#9BA6B4</color>
-  <color name="widget_done">#0CA30C</color>
+  <color name="widget_track">#2D3543</color>
+  <color name="widget_accent">#3987E5</color>
+  <color name="widget_pill">#3A2519</color>
+  <color name="widget_streak">#F28C5A</color>
 </resources>

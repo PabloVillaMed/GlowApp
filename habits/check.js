@@ -4,10 +4,11 @@
    Every rule here earned its place by shipping:
    - $ / $$ confusion broke the completion animation for four releases
    - a stale asset version shipped new HTML against an old stylesheet
-   - a missing translation key would show a raw identifier to the user */
+   - a missing translation key would show a raw identifier to the user
+   - a character line without its recording would play silence */
 const fs = require('fs');
 
-const FILES = ['app.js', 'charts.js', 'i18n.js', 'sounds.js', 'sw.js'];
+const FILES = ['app.js', 'characters.js', 'charts.js', 'i18n.js', 'sounds.js', 'sw.js'];
 let failures = 0;
 
 function fail(file, line, message) {
@@ -70,6 +71,46 @@ if (htmlVersions.length !== 1 || swVersions.length !== 1 || htmlVersions[0] !== 
 const loaded = [...html.matchAll(/(?:src|href)="([\w.-]+\.(?:js|css))\?/g)].map((x) => x[1]);
 loaded.forEach((asset) => {
   if (!sw.includes("'./" + asset)) fail('sw.js', 0, asset + ' no está en el precache');
+});
+
+// The cast: every character speaks both languages with the same lines, every
+// catalogue habit has a line, and every line has its recording and portrait.
+require('./characters.js');
+const CAST = global.window.GLOW_CAST;
+const appText = fs.readFileSync('app.js', 'utf8');
+const catalogue = [...appText.matchAll(/\{ id: '(\w+)', key: 'hb\w+'/g)].map((x) => x[1]);
+const presets = [...appText.matchAll(/\{ key: '(preset\w+)'/g)].map((x) => x[1]);
+if (catalogue.length < 20 || presets.length < 5) fail('check.js', 0, 'no encuentro el catálogo en app.js');
+const index = fs.existsSync('voices/index.json') ? JSON.parse(fs.readFileSync('voices/index.json', 'utf8')).clips : {};
+CAST.CAST.forEach(({ id }) => {
+  if (!fs.existsSync('avatars/' + id + '.svg')) fail('avatars', 0, 'falta el retrato de ' + id);
+  ['es', 'en'].forEach((lang) => {
+    const L = CAST.LINES[id] && CAST.LINES[id][lang];
+    if (!L) { fail('characters.js', 0, id + ' no habla ' + lang); return; }
+    ['name', 'tagline', 'intro'].forEach((k) => { if (!L[k]) fail('characters.js', 0, id + '/' + lang + ' sin ' + k); });
+    catalogue.forEach((habit) => {
+      if (!L.habits[habit]) fail('characters.js', 0, id + '/' + lang + ' sin línea para ' + habit);
+    });
+    Object.keys(L.habits).forEach((habit) => {
+      if (!catalogue.includes(habit)) fail('characters.js', 0, id + '/' + lang + ' habla de un hábito que no existe: ' + habit);
+    });
+    if (L.generic.length !== 2 || L.praise.length !== 2) fail('characters.js', 0, id + '/' + lang + ' necesita 2 genéricas y 2 felicitaciones');
+    L.generic.forEach((g, i) => {
+      if (!g.text.includes('{habit}')) fail('characters.js', 0, id + '/' + lang + ' g' + (i + 1) + ': el texto no nombra el hábito');
+      if (g.voice.includes('{habit}')) fail('characters.js', 0, id + '/' + lang + ' g' + (i + 1) + ': la voz no puede decir el nombre');
+    });
+    const clips = ['intro'].concat(Object.keys(L.habits).map((k) => 'h-' + k),
+      L.generic.map((g, i) => 'g' + (i + 1)), L.praise.map((p, i) => 'p' + (i + 1)));
+    clips.forEach((clip) => {
+      const key = id + '/' + lang + '/' + clip;
+      if (!fs.existsSync('voices/' + key + '.webm')) fail('voices', 0, 'falta la grabación ' + key + ' (node tools/voices/make-voices.js)');
+      else if (!index[key]) fail('voices/index.json', 0, 'sin duración ni forma de onda para ' + key);
+    });
+  });
+});
+presets.forEach((key) => {
+  const line = CAST.lineKeyFor(key);
+  if (!line || !catalogue.includes(line)) fail('characters.js', 0, key + ' no lleva a ninguna línea');
 });
 
 console.log(failures ? failures + ' problema(s)' : 'sin problemas');

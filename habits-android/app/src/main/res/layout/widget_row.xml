@@ -1,45 +1,91 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- One habit in the widget. Two tap targets: the badge and name open the
+     app; the circle on the right ticks the habit or adds one unit. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/row_root"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
+    android:layout_height="44dp"
+    android:layout_marginTop="6dp"
+    android:background="@drawable/widget_row_bg"
     android:orientation="horizontal"
     android:gravity="center_vertical"
-    android:paddingTop="9dp"
-    android:paddingBottom="9dp">
+    android:paddingStart="6dp">
 
-  <TextView
-      android:id="@+id/row_emoji"
-      android:layout_width="wrap_content"
-      android:layout_height="wrap_content"
-      android:textSize="17sp"
-      android:paddingEnd="10dp"
-      android:paddingRight="10dp" />
-
-  <TextView
-      android:id="@+id/row_name"
+  <LinearLayout
+      android:id="@+id/r_open"
       android:layout_width="0dp"
-      android:layout_height="wrap_content"
+      android:layout_height="match_parent"
       android:layout_weight="1"
-      android:maxLines="1"
-      android:ellipsize="end"
-      android:textColor="@color/widget_ink"
-      android:textSize="14sp" />
+      android:orientation="horizontal"
+      android:gravity="center_vertical">
 
-  <TextView
-      android:id="@+id/row_progress"
-      android:layout_width="wrap_content"
-      android:layout_height="wrap_content"
+    <FrameLayout
+        android:layout_width="32dp"
+        android:layout_height="32dp">
+      <!-- Tinted with the habit's colour in code. -->
+      <ImageView
+          android:id="@+id/r_badge"
+          android:layout_width="match_parent"
+          android:layout_height="match_parent"
+          android:importantForAccessibility="no"
+          android:scaleType="fitXY"
+          android:src="@drawable/widget_badge" />
+      <TextView
+          android:id="@+id/r_emoji"
+          android:layout_width="match_parent"
+          android:layout_height="match_parent"
+          android:gravity="center"
+          android:importantForAccessibility="no"
+          android:textSize="16sp" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="10dp"
+        android:orientation="vertical">
+      <TextView
+          android:id="@+id/r_name"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:ellipsize="end"
+          android:maxLines="1"
+          android:textColor="@color/widget_ink"
+          android:textSize="13.5sp" />
+      <LinearLayout
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:layout_marginTop="2dp"
+          android:orientation="horizontal"
+          android:gravity="center_vertical">
+        <ProgressBar
+            android:id="@+id/r_bar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="0dp"
+            android:layout_height="4dp"
+            android:layout_weight="1"
+            android:layout_marginEnd="8dp"
+            android:indeterminate="false"
+            android:max="100"
+            android:progressDrawable="@drawable/widget_bar" />
+        <TextView
+            android:id="@+id/r_meta"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:maxLines="1"
+            android:textColor="@color/widget_muted"
+            android:textSize="11sp" />
+      </LinearLayout>
+    </LinearLayout>
+  </LinearLayout>
+
+  <ImageView
+      android:id="@+id/r_check"
+      android:layout_width="46dp"
+      android:layout_height="44dp"
+      android:paddingStart="8dp"
       android:paddingEnd="10dp"
-      android:paddingRight="10dp"
-      android:textColor="@color/widget_muted"
-      android:textSize="12sp" />
-
-  <TextView
-      android:id="@+id/row_check"
-      android:layout_width="28dp"
-      android:layout_height="28dp"
-      android:gravity="center"
-      android:textSize="17sp"
-      android:textColor="@color/widget_muted" />
+      android:paddingTop="8dp"
+      android:paddingBottom="8dp"
+      android:scaleType="fitCenter" />
 </LinearLayout>
