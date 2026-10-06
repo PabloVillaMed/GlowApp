@@ -156,11 +156,12 @@
      to the current shape. Returns true when anything had to change. */
   function normalizeState() {
     const snapshot = () => JSON.stringify([state.chat, state.chatUnread, state.character, state.habits,
-      state.voiceAutoplay, state.autoplayDefaulted]);
+      state.voiceAutoplay, state.autoplayDefaulted, state.bot]);
     const before = snapshot();
     state.chat = Array.isArray(state.chat) ? state.chat : [];
     state.chatUnread = Math.max(0, Number(state.chatUnread) || 0);
-    if (state.character && !GLOW_CAST.byId(state.character)) state.character = null;
+    normalizeBot();
+    if (state.character && !castById(state.character)) state.character = null;
     state.habits.forEach((habit) => {
       // One reminder time per habit until 2.8; now a short list of them.
       if (!Array.isArray(habit.reminders)) habit.reminders = habit.reminder ? [habit.reminder] : [];
@@ -168,6 +169,9 @@
       habit.reminders = cleanTimes(habit.reminders);
       // Your own voice note (2.10): only an id and what the editor draws.
       if (habit.voiceNote !== undefined && !hasOwnNote(habit)) delete habit.voiceNote;
+      // Which of your bot's lines this habit plays (2.11): line ids, or absent for its own.
+      if (habit.botPick !== undefined && !(Array.isArray(habit.botPick) &&
+          habit.botPick.every((id) => typeof id === 'string'))) delete habit.botPick;
     });
     // Until 2.9 each habit had one recorded line, h-<habit>; it is now the first of three.
     state.chat.forEach((message) => {
@@ -1251,6 +1255,8 @@
     draft.newNote = null;
     draft.dropNote = false;
     noteError = null;
+    // Which of your bot's lines it plays; null until changed here (then its own lines apply).
+    draft.botPick = existing && Array.isArray(existing.botPick) ? existing.botPick.slice() : null;
 
     $('#habitDialogTitle').textContent = existing ? t('editHabit') : t('addHabit');
     $('#fName').value = draft.name;
@@ -1266,6 +1272,7 @@
     $('#reminderField').hidden = !shell;
     renderReminderTimes();
     renderOwnVoice();
+    renderBotPicks();
 
     buildEmojiGrid();
     buildColorRow();
@@ -1322,6 +1329,7 @@
     const lines = castLines(state.character);
     $('#reminderHint').textContent = !draft.reminders.length ? t('reminderNone')
       : draftNote() ? t('reminderOwn')
+      : state.character === BOT_ID ? t('reminderBot', lines.name)
       : lines ? t('reminderFrom', lines.name) : t('reminderPlain');
   }
 
@@ -1385,6 +1393,7 @@
       schedule: draft.schedule,
     };
     if (voiceNote) payload.voiceNote = voiceNote;
+    if (draft.botPick) payload.botPick = draft.botPick.slice();
 
     if (existing) {
       Object.assign(existing, payload);
@@ -1867,7 +1876,9 @@
         id: cast.id,
         name: lines.name,
         autoplay: !!state.voiceAutoplay,
-        praise: lines.praise.map((text, i) => ({ text: text, voice: GLOW_CAST.voicePath(cast.id, lang, 'p' + (i + 1)) })),
+        praise: cast.id === BOT_ID
+          ? recordedBotLines('praise').map((line) => ({ text: line.text, voice: clipPath(line.clip) }))
+          : lines.praise.map((text, i) => ({ text: text, voice: GLOW_CAST.voicePath(cast.id, lang, 'p' + (i + 1)) })),
       } : null,
       /* Everything the widget and the notifications print, in the app's own
          language rather than the phone's. */
@@ -1956,7 +1967,7 @@
     const known = new Set(state.chat.map((m) => m.id));
     let unread = 0;
     items.forEach((item) => {
-      if (!item || !item.id || known.has(item.id) || !GLOW_CAST.byId(item.char)) return;
+      if (!item || !item.id || known.has(item.id) || !castById(item.char)) return;
       known.add(item.id);
       state.chat.push({
         id: String(item.id),
@@ -1967,8 +1978,10 @@
         habitId: item.habitId || null,
         date: item.date || todayKey(),
         text: String(item.text || ''),
+        // A character's note from the APK, or one of yours from the phone.
         voice: typeof item.voice === 'string' && /^voices\/[\w/-]+\.webm$/.test(item.voice)
-          ? GLOW_CAST.upgradeVoicePath(item.voice) : null,
+          ? GLOW_CAST.upgradeVoicePath(item.voice)
+          : typeof item.voice === 'string' && OWN_PATH_RE.test(item.voice) ? item.voice : null,
       });
       if (item.from !== 'me') unread++;
     });
@@ -2002,13 +2015,15 @@
      Lines are chosen on this side, not natively, so one place knows how a
      habit maps to a line in both languages. */
   const CHAT_LIMIT = 150;
-  const castLines = (id) => (id ? GLOW_CAST.lines(id, I18N.getLang()) : null);
-  const currentCast = () => (state.character ? GLOW_CAST.byId(state.character) : null);
+  /* The five characters, and your own bot (2.11) dressed the same way. */
+  const castLines = (id) => (id === BOT_ID ? botCastLines() : id ? GLOW_CAST.lines(id, I18N.getLang()) : null);
+  const currentCast = () => (state.character ? castById(state.character) : null);
 
   /* What a character says about a habit: its own three lines when it came
      from the catalogue, generic ones that name it otherwise. The shell takes
      them in turn, a different one each day and for each of a habit's times. */
   function reminderMessages(habit, id) {
+    if (id === BOT_ID) return botMessages(habit);
     const lines = castLines(id);
     if (!lines) return [];
     const lang = I18N.getLang();
@@ -2027,12 +2042,21 @@
   }
 
   function praiseMessage(id) {
+    if (id === BOT_ID) {
+      const said = recordedBotLines('praise');
+      const line = said[Math.floor(Math.random() * said.length)];
+      return line ? { text: line.text, voice: clipPath(line.clip) } : { text: t('botPraise1'), voice: null };
+    }
     const lines = castLines(id);
     const i = Math.floor(Math.random() * lines.praise.length);
     return { text: lines.praise[i], voice: GLOW_CAST.voicePath(id, I18N.getLang(), 'p' + (i + 1)) };
   }
 
   function introMessage(id) {
+    if (id === BOT_ID) {
+      const line = botLines().find((l) => l.kind === 'intro');
+      return { text: line ? line.text : t('botIntroLine'), voice: line && line.clip ? clipPath(line.clip) : null };
+    }
     return { text: castLines(id).intro, voice: GLOW_CAST.voicePath(id, I18N.getLang(), 'intro') };
   }
 
@@ -2062,8 +2086,10 @@
       });
   }
 
-  const clipInfo = (path) =>
-    (voiceIndex && voiceIndex[path.replace(/^voices\//, '').replace(/\.webm$/, '')]) || null;
+  /* Length and waveform of a note: a character's from the index, one of
+     yours from this record. */
+  const clipInfo = (path) => (OWN_PATH_RE.test(path) ? ownClipInfo(path)
+    : (voiceIndex && voiceIndex[path.replace(/^voices\//, '').replace(/\.webm$/, '')]) || null);
   const fmtClock = (seconds) => {
     const whole = Math.max(0, Math.round(seconds));
     return Math.floor(whole / 60) + ':' + pad(whole % 60);
@@ -2284,6 +2310,16 @@
         used.add(habit.voiceNote.id);
       } else {
         delete habit.voiceNote;
+        changed = true;
+      }
+    });
+    // Your bot's lines (2.11): one whose recording is gone is simply unrecorded again.
+    botLines().forEach((line) => {
+      if (!line.clip) return;
+      if (onPhone.has(line.clip.id)) {
+        used.add(line.clip.id);
+      } else {
+        line.clip = null;
         changed = true;
       }
     });
@@ -2529,6 +2565,775 @@
       }
     }
     $('#ownVoiceHint').textContent = hint;
+    renderBotPicks();             // its hint says when your own note takes over
+  }
+
+  /* ══ Your own bot (2.11) ═════════════════════════════════════════════
+     Picked like the five characters, but every line is yours. The studio
+     shows a script (a greeting, two lines per habit, answers for "done",
+     lines for any habit) and you read it aloud in one go. Each phrase is
+     found by the pause after it, cut out of the take, levelled, saved as a
+     WAV of its own and kept with its habit; in each habit's editor you then
+     tick which of its lines play. Nothing is transcribed and the voice never
+     leaves the phone: the script's order says which phrase is which line. */
+  const BOT_ID = 'mine';
+  const BOT_ACCENT = '#E0663A';
+  const BOT_CAST = { id: BOT_ID, accent: BOT_ACCENT };
+  const BOT_KINDS = ['intro', 'habit', 'praise', 'generic'];
+  const BOT_RATE = 22050;        // Hz, for the cut lines (16-bit WAV)
+  const OWN_PATH_RE = /^mine\/[a-z0-9]{6,40}\.(webm|wav)$/;
+  const CALIBRATE = 0.5;         // s of the room's own sound before listening
+  const PHRASE_GAP = 0.8;        // s of quiet that ends a phrase
+  const PHRASE_MIN = 0.35;       // s of voice before a phrase counts
+  const PHRASE_MAX = 15;         // s, then it is cut anyway
+
+  const castById = (id) => (id === BOT_ID ? (state.bot ? BOT_CAST : null) : GLOW_CAST.byId(id));
+  const botLines = () => (state.bot && Array.isArray(state.bot.lines) ? state.bot.lines : []);
+  const recordedBotLines = (kind) => botLines().filter((line) => line.clip && (!kind || line.kind === kind));
+  const botReady = () => botLines().some((line) => line.clip);
+  const clipPath = (clip) => 'mine/' + clip.id + '.' + (clip.ext === 'webm' ? 'webm' : 'wav');
+  const lineId = () => 'l' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const lowerFirst = (text) => text.charAt(0).toLocaleLowerCase(I18N.locale()) + text.slice(1);
+  const needsTake = (line) => !line.clip || line.clip.said !== line.text;
+
+  function botCastLines() {
+    const intro = botLines().find((line) => line.kind === 'intro');
+    return {
+      name: (state.bot && state.bot.name) || t('botDefaultName'),
+      tagline: t('botTagline'),
+      intro: intro ? intro.text : t('botIntroLine'),
+    };
+  }
+
+  /* Length and waveform of one of your recordings, from this record. */
+  function ownClipInfo(path) {
+    const id = path.slice('mine/'.length).replace(/\.(webm|wav)$/, '');
+    const line = botLines().find((l) => l.clip && l.clip.id === id);
+    if (line) return line.clip;
+    const habit = state.habits.find((h) => hasOwnNote(h) && h.voiceNote.id === id);
+    return habit ? habit.voiceNote : null;
+  }
+
+  /* Keeps the bot to the shape this code writes. A line for a habit that no
+     longer exists goes, and the start-up check then deletes its recording. */
+  function normalizeBot() {
+    const bot = state.bot;
+    if (!bot || typeof bot !== 'object' || !Array.isArray(bot.lines)) {
+      state.bot = null;
+      return;
+    }
+    if (typeof bot.name !== 'string') bot.name = '';
+    if (!Array.isArray(bot.seen)) bot.seen = [];
+    const habits = new Set(state.habits.map((h) => h.id));
+    bot.lines = bot.lines.filter((line) => line && typeof line.id === 'string' && /^[a-z0-9]{4,40}$/.test(line.id) &&
+      BOT_KINDS.includes(line.kind) && typeof line.text === 'string' &&
+      (line.kind !== 'habit' || habits.has(line.habitId)));
+    bot.lines.forEach((line) => {
+      if (line.kind !== 'habit') line.habitId = null;
+      if (line.clip && !(typeof line.clip.id === 'string' && NOTE_ID_RE.test(line.clip.id))) line.clip = null;
+    });
+  }
+
+  /* What your bot says for a habit: the lines ticked in its editor, else the
+     ones recorded for it, else the ones for any habit. Its own come first,
+     as the editor lists them. */
+  function botMessages(habit) {
+    const recorded = recordedBotLines();
+    const own = (line) => line.kind === 'habit' && line.habitId === habit.id;
+    const picked = Array.isArray(habit.botPick)
+      ? recorded.filter((line) => habit.botPick.includes(line.id)).sort((a, b) => own(b) - own(a))
+      : recorded.filter(own);
+    const lines = picked.length ? picked : recorded.filter((line) => line.kind === 'generic');
+    return lines.map((line) => ({ text: line.text, voice: clipPath(line.clip) }));
+  }
+
+  function dropBotLinesOf(habitId) {
+    if (!state.bot) return;
+    state.bot.lines = state.bot.lines.filter((line) => {
+      if (line.kind !== 'habit' || line.habitId !== habitId) return true;
+      if (line.clip) deleteNoteFile(line.clip.id);
+      return false;
+    });
+  }
+
+  /* The script grows with your habits: a habit not seen before gets its two
+     lines; a line you removed stays removed. */
+  function ensureScript() {
+    if (!state.bot) state.bot = { name: '', lines: [], seen: [] };
+    const bot = state.bot;
+    const add = (kind, habitId, text) =>
+      bot.lines.push({ id: lineId(), kind: kind, habitId: habitId, text: text, clip: null });
+    if (!bot.started) {
+      add('intro', null, t('botIntroLine'));
+      [1, 2, 3].forEach((n) => add('praise', null, t('botPraise' + n)));
+      [1, 2].forEach((n) => add('generic', null, t('botGeneric' + n)));
+      bot.started = true;
+    }
+    activeHabits().forEach((habit) => {
+      if (bot.seen.includes(habit.id)) return;
+      bot.seen.push(habit.id);
+      const name = habitName(habit);
+      add('habit', habit.id, t('botHabitLine1', name));
+      add('habit', habit.id, t('botHabitLine2', lowerFirst(name)));
+    });
+  }
+
+  /* The script in reading order: greeting, each habit, answers, any habit. */
+  function scriptSections() {
+    const lines = botLines();
+    const of = (kind, habitId) => lines.filter((line) => line.kind === kind && (habitId === undefined || line.habitId === habitId));
+    return [{ kind: 'intro', title: t('studioIntro'), lines: of('intro') }]
+      .concat(activeHabits().map((habit) => ({
+        kind: 'habit', habitId: habit.id, title: (habit.emoji || '✅') + ' ' + habitName(habit), lines: of('habit', habit.id),
+      })))
+      .concat([
+        { kind: 'praise', title: t('studioPraise'), lines: of('praise') },
+        { kind: 'generic', title: t('studioGeneric'), lines: of('generic') },
+      ]);
+  }
+
+  /* ── The studio ── */
+  let studio = null;     // the open session: { pick, focus, mode, reading, note, error }
+
+  function openStudio(opts) {
+    if (!canRecord()) return;
+    stopVoice();
+    ensureScript();
+    save();
+    studio = {
+      pick: !!(opts && opts.pick), focus: (opts && opts.habitId) || null,
+      mode: 'script', reading: null, note: '', error: null,
+    };
+    renderStudio();
+    $('#studio').showModal();
+    $('#studioBody').scrollTop = 0;
+    if (studio.focus) {
+      const section = $$('#studioBody .script-section').find((el) => el.dataset.habit === studio.focus);
+      if (section) section.scrollIntoView({ block: 'start' });
+    }
+  }
+
+  /* However it closes, a take in progress is still cut and kept. */
+  function onStudioClosed() {
+    const session = studio;
+    studio = null;
+    stopVoice();
+    if (!session) return;
+    if (session.reading) finishReading(session.reading);     // afterStudio once the lines are cut
+    else afterStudio(session);
+  }
+
+  function afterStudio(session) {
+    if (session.pick && botReady()) chooseCharacter(BOT_ID);
+    if ($('#castDialog').open) renderCastPicker();
+    if ($('#habitDialog').open && draft) renderBotPicks();
+    renderCastSettings();
+  }
+
+  function renderStudio() {
+    if (!studio) return;
+    const body = $('#studioBody');
+    const foot = $('#studioFoot');
+    const scroll = body.scrollTop;
+    body.innerHTML = '';
+    foot.innerHTML = '';
+    body.classList.toggle('is-reading', studio.mode !== 'script');
+    if (studio.mode === 'reading') {
+      renderPrompter(body, foot);
+    } else if (studio.mode === 'cutting') {
+      const wait = document.createElement('p');
+      wait.className = 'studio-wait';
+      wait.textContent = t('studioCutting');
+      body.appendChild(wait);
+    } else {
+      renderScript(body, foot);
+      body.scrollTop = scroll;
+    }
+  }
+
+  function renderScript(body, foot) {
+    const bot = state.bot;
+    const nameField = document.createElement('label');
+    nameField.className = 'field';
+    const nameLabel = document.createElement('span');
+    nameLabel.className = 'field-label';
+    nameLabel.textContent = t('studioName');
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.id = 'studioName';
+    nameInput.maxLength = 40;
+    nameInput.value = bot.name;
+    nameInput.placeholder = t('botDefaultName');
+    nameInput.addEventListener('change', () => {
+      bot.name = nameInput.value.trim().slice(0, 40);
+      save();
+    });
+    nameField.append(nameLabel, nameInput);
+    const how = document.createElement('p');
+    how.className = 'muted small';
+    how.textContent = t('studioHow');
+    body.append(nameField, how);
+
+    if (studio.error || studio.note) {
+      const message = document.createElement('div');
+      message.className = 'studio-message' + (studio.error ? ' is-error' : '');
+      message.setAttribute('role', 'status');
+      const words = document.createElement('span');
+      words.textContent = studio.error === 'denied' ? t('ownVoiceDenied')
+        : studio.error === 'none' ? t('studioNoneHeard')
+        : studio.error ? t('ownVoiceFailed') : studio.note;
+      message.appendChild(words);
+      if (studio.error === 'denied' && shell.openAppSettings) {
+        const open = button('btn btn-sm', t('ownVoiceOpenSettings'));
+        open.addEventListener('click', () => {
+          try { shell.openAppSettings(); } catch (err) { /* an older shell */ }
+        });
+        message.appendChild(open);
+      }
+      body.appendChild(message);
+    }
+
+    const sections = scriptSections();
+    sections.forEach((section) => body.appendChild(scriptSection(section)));
+
+    const shown = [].concat(...sections.map((section) => section.lines));
+    const missing = shown.filter(needsTake);
+    const done = button('btn', t('studioDone'));
+    done.addEventListener('click', () => $('#studio').close());
+    const spacer = document.createElement('span');
+    spacer.className = 'spacer';
+    const read = button('btn btn-primary', missing.length ? t('studioReadMissing', missing.length) : t('studioReadAll'));
+    read.id = 'studioRead';
+    read.disabled = !shown.length;
+    read.addEventListener('click', () => startReading((missing.length ? missing : shown).map((line) => line.id)));
+    foot.append(done, spacer, read);
+  }
+
+  function scriptSection(section) {
+    const box = document.createElement('section');
+    box.className = 'script-section';
+    if (section.habitId) box.dataset.habit = section.habitId;
+    const title = document.createElement('h3');
+    title.textContent = section.title;
+    box.appendChild(title);
+    section.lines.forEach((line) => box.appendChild(scriptRow(line)));
+    const add = button('btn btn-sm script-add', '+ ' + t('studioAddLine'));
+    add.addEventListener('click', () => {
+      const habit = section.habitId ? habitById(section.habitId) : null;
+      const text = section.kind === 'habit' ? t('botHabitLine1', habit ? habitName(habit) : '')
+        : section.kind === 'praise' ? t('botPraise1')
+        : section.kind === 'intro' ? t('botIntroLine') : t('botGeneric1');
+      const line = { id: lineId(), kind: section.kind, habitId: section.habitId || null, text: text, clip: null };
+      state.bot.lines.push(line);
+      save();
+      renderStudio();
+      const input = $$('#studioBody .script-line').find((el) => el.dataset.line === line.id);
+      if (input) input.querySelector('input').focus();
+    });
+    box.appendChild(add);
+    return box;
+  }
+
+  function scriptRow(line) {
+    const row = document.createElement('div');
+    row.className = 'script-line' + (line.clip ? ' is-recorded' : '');
+    row.dataset.line = line.id;
+    // A box that grows with its words: a line is a sentence or two, never a paragraph.
+    const input = document.createElement('textarea');
+    input.rows = 1;
+    input.className = 'script-text';
+    input.maxLength = 160;
+    input.value = line.text;
+    input.setAttribute('aria-label', t('studioLineText'));
+    input.addEventListener('keydown', (evt) => {
+      if (evt.key === 'Enter') {
+        evt.preventDefault();
+        input.blur();
+      }
+    });
+    input.addEventListener('change', () => {
+      const text = input.value.trim();
+      if (text) line.text = text;
+      save();
+      renderStudio();
+    });
+    const tools = document.createElement('div');
+    tools.className = 'script-tools';
+    if (line.clip) {
+      tools.appendChild(voiceNote(clipPath(line.clip), line.clip));
+    } else {
+      const none = document.createElement('span');
+      none.className = 'script-missing';
+      none.textContent = t('studioNotRecorded');
+      tools.appendChild(none);
+    }
+    const mic = button('icon-btn script-mic', null, { 'aria-label': t('studioRecordLine'), title: t('studioRecordLine') });
+    mic.innerHTML = iconSvg('i-mic', 18);
+    mic.addEventListener('click', () => startReading([line.id]));
+    const remove = button('icon-btn', null, { 'aria-label': t('studioRemoveLine'), title: t('studioRemoveLine') });
+    remove.innerHTML = iconSvg('i-close', 16);
+    remove.addEventListener('click', () => {
+      stopVoice();
+      if (line.clip) deleteNoteFile(line.clip.id);
+      state.bot.lines = state.bot.lines.filter((l) => l !== line);
+      save();
+      renderStudio();
+    });
+    tools.append(mic, remove);
+    row.append(input, tools);
+    if (line.clip && line.clip.said !== line.text) {
+      const warn = document.createElement('p');
+      warn.className = 'script-warn';
+      warn.textContent = t('studioTextChanged');
+      row.appendChild(warn);
+    }
+    return row;
+  }
+
+  /* ── Reading the script aloud ── */
+  const freshVad = () => ({ loud: 0, speaking: false, start: 0, last: 0, voiced: 0 });
+
+  /* The microphone, a recorder on it, and an analyser for the live level. */
+  async function openMic() {
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: true, autoGainControl: true },
+      });
+    } catch (err) {
+      return { error: err && (err.name === 'NotAllowedError' || err.name === 'SecurityError') ? 'denied' : 'failed' };
+    }
+    const mime = ['audio/webm;codecs=opus', 'audio/webm'].find((type) => MediaRecorder.isTypeSupported(type));
+    let media = null;
+    let ctx = null;
+    let analyser = null;
+    try {
+      // A generous rate: the take is only an intermediate, cut into lines and re-encoded.
+      media = new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 96000 });
+      ctx = new AudioContext();
+      analyser = ctx.createAnalyser();
+      analyser.fftSize = 2048;
+      ctx.createMediaStreamSource(stream).connect(analyser);
+    } catch (err) {
+      stopTracks(stream);
+      if (ctx) ctx.close().catch(() => {});
+      return { error: 'failed' };
+    }
+    return { stream: stream, media: media, mime: mime, ctx: ctx, analyser: analyser };
+  }
+
+  async function startReading(queue) {
+    if (!studio || studio.reading || !queue.length) return;
+    stopVoice();
+    const session = studio;
+    session.error = null;
+    session.note = '';
+    const mic = await openMic();
+    if (mic.error) {
+      session.error = mic.error;
+      if (studio === session) renderStudio();
+      return;
+    }
+    // The studio may have closed while Android asked for the microphone.
+    if (studio !== session || !$('#studio').open) {
+      stopTracks(mic.stream);
+      mic.ctx.close().catch(() => {});
+      return;
+    }
+    const rd = {
+      session: session, queue: queue, index: 0, phrases: new Map(), mic: mic, chunks: [],
+      t0: 0, last: 0, floor: null, calib: [], levels: [], buf: new Float32Array(mic.analyser.fftSize),
+      v: freshVad(), gotAt: -1, raf: 0, done: false, cut: false,
+    };
+    session.reading = rd;
+    session.mode = 'reading';
+    mic.media.addEventListener('dataavailable', (evt) => { if (evt.data && evt.data.size) rd.chunks.push(evt.data); });
+    mic.media.addEventListener('stop', () => cutReading(rd));
+    mic.media.start(250);
+    rd.t0 = performance.now();
+    renderStudio();
+    listen(rd);
+  }
+
+  function levelDb(rd) {
+    rd.mic.analyser.getFloatTimeDomainData(rd.buf);
+    let sum = 0;
+    for (let i = 0; i < rd.buf.length; i++) sum += rd.buf[i] * rd.buf[i];
+    return 10 * Math.log10(sum / rd.buf.length + 1e-12);
+  }
+
+  /* One look at the microphone per frame. The first half second learns the
+     room; after that a phrase starts when the level stands clear of the
+     room's, and ends after a pause. */
+  function listen(rd) {
+    if (rd.done || rd.session.reading !== rd) return;
+    const now = (performance.now() - rd.t0) / 1000;
+    const dt = Math.min(0.1, Math.max(0, now - rd.last));
+    rd.last = now;
+    const db = levelDb(rd);
+    while (rd.levels.length < Math.floor(now * 10)) rd.levels.push(db);
+    if (now < CALIBRATE) {
+      rd.calib.push(db);
+    } else {
+      if (rd.floor === null) {
+        const sorted = rd.calib.slice().sort((a, b) => a - b);
+        rd.floor = sorted.length ? sorted[sorted.length >> 1] : -60;
+      }
+      hearFrame(rd, now, dt, db);
+      if (rd.done) return;
+    }
+    paintPrompter(rd, now);
+    rd.raf = requestAnimationFrame(() => listen(rd));
+  }
+
+  function hearFrame(rd, now, dt, db) {
+    const v = rd.v;
+    const on = db > Math.max(rd.floor + 14, -50);
+    const stay = db > Math.max(rd.floor + 8, -56);
+    if (!v.speaking) {
+      // The room's own level drifts; quiet frames pull the floor along.
+      if (db < rd.floor) rd.floor = db;
+      else if (db < rd.floor + 6) rd.floor += (db - rd.floor) * 0.02;
+      v.loud = on ? v.loud + 1 : 0;
+      if (v.loud >= 3) {
+        v.speaking = true;
+        v.start = now - 0.1;
+        v.last = now;
+        v.voiced = 0;
+      }
+      return;
+    }
+    if (stay) {
+      v.voiced += dt;
+      v.last = now;
+    }
+    if (now - v.last >= PHRASE_GAP || now - v.start >= PHRASE_MAX) {
+      if (v.voiced >= PHRASE_MIN) phraseHeard(rd, v.start, v.last, now);
+      else rd.v = freshVad();                 // a cough or a click, not a line
+    }
+  }
+
+  function phraseHeard(rd, start, end, now) {
+    rd.phrases.set(rd.queue[rd.index], { start: Math.max(0, start - 0.15), end: end + 0.25 });
+    rd.index++;
+    rd.v = freshVad();
+    rd.gotAt = now;
+    if (rd.index >= rd.queue.length) finishReading(rd);
+    else renderStudio();
+  }
+
+  function readerMove(rd, step) {
+    if (rd.done) return;
+    if (step < 0) {
+      if (rd.index === 0) return;
+      rd.index--;
+      rd.phrases.delete(rd.queue[rd.index]);    // that line is read again
+    } else {
+      rd.index++;                               // that line stays as it was
+    }
+    rd.v = freshVad();
+    rd.gotAt = -1;
+    if (rd.index >= rd.queue.length) finishReading(rd);
+    else renderStudio();
+  }
+
+  function sectionTitleOf(line) {
+    if (line.kind === 'habit') {
+      const habit = habitById(line.habitId);
+      return habit ? (habit.emoji || '✅') + ' ' + habitName(habit) : '';
+    }
+    return t({ intro: 'studioIntro', praise: 'studioPraise', generic: 'studioGeneric' }[line.kind]);
+  }
+
+  function renderPrompter(body, foot) {
+    const rd = studio.reading;
+    const line = botLines().find((l) => l.id === rd.queue[rd.index]);
+    const next = botLines().find((l) => l.id === rd.queue[rd.index + 1]);
+    const box = document.createElement('div');
+    box.className = 'prompter';
+    const step = document.createElement('p');
+    step.className = 'prompter-step';
+    step.textContent = t('studioProgress', { at: rd.index + 1, of: rd.queue.length }) + (line ? ' · ' + sectionTitleOf(line) : '');
+    const words = document.createElement('p');
+    words.className = 'prompter-line';
+    words.textContent = line ? line.text : '';
+    const after = document.createElement('p');
+    after.className = 'prompter-next';
+    after.textContent = next ? t('studioNext') + ' ' + next.text : '';
+    const wave = document.createElement('div');
+    wave.className = 'vn-wave rec-wave';
+    wave.setAttribute('aria-hidden', 'true');
+    for (let i = 0; i < 28; i++) wave.appendChild(document.createElement('i'));
+    const status = document.createElement('p');
+    status.className = 'prompter-status';
+    status.setAttribute('aria-live', 'polite');
+    box.append(step, words, after, wave, status);
+    body.appendChild(box);
+
+    const back = button('btn', t('studioBackLine'));
+    back.disabled = rd.index === 0;
+    back.addEventListener('click', () => readerMove(rd, -1));
+    const skip = button('btn', t('studioSkip'));
+    skip.addEventListener('click', () => readerMove(rd, 1));
+    const spacer = document.createElement('span');
+    spacer.className = 'spacer';
+    const finish = button('btn btn-primary', t('studioFinish'));
+    finish.id = 'studioFinish';
+    finish.addEventListener('click', () => finishReading(rd));
+    foot.append(back, skip, spacer, finish);
+    paintPrompter(rd, (performance.now() - rd.t0) / 1000);
+  }
+
+  function paintPrompter(rd, now) {
+    const box = $('#studioBody .prompter');
+    if (!box) return;
+    const mode = now < CALIBRATE ? 'calibrating'
+      : rd.gotAt >= 0 && now - rd.gotAt < 0.9 ? 'got'
+      : rd.v.speaking ? 'hearing' : 'listening';
+    if (box.dataset.state !== mode) {
+      box.dataset.state = mode;
+      box.querySelector('.prompter-status').textContent = t({
+        calibrating: 'studioCalibrating', got: 'studioGotIt', hearing: 'studioHearing', listening: 'studioListening',
+      }[mode]);
+    }
+    const bars = box.querySelectorAll('.rec-wave i');
+    const recent = rd.levels.slice(-bars.length);
+    const offset = bars.length - recent.length;
+    const floor = rd.floor === null ? -60 : rd.floor;
+    bars.forEach((bar, i) => {
+      const above = i < offset ? 0 : Math.max(0, Math.min(1, (recent[i - offset] - floor) / 40));
+      bar.style.height = (12 + above * 88) + '%';
+    });
+  }
+
+  function finishReading(rd) {
+    if (rd.done) return;
+    rd.done = true;
+    cancelAnimationFrame(rd.raf);
+    rd.session.mode = 'cutting';
+    if (studio === rd.session) renderStudio();
+    try {
+      if (rd.mic.media.state !== 'inactive') rd.mic.media.stop();     // its 'stop' event cuts the take
+      else cutReading(rd);
+    } catch (err) {
+      cutReading(rd);
+    }
+  }
+
+  /* The take, cut into its lines: each saved by the shell as a WAV of its
+     own, the recording it replaces deleted. */
+  async function cutReading(rd) {
+    if (rd.cut) return;
+    rd.cut = true;
+    stopTracks(rd.mic.stream);
+    let saved = 0;
+    let failed = false;
+    if (rd.phrases.size) {
+      try {
+        const blob = new Blob(rd.chunks, { type: rd.mic.mime });
+        const audio = await rd.mic.ctx.decodeAudioData(await blob.arrayBuffer());
+        for (const cut of planCuts(audio, rd)) {
+          const line = botLines().find((l) => l.id === cut.id);
+          if (!line) continue;
+          const take = await renderPhrase(audio, cut);
+          const id = noteId();
+          const base64 = await blobBase64(new Blob([take.bytes], { type: 'audio/wav' }));
+          let stored = false;
+          try {
+            stored = !!shell.saveVoiceNote(id, base64);
+          } catch (err) {
+            stored = false;
+          }
+          if (!stored) {
+            failed = true;
+            continue;
+          }
+          const old = line.clip;
+          line.clip = { id: id, ext: 'wav', d: take.d, w: take.w, said: line.text };
+          if (old) deleteNoteFile(old.id);
+          saved++;
+        }
+      } catch (err) {
+        failed = true;
+      }
+    }
+    rd.mic.ctx.close().catch(() => {});
+    if (saved) save();
+    const session = rd.session;
+    session.reading = null;
+    session.mode = 'script';
+    session.note = saved ? t('studioSaved', saved) : '';
+    session.error = failed ? 'failed' : saved ? null : 'none';
+    if (studio === session) {
+      renderStudio();
+    } else {
+      // Closed while its lines were being cut: say how it went, then finish closing.
+      if (saved) toast(t('studioSaved', saved));
+      afterStudio(session);
+    }
+  }
+
+  /* Where each phrase really starts and ends. The live detection lags a
+     little and pads generously; here the take itself is measured in 10 ms
+     frames against its own quietest level, and each phrase is trimmed to its
+     voice (never past the middle of the pause to its neighbours) and given
+     a gain that brings it to one common level. */
+  function planCuts(audio, rd) {
+    const data = audio.getChannelData(0);
+    const rate = audio.sampleRate;
+    const hop = Math.max(1, Math.round(rate / 100));
+    const frames = Math.floor(data.length / hop);
+    const db = new Float32Array(frames);
+    for (let f = 0; f < frames; f++) {
+      let sum = 0;
+      for (let i = f * hop; i < (f + 1) * hop; i++) sum += data[i] * data[i];
+      db[f] = 10 * Math.log10(sum / hop + 1e-12);
+    }
+    const sorted = Array.from(db).sort((a, b) => a - b);
+    const floor = sorted.length ? sorted[Math.floor(sorted.length * 0.1)] : -80;
+    const voice = Math.min(Math.max(floor + 12, -55), -28);
+    const order = rd.queue.filter((id) => rd.phrases.has(id))
+      .map((id) => Object.assign({ id: id }, rd.phrases.get(id)))
+      .sort((a, b) => a.start - b.start);
+    return order.map((p, i) => {
+      const lo = Math.max(0, p.start - 0.35, i > 0 ? (order[i - 1].end + p.start) / 2 : 0);
+      const hi = Math.min(audio.duration, p.end + 0.35,
+        i < order.length - 1 ? (p.end + order[i + 1].start) / 2 : audio.duration);
+      let first = -1;
+      let last = -1;
+      let energy = 0;
+      let count = 0;
+      for (let f = Math.floor(lo * 100); f < Math.min(frames, Math.ceil(hi * 100)); f++) {
+        if (db[f] <= voice) continue;
+        if (first < 0) first = f;
+        last = f;
+        energy += Math.pow(10, db[f] / 10);
+        count++;
+      }
+      const from = first < 0 ? lo : Math.max(lo, first / 100 - 0.12);
+      const to = last < 0 ? hi : Math.min(hi, (last + 1) / 100 + 0.18);
+      let peak = 0;
+      for (let s = Math.floor(from * rate); s < Math.min(data.length, Math.ceil(to * rate)); s++) {
+        const value = Math.abs(data[s]);
+        if (value > peak) peak = value;
+      }
+      const rms = count ? Math.sqrt(energy / count) : 0;
+      // Speech at about -20 dBFS, never clipping, and never boosted past +18 dB.
+      const gain = Math.min(rms ? 0.1 / rms : 1, peak ? 0.89 / peak : 1, 8);
+      return { id: p.id, from: from, to: Math.max(to, from + 0.2), gain: gain };
+    });
+  }
+
+  /* One phrase, resampled for the WAV, levelled, with 15 ms fades so it
+     never clicks. */
+  async function renderPhrase(audio, cut) {
+    const length = cut.to - cut.from;
+    const offline = new OfflineAudioContext(1, Math.max(1, Math.ceil(length * BOT_RATE)), BOT_RATE);
+    const source = offline.createBufferSource();
+    source.buffer = audio;
+    const gain = offline.createGain();
+    const fade = Math.min(0.015, length / 4);
+    gain.gain.setValueAtTime(0, 0);
+    gain.gain.linearRampToValueAtTime(cut.gain, fade);
+    gain.gain.setValueAtTime(cut.gain, length - fade);
+    gain.gain.linearRampToValueAtTime(0, length);
+    source.connect(gain).connect(offline.destination);
+    source.start(0, cut.from, length);
+    const out = await offline.startRendering();
+    const info = describeRecording(out);
+    return { bytes: wavBytes(out), d: info.d, w: info.w };
+  }
+
+  /* 16-bit mono PCM WAV: what every player on the phone opens. */
+  function wavBytes(buffer) {
+    const data = buffer.getChannelData(0);
+    const view = new DataView(new ArrayBuffer(44 + data.length * 2));
+    const ascii = (at, text) => { for (let i = 0; i < text.length; i++) view.setUint8(at + i, text.charCodeAt(i)); };
+    ascii(0, 'RIFF');
+    view.setUint32(4, 36 + data.length * 2, true);
+    ascii(8, 'WAVE');
+    ascii(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);                       // PCM
+    view.setUint16(22, 1, true);                       // mono
+    view.setUint32(24, buffer.sampleRate, true);
+    view.setUint32(28, buffer.sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    ascii(36, 'data');
+    view.setUint32(40, data.length * 2, true);
+    for (let i = 0; i < data.length; i++) {
+      const s = Math.max(-1, Math.min(1, data[i]));
+      view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    }
+    return new Uint8Array(view.buffer);
+  }
+
+  /* ── Your bot in the habit editor and the picker ── */
+
+  /* Which of your bot's lines this habit plays, while your bot sends the reminders. */
+  function renderBotPicks() {
+    const box = $('#botPicks');
+    const show = !!draft && state.character === BOT_ID && canRecord();
+    box.hidden = !show;
+    if (!show) return;
+    const list = $('#botPickList');
+    list.innerHTML = '';
+    const recorded = recordedBotLines();
+    const own = editingId ? recorded.filter((line) => line.kind === 'habit' && line.habitId === editingId) : [];
+    const generic = recorded.filter((line) => line.kind === 'generic');
+    const chosen = new Set(draft.botPick || own.map((line) => line.id));
+    own.concat(generic).forEach((line) => {
+      const row = document.createElement('div');
+      row.className = 'bot-pick';
+      const label = document.createElement('label');
+      const tick = document.createElement('input');
+      tick.type = 'checkbox';
+      tick.checked = chosen.has(line.id);
+      tick.dataset.line = line.id;
+      tick.addEventListener('change', () => {
+        const set = new Set(draft.botPick || own.map((l) => l.id));
+        if (tick.checked) set.add(line.id);
+        else set.delete(line.id);
+        draft.botPick = Array.from(set);
+      });
+      const words = document.createElement('span');
+      words.textContent = line.text;
+      label.append(tick, words);
+      const play = button('icon-btn bot-pick-play', null, { 'aria-label': t('voicePlay'), title: t('voicePlay') });
+      play.innerHTML = iconSvg('i-play', 16);
+      play.addEventListener('click', () => playVoice(clipPath(line.clip), (fraction, ended) => {
+        play.innerHTML = iconSvg(ended ? 'i-play' : 'i-pause', 16);
+      }, line.clip.d));
+      row.append(label, play);
+      list.appendChild(row);
+    });
+    $('#botPickHint').textContent = draftNote() ? t('botLinesOwnFirst')
+      : !editingId ? t('botLinesNew')
+      : own.length ? t('botLinesHint') : t('botLinesNone');
+    $('#btnBotStudio').hidden = !editingId;
+  }
+
+  /* Your bot's card in the picker: built in the studio, then picked like anyone else. */
+  function botCard() {
+    const recorded = recordedBotLines().length;
+    const intro = recordedBotLines('intro')[0];
+    const card = castCard({
+      id: BOT_ID,
+      name: botCastLines().name,
+      desc: recorded ? t('castMineCount', recorded) : t('castMineDesc'),
+      accent: BOT_ACCENT,
+      avatar: GLOW_CAST.avatarPath(BOT_ID),
+      sample: intro ? clipPath(intro.clip) : null,
+    });
+    card.classList.add('cast-card-bot');
+    const row = document.createElement('div');
+    row.className = 'cast-row';
+    row.append(...Array.from(card.childNodes));
+    const open = button('btn btn-sm cast-studio', t(recorded ? 'castMineEdit' : 'castMineCreate'));
+    open.addEventListener('click', () => openStudio({ pick: !recorded }));
+    card.append(row, open);
+    return card;
   }
 
   /* Habits the character reminded about today and that are still open,
@@ -2606,6 +3411,7 @@
         sample: GLOW_CAST.voicePath(cast.id, lang, 'intro'),
       }));
     });
+    if (canRecord()) list.appendChild(botCard());
     list.appendChild(castCard({ id: null, name: t('castNone'), desc: t('castNoneDesc') }));
   }
 
@@ -2652,6 +3458,11 @@
   }
 
   function chooseCharacter(id) {
+    // Your own bot has nothing to say until it has a line: build it first.
+    if (id === BOT_ID && !botReady()) {
+      openStudio({ pick: true });
+      return;
+    }
     const changed = (state.character || null) !== id;
     state.character = id;
     if (changed && id) {
@@ -2932,6 +3743,10 @@
     $$('#habitDialog [data-close]').forEach((btn) => {
       btn.addEventListener('click', () => $('#habitDialog').close());
     });
+    // Your own bot's studio (2.11), over the picker or the habit editor.
+    $('#studioBack').addEventListener('click', () => $('#studio').close());
+    $('#studio').addEventListener('close', onStudioClosed);
+    $('#btnBotStudio').addEventListener('click', () => openStudio({ habitId: editingId }));
     // However the editor closes, the microphone is released and an unsaved
     // recording is let go.
     $('#habitDialog').addEventListener('close', () => {
@@ -2946,6 +3761,7 @@
       if (!ok) return;
       const gone = habitById(editingId);
       if (hasOwnNote(gone)) deleteNoteFile(gone.voiceNote.id);
+      dropBotLinesOf(editingId);
       state.habits = state.habits.filter((h) => h.id !== editingId);
       delete state.entries[editingId];
       save();

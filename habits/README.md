@@ -105,6 +105,36 @@ no character chosen gets it too.
 - A take that is almost silent gets a warning; under a second is refused.
 - Loading an audio file instead of recording one is the next step.
 
+### Your own bot (2.11)
+
+The character picker has a sixth option, **Tu voz**: a reminder bot that
+speaks with the user's own voice. *Crear mi bot* opens the studio, which
+writes a script from the user's habits (a greeting, two lines per habit that
+name it, three answers to "done", two lines for any habit). Every line can be
+edited, removed or added to before recording, and the bot can be named.
+
+*Leer el guion* turns the studio into a teleprompter: one line at a time,
+large, with the next one underneath. The user reads aloud and pauses; the
+studio finds the end of each phrase by that pause (0.8 s of quiet after at
+least 0.35 s of voice, against a level it learns from the room in the first
+half second) and moves to the next line by itself. *Atrás* reads the previous
+line again, *Saltar* leaves one as it was, *Terminar* stops early. Any line
+can also be recorded alone from its microphone button.
+
+When the reading ends, the take is cut into one recording per line: measured
+again in 10 ms frames, trimmed to the voice with 0.12 s before and 0.18 s
+after, brought to about −20 dBFS without clipping, and saved as a 22.05 kHz
+16-bit WAV by the shell (the same private storage as 2.10's notes). Nothing is
+transcribed: the script's order says which phrase is which line, so the voice
+never leaves the phone.
+
+In each habit's editor, **Frases de tu bot** then lists that habit's recorded
+lines and the ones for any habit, each playable, to tick: the ticked ones take
+turns day by day, like a character's. By default a habit says its own lines,
+and a habit with none recorded says the ones for any habit. A habit with a
+2.10 note of its own plays that note instead. The bot answers "done" with
+its recorded answers, and writes in the in-app chat like the characters.
+
 ### The voices
 
 The voice notes are generated here, once, by

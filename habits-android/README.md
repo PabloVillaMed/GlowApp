@@ -6,9 +6,12 @@ truth — edit the app there, rebuild, and the APK picks the changes up.
 
 ## The built APK
 
-`GlowApp-2.10.apk` sits at the repository root. It is signed with the release key
-in `keystore/` (not committed), targets API 36 (Android 16), and needs Android
-7.0 or newer.
+`GlowApp-2.11.apk` sits at the repository root, with the previous release,
+`GlowApp-2.10.apk`, kept next to it. Both are signed with the release key in
+`keystore/` (not committed), target API 36 (Android 16), and need Android 7.0
+or newer. Installing 2.11 over 2.10 keeps everything; going back to 2.10
+means uninstalling first, since Android never installs a lower `versionCode`
+over a higher one.
 
 The target matters. The first build targeted API 32 and Google Play Protect
 refused to install it — "This app was built for an older version of Android and
@@ -47,13 +50,13 @@ installs once they are answered. Some phones add their own layer on top:
 Over USB with developer options and USB debugging on:
 
 ```sh
-adb install GlowApp-2.10.apk
+adb install GlowApp-2.11.apk
 ```
 
 ## Native features
 
-Four things live in the shell rather than the page, because a web page cannot
-do them:
+These live in the shell rather than the page, because a web page cannot do
+them:
 
 - **Reminders.** A habit can have up to four times. Each is a one-shot alarm
   that arms the next day's when it fires: *exact* when Android allows it
@@ -90,6 +93,13 @@ do them:
   audio capture alone, from the app's own origin, granted once Android has
   granted `RECORD_AUDIO`, which is asked for the first time the record button
   is pressed.
+- **Your own bot** (2.11). To the shell it is one more character, id `mine`:
+  its lines arrive in the snapshot as a reminder's messages with
+  `mine/<id>.wav` voices, and its answers as `character.praise`, so the
+  chat-style notification, the conversation shortcut and the autoplay are the
+  characters' own. `OwnNotes` keeps WAV as well as WebM, telling them apart by
+  their first bytes (RIFF…WAVE or EBML), never by what the page says, and
+  `avatar_mine.png` is the bot's face.
 - **Home-screen widget.** A progress ring for the day that stays put, then a
   scrolling list with every habit due: its colour and emoji, a progress bar
   for counted habits, its streak, and two tap targets — the name opens the
@@ -213,5 +223,6 @@ Uninstalling deletes it. Android's backup includes that storage
 pointed at the wrong folder and carried nothing useful), but treat the JSON
 export as the real backup.
 
-Voice notes recorded in the app (2.10) are files in `files/notes`, outside the
-page's storage: Android's backup carries them, the JSON export does not.
+Voice notes recorded in the app (2.10) and your bot's lines (2.11) are files
+in `files/notes`, outside the page's storage: Android's backup carries them,
+the JSON export does not.

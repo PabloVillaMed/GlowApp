@@ -956,6 +956,85 @@ td { font-variant-numeric: tabular-nums; }
   transition: background 0.15s, color 0.15s;
 }
 .cast-listen.is-playing { background: var(--cast, var(--accent)); color: #fff; }
+/* Your own bot's card: its studio button sits under the words. */
+.cast-card-bot { flex-direction: column; align-items: stretch; gap: 0; }
+.cast-row { display: flex; align-items: center; gap: 4px; }
+.cast-studio { align-self: flex-start; margin: 0 0 8px calc(3.3rem + 0.8rem + 8px); }
+
+/* ── Your own bot: the studio ── */
+.studio {
+  --cast: #E0663A;
+  width: 100%; max-width: 42rem; height: 100dvh; max-height: 100dvh;
+  margin: 0 auto; padding: 0; border: none;
+  background: var(--bg); color: var(--ink);
+}
+.studio[open] { display: flex; flex-direction: column; }
+.studio::backdrop { background: var(--bg); }
+.studio-head {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: calc(8px + env(safe-area-inset-top, 0px)) 12px 8px 4px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.studio-head h2 { font-size: 1.05rem; }
+.studio-body {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  display: flex; flex-direction: column; gap: 14px; padding: 14px 14px 24px;
+}
+.studio-body.is-reading { justify-content: center; }
+.studio-foot {
+  flex: none; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 14px calc(10px + var(--safe-b));
+  background: var(--surface); border-top: 1px solid var(--border);
+}
+.studio-message {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px; border-radius: var(--radius);
+  background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--cast);
+  font-size: 0.84rem; font-weight: 600; line-height: 1.4;
+}
+.studio-message.is-error { background: var(--danger-soft); border-left-color: var(--danger); font-weight: 400; }
+.studio-message .btn { flex: none; }
+.studio-wait { text-align: center; color: var(--ink-2); font-size: 0.95rem; }
+.script-section { display: flex; flex-direction: column; gap: 6px; }
+.script-section h3 { font-size: 0.82rem; font-weight: 700; color: var(--ink-2); }
+.script-line {
+  display: flex; flex-direction: column; gap: 6px; padding: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.script-line.is-recorded { border-color: color-mix(in srgb, var(--cast) 45%, var(--border)); }
+.script-text { min-height: 44px; resize: none; field-sizing: content; }
+.script-tools { display: flex; align-items: center; gap: 4px; min-height: 40px; }
+.script-tools .vn { flex: 1; min-width: 0; }
+.script-missing { flex: 1; padding-left: 4px; font-size: 0.78rem; color: var(--ink-3); }
+.script-mic { color: var(--cast); }
+.script-warn { font-size: 0.75rem; color: var(--danger); }
+.script-add { align-self: flex-start; }
+
+/* Reading: the line to say, big, with the next one under it. */
+.prompter { display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center; }
+.prompter-step { font-size: 0.8rem; color: var(--ink-2); }
+.prompter-line { font-size: 1.55rem; line-height: 1.35; font-weight: 700; max-width: 30rem; }
+.prompter-next { font-size: 0.92rem; color: var(--ink-3); max-width: 30rem; min-height: 1.3em; }
+.prompter .rec-wave { width: min(18rem, 80%); height: 46px; flex: none; }
+.prompter-status { font-size: 0.86rem; font-weight: 600; color: var(--ink-2); min-height: 1.3em; }
+.prompter[data-state='hearing'] .prompter-status { color: var(--danger); }
+.prompter[data-state='got'] .prompter-status,
+.prompter[data-state='got'] .prompter-line { color: var(--cast); }
+.prompter[data-state='got'] .prompter-line { transition: color 0.15s; }
+
+/* ── Editor: your bot's lines for this habit ── */
+.bot-picks {
+  --cast: #E0663A;
+  display: flex; flex-direction: column; gap: 8px;
+  margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--border);
+}
+.bot-pick-list { display: flex; flex-direction: column; gap: 4px; }
+.bot-pick-list:empty { display: none; }
+.bot-pick { display: flex; align-items: center; gap: 6px; }
+.bot-pick label { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; font-size: 0.86rem; line-height: 1.35; }
+.bot-pick input { width: 20px; height: 20px; flex: none; accent-color: var(--cast); }
+.bot-pick-play { flex: none; color: var(--cast); }
+#btnBotStudio { align-self: flex-start; }
 
 /* ── Settings ── */
 .setting-label { font-size: 0.88rem; }

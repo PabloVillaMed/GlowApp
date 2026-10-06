@@ -418,11 +418,12 @@ final class ReminderNotifier {
       case "grandma": return R.drawable.avatar_grandma;
       case "bip": return R.drawable.avatar_bip;
       case "zen": return R.drawable.avatar_zen;
+      case "mine": return R.drawable.avatar_mine;     // the user's own bot (2.11)
       default: return 0;
     }
   }
 
-  /** The same accents as characters.js. */
+  /** The same accents as characters.js, and app.js for the user's own bot. */
   private static int accent(String id) {
     switch (id) {
       case "crack": return Color.parseColor("#1F9D57");
@@ -430,6 +431,7 @@ final class ReminderNotifier {
       case "grandma": return Color.parseColor("#D8507F");
       case "bip": return Color.parseColor("#1597B8");
       case "zen": return Color.parseColor("#C98A1E");
+      case "mine": return Color.parseColor("#E0663A");
       default: return Color.parseColor("#3987E5");
     }
   }

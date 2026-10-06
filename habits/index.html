@@ -31,8 +31,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="GlowApp">
-  <link rel="stylesheet" href="styles.css?v=2.10">
-  <script src="i18n.js?v=2.10"></script>
+  <link rel="stylesheet" href="styles.css?v=2.11">
+  <script src="i18n.js?v=2.11"></script>
 </head>
 <body>
   <!-- Launch screen. The mark draws itself, then a phrase lands under it.
@@ -487,6 +487,14 @@
             <span aria-hidden="true">+</span> <span data-i18n="reminderAdd">Añadir hora</span>
           </button>
           <span class="field-hint" id="reminderHint"></span>
+          <!-- Your own bot's lines for this habit (2.11): which of the phrases
+               you recorded play at these times. -->
+          <div class="bot-picks" id="botPicks" hidden>
+            <span class="field-label" data-i18n="botLinesLabel">Frases de tu bot</span>
+            <div class="bot-pick-list" id="botPickList"></div>
+            <p class="field-hint" id="botPickHint"></p>
+            <button type="button" class="btn btn-sm" id="btnBotStudio" data-i18n="botLinesEdit">Grabar o editar frases</button>
+          </div>
           <!-- Your own voice for this habit's reminders: recorded here, kept by
                the Android app. A browser has no reminders, so no recorder. -->
           <div class="own-voice" id="ownVoice" hidden>
@@ -538,6 +546,21 @@
         <button type="button" class="btn btn-primary" data-close data-i18n="castDone">Listo</button>
       </footer>
     </form>
+  </dialog>
+
+  <!-- ── YOUR OWN BOT ────────────────────────────────────────────────────
+       A script read aloud and cut into one recording per line, each kept
+       with its habit. A dialog, so it opens over the character picker and
+       the habit editor alike. Android app only. -->
+  <dialog class="studio" id="studio" aria-labelledby="studioTitle">
+    <header class="studio-head">
+      <button type="button" class="icon-btn" id="studioBack" data-i18n-label="chatBack" aria-label="Volver">
+        <svg viewBox="0 0 24 24" aria-hidden="true" width="22" height="22"><use href="#i-back"></use></svg>
+      </button>
+      <h2 id="studioTitle" data-i18n="studioTitle">Tu bot de voz</h2>
+    </header>
+    <div class="studio-body" id="studioBody"></div>
+    <footer class="studio-foot" id="studioFoot"></footer>
   </dialog>
 
   <!-- ── THE CONVERSATION ────────────────────────────────────────────── -->
@@ -627,9 +650,9 @@
     </symbol>
   </svg>
 
-  <script src="sounds.js?v=2.10"></script>
-  <script src="charts.js?v=2.10"></script>
-  <script src="characters.js?v=2.10"></script>
-  <script src="app.js?v=2.10"></script>
+  <script src="sounds.js?v=2.11"></script>
+  <script src="charts.js?v=2.11"></script>
+  <script src="characters.js?v=2.11"></script>
+  <script src="app.js?v=2.11"></script>
 </body>
 </html>

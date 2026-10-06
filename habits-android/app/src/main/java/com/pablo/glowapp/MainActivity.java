@@ -499,7 +499,7 @@ public class MainActivity extends Activity {
       final File note = OwnNotes.existing(this, path.substring(1));
       if (note == null) return notFound();
       try {
-        return new WebResourceResponse("audio/webm", null, 200, "OK", headers, new FileInputStream(note));
+        return new WebResourceResponse(OwnNotes.mimeOf(path), null, 200, "OK", headers, new FileInputStream(note));
       } catch (FileNotFoundException gone) {
         return notFound();
       }
