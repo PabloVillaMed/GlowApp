@@ -31,8 +31,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="GlowApp">
-  <link rel="stylesheet" href="styles.css?v=2.11">
-  <script src="i18n.js?v=2.11"></script>
+  <link rel="stylesheet" href="styles.css?v=2.12">
+  <script src="i18n.js?v=2.12"></script>
 </head>
 <body>
   <!-- Launch screen. The mark draws itself, then a phrase lands under it.
@@ -182,6 +182,18 @@
           </div>
         </section>
 
+        <!-- Weight and BMI (2.12): the latest weigh-in, its BMI, and how it moved. -->
+        <section class="card body-card" id="bodyCard" aria-labelledby="bodyHeading">
+          <div class="card-head">
+            <h3 id="bodyHeading" data-i18n="bodyTitle">Peso e IMC</h3>
+            <span class="card-hint" id="bodyHint"></span>
+          </div>
+          <div class="body-now" id="bodyNow"></div>
+          <div class="button-row">
+            <button type="button" class="btn btn-sm" id="btnLogWeight" data-i18n="bodyLog">Registrar peso</button>
+          </div>
+        </section>
+
         <section aria-labelledby="listHeading">
           <div class="section-head">
             <h3 id="listHeading" data-i18n="todaysHabits">Hábitos de hoy</h3>
@@ -240,6 +252,16 @@
           </figcaption>
           <div class="chart-host" id="chartMood"></div>
           <p class="chart-empty" id="chartMoodEmpty" hidden data-i18n="chartNoMood">Registra tu ánimo unos días para ver la tendencia.</p>
+        </figure>
+
+        <figure class="card chart-card" id="figWeight">
+          <figcaption>
+            <h3 data-i18n="chartWeightTitle">Peso</h3>
+            <p class="chart-sub" id="chartWeightSub"></p>
+          </figcaption>
+          <div class="chart-host" id="chartWeight"></div>
+          <p class="chart-empty" id="chartWeightEmpty" hidden></p>
+          <div class="bmi-scale" id="bmiScale" hidden></div>
         </figure>
 
         <figure class="card chart-card" id="figRates">
@@ -376,6 +398,26 @@
           </div>
           <input type="file" id="importFile" accept="application/json,.json" hidden>
           <p class="muted small" id="storageInfo"></p>
+        </section>
+
+        <section class="card setting-group" aria-labelledby="setBody">
+          <h3 id="setBody" data-i18n="bodyTitle">Peso e IMC</h3>
+          <div class="setting-row">
+            <label for="bodyUnit" data-i18n="bodyUnit">Unidades</label>
+            <select id="bodyUnit">
+              <option value="kg">kg · cm</option>
+              <option value="lb">lb · ft/in</option>
+            </select>
+          </div>
+          <div class="setting-row">
+            <label for="bodyGoal" id="bodyGoalLabel" data-i18n="bodyGoal">Peso meta</label>
+            <input type="number" id="bodyGoal" class="setting-number" inputmode="decimal" step="0.1" min="0" data-i18n-placeholder="bodyOptional">
+          </div>
+          <div class="setting-row">
+            <label for="bodyShow" data-i18n="bodyShow">Mostrar en Hoy</label>
+            <label class="switch-inline"><input type="checkbox" id="bodyShow"></label>
+          </div>
+          <p class="muted small" data-i18n="bodyNote"></p>
         </section>
 
         <section class="card setting-group" aria-labelledby="setApp">
@@ -516,6 +558,43 @@
     </form>
   </dialog>
 
+  <!-- A weigh-in (2.12): weight, the day, and the height the BMI needs. -->
+  <dialog class="sheet" id="weightDialog" aria-labelledby="weightTitle">
+    <form method="dialog" id="weightForm" novalidate>
+      <header class="sheet-head">
+        <h2 id="weightTitle" data-i18n="bodyLog">Registrar peso</h2>
+        <button type="button" class="icon-btn" data-close data-i18n-label="close" aria-label="Cerrar">
+          <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20"><use href="#i-close"></use></svg>
+        </button>
+      </header>
+      <div class="sheet-body">
+        <div class="field-pair">
+          <label class="field">
+            <span class="field-label" id="fWeightLabel">Peso</span>
+            <input type="number" id="fWeight" inputmode="decimal" step="0.1" min="0">
+          </label>
+          <label class="field">
+            <span class="field-label" data-i18n="bodyDate">Fecha</span>
+            <input type="date" id="fWeightDate">
+          </label>
+        </div>
+        <div class="field">
+          <span class="field-label" data-i18n="bodyHeight">Estatura</span>
+          <div class="height-inputs" id="heightInputs"></div>
+          <span class="field-hint" data-i18n="bodyHeightHint">Solo se usa para calcular tu IMC.</span>
+        </div>
+        <div class="body-preview" id="weightPreview" aria-live="polite"></div>
+        <p class="form-error" id="weightError" hidden role="alert"></p>
+      </div>
+      <footer class="sheet-foot">
+        <button type="button" class="btn btn-danger ghost" id="btnDeleteWeight" hidden data-i18n="delete">Eliminar</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn" data-close data-i18n="cancel">Cancelar</button>
+        <button type="submit" class="btn btn-primary" data-i18n="save">Guardar</button>
+      </footer>
+    </form>
+  </dialog>
+
   <dialog class="sheet confirm" id="confirmDialog" aria-labelledby="confirmTitle">
     <div class="sheet-body">
       <h2 id="confirmTitle"></h2>
@@ -650,9 +729,9 @@
     </symbol>
   </svg>
 
-  <script src="sounds.js?v=2.11"></script>
-  <script src="charts.js?v=2.11"></script>
-  <script src="characters.js?v=2.11"></script>
-  <script src="app.js?v=2.11"></script>
+  <script src="sounds.js?v=2.12"></script>
+  <script src="charts.js?v=2.12"></script>
+  <script src="characters.js?v=2.12"></script>
+  <script src="app.js?v=2.12"></script>
 </body>
 </html>

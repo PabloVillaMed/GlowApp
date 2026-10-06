@@ -101,8 +101,16 @@
     (opts.yTicks || [1, 2, 3, 4, 5]).forEach((v) => {
       const y = yAt(v);
       el('line', { class: 'viz-grid', x1: M.l, x2: W - M.r, y1: y, y2: y }, svg);
-      el('text', { class: 'viz-tick', x: M.l - 7, y: y + 3.5, 'text-anchor': 'end' }, svg).textContent = v;
+      el('text', { class: 'viz-tick', x: M.l - 7, y: y + 3.5, 'text-anchor': 'end' }, svg).textContent =
+        opts.tickFormat ? opts.tickFormat(v) : v;
     });
+
+    /* A reference value (a goal weight): dashed, labelled at its right end. */
+    if (opts.ref && opts.ref.value >= min && opts.ref.value <= max) {
+      const y = yAt(opts.ref.value);
+      el('line', { class: 'viz-ref', x1: M.l, x2: W - M.r, y1: y, y2: y }, svg);
+      el('text', { class: 'viz-tick', x: W - M.r, y: y - 5, 'text-anchor': 'end' }, svg).textContent = opts.ref.label;
+    }
     el('line', { class: 'viz-axis', x1: M.l, x2: W - M.r, y1: M.t + innerH, y2: M.t + innerH }, svg);
 
     /* x labels: first, middle and last only — dense date ticks collide. */
@@ -112,11 +120,13 @@
       el('text', { class: 'viz-tick', x: xAt(i), y: H - 8, 'text-anchor': anchor }, svg).textContent = pts[i].label;
     });
 
-    /* Gaps (days with no entry) break the path rather than interpolating. */
+    /* Gaps (days with no entry) break the path rather than interpolating —
+       unless `connect` says the readings are sparse by nature (a weigh-in
+       every few days), when the line runs from one to the next. */
     let d = '';
     let open = false;
     pts.forEach((p, i) => {
-      if (p.value === null || p.value === undefined) { open = false; return; }
+      if (p.value === null || p.value === undefined) { if (!opts.connect) open = false; return; }
       d += (open ? 'L' : 'M') + xAt(i).toFixed(1) + ' ' + yAt(p.value).toFixed(1) + ' ';
       open = true;
     });

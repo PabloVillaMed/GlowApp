@@ -33,6 +33,14 @@ Screen*.
   and weekly-quota habits are counted in whole weeks.
 - **Mood** — a 1–5 daily rating with optional energy level and a note, charted
   over time and cross-referenced against habit completion.
+- **Weight and BMI** (2.12) — a weigh-in a day at most, from the card on
+  Today: the latest weight, its BMI with its WHO band for adults, the change
+  since the previous weigh-in and what is left to an optional goal. Progress
+  draws the weight over the chosen range with the goal as a dashed line, and
+  marks the BMI on a strip of the four bands. Kilograms and centimetres are
+  stored whatever is shown (kg and cm, or lb and ft/in, under *Ajustes → Peso
+  e IMC*), where the card can also be hidden. BMI is shown as the rough guide
+  it is: Ajustes says what it cannot tell.
 
 ## The starting test
 
@@ -114,19 +122,39 @@ name it, three answers to "done", two lines for any habit). Every line can be
 edited, removed or added to before recording, and the bot can be named.
 
 *Leer el guion* turns the studio into a teleprompter: one line at a time,
-large, with the next one underneath. The user reads aloud and pauses; the
-studio finds the end of each phrase by that pause (0.8 s of quiet after at
-least 0.35 s of voice, against a level it learns from the room in the first
-half second) and moves to the next line by itself. *Atrás* reads the previous
-line again, *Saltar* leaves one as it was, *Terminar* stops early. Any line
-can also be recorded alone from its microphone button.
+large, with the next one underneath. **Each line owns the stretch of the take
+during which it was on screen** (2.12): whatever is said then is that line.
+The page turns when the reader taps the large *Siguiente frase* button, or,
+with *Pasar sola a la siguiente* on (the default), after a pause. That pause
+is 0.6 s once most of the line has been said and 1.6 s before, "most" being
+judged from the line's length at the reader's own pace, learnt as they read.
+A comma in the middle of a line does not cut it, and a quick reader's short
+breath between lines still turns the page. *Atrás* reads the previous line
+again, *Repetir* starts the current one over, *Saltar* leaves it as it was,
+*Terminar* keeps the line on screen and stops. Any line can also be recorded
+alone from its microphone button. If nothing at all reaches the microphone
+for four seconds, the prompter says so.
 
-When the reading ends, the take is cut into one recording per line: measured
-again in 10 ms frames, trimmed to the voice with 0.12 s before and 0.18 s
-after, brought to about −20 dBFS without clipping, and saved as a 22.05 kHz
-16-bit WAV by the shell (the same private storage as 2.10's notes). Nothing is
-transcribed: the script's order says which phrase is which line, so the voice
-never leaves the phone.
+2.11 decided everything live from pauses of 0.8 s, and a reader who pauses
+less than that between lines got several lines merged into one recording,
+and every later line empty or shifted. On a synthetic quick reader (0.75 s
+between lines, a 1.1 s pause inside one) 2.11 got 0 of 10 lines right; 2.12
+gets 10 of 10 with the button and with automatic page turns, as it does on a
+calm reading and on one over steady background noise that starts talking at
+once.
+
+When the reading ends, the take is cut into one recording per line. It is
+measured again in 10 ms frames against its own quiet level. A run of voice
+belongs to the line on screen when it started (one already under way when the
+line appeared is the previous line's tail; a word still being said as the
+page turns may run on). Each line is trimmed to its voice with 0.12 s before
+and 0.2 s after, brought to about −20 dBFS without clipping, and saved as a
+22.05 kHz 16-bit WAV by the shell (the same private storage as 2.10's notes).
+A line in whose stretch nothing was heard stays as it was. Nothing is
+transcribed, so the voice never leaves the phone.
+
+The words of a line can be changed at any time, also after recording: they
+are what the message shows, and the recording stays.
 
 In each habit's editor, **Frases de tu bot** then lists that habit's recorded
 lines and the ones for any habit, each playable, to tick: the ticked ones take

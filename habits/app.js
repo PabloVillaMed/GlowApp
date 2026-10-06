@@ -87,6 +87,10 @@
   }
 
   /* ── State ─────────────────────────────────────────────────────────── */
+  /* Weigh-ins in kilograms by day and the height in centimetres, whatever
+     units are shown (2.12). */
+  const defaultBody = () => ({ height: null, unit: 'kg', goal: null, weights: {}, show: true });
+
   const defaultState = () => ({
     version: SCHEMA_VERSION,
     /* Spanish on a first run regardless of the device language: this is a
@@ -109,6 +113,7 @@
     habits: [],
     entries: {},
     moods: {},
+    body: defaultBody(),
   });
 
   let state = defaultState();
@@ -161,6 +166,7 @@
     state.chat = Array.isArray(state.chat) ? state.chat : [];
     state.chatUnread = Math.max(0, Number(state.chatUnread) || 0);
     normalizeBot();
+    normalizeBody();
     if (state.character && !castById(state.character)) state.character = null;
     state.habits.forEach((habit) => {
       // One reminder time per habit until 2.8; now a short list of them.
@@ -543,6 +549,335 @@
     }
   }
 
+  /* ── Weight and BMI (2.12) ─────────────────────────────────────────────
+     One weigh-in per day, kept in kilograms; the height in centimetres; the
+     units shown are a setting (kg and cm, or lb and ft/in). BMI is weight
+     over height squared, read against the WHO's bands for adults. */
+  const KG_PER_LB = 0.45359237;
+  const CM_PER_IN = 2.54;
+  const WEIGHT_MIN = 20;
+  const WEIGHT_MAX = 400;
+  const HEIGHT_MIN = 50;
+  const HEIGHT_MAX = 250;
+  const BMI_BANDS = [
+    { band: 'Under', from: 15, to: 18.5 },
+    { band: 'Normal', from: 18.5, to: 25 },
+    { band: 'Over', from: 25, to: 30 },
+    { band: 'Obese', from: 30, to: 40 },
+  ];
+  const inLb = () => state.body.unit === 'lb';
+  const weightUnit = () => (inLb() ? 'lb' : 'kg');
+  const fmtNum = (value, digits) =>
+    value.toLocaleString(I18N.locale(), { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  const shownWeight = (kg) => (inLb() ? kg / KG_PER_LB : kg);
+  const fmtWeight = (kg) => fmtNum(shownWeight(kg), 1) + ' ' + weightUnit();
+  const fmtWeightChange = (kg) => (kg > 0.04 ? '+' : kg < -0.04 ? '−' : '±') + fmtWeight(Math.abs(kg));
+  const weighIns = () => Object.keys(state.body.weights).sort().map((key) => ({ key: key, kg: state.body.weights[key] }));
+  const bmiOf = (kg) => (state.body.height ? kg / Math.pow(state.body.height / 100, 2) : null);
+  const bmiBand = (bmi) => (bmi < 18.5 ? 'Under' : bmi < 25 ? 'Normal' : bmi < 30 ? 'Over' : 'Obese');
+  const bmiText = (bmi) => t('bodyBmi') + ' ' + fmtNum(bmi, 1) + ' · ' + t('bmi' + bmiBand(bmi));
+  // A number input wants a dot, whatever the language.
+  const inputNumber = (value) => String(Math.round(value * 10) / 10);
+
+  function normalizeBody() {
+    const raw = state.body && typeof state.body === 'object' ? state.body : {};
+    const body = defaultBody();
+    const inRange = (v, lo, hi) => typeof v === 'number' && isFinite(v) && v >= lo && v <= hi;
+    if (inRange(raw.height, HEIGHT_MIN, HEIGHT_MAX)) body.height = raw.height;
+    if (raw.unit === 'lb') body.unit = 'lb';
+    if (inRange(raw.goal, WEIGHT_MIN, WEIGHT_MAX)) body.goal = raw.goal;
+    if (raw.show === false) body.show = false;
+    if (raw.weights && typeof raw.weights === 'object') {
+      Object.keys(raw.weights).forEach((key) => {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(key) && inRange(raw.weights[key], WEIGHT_MIN, WEIGHT_MAX)) {
+          body.weights[key] = raw.weights[key];
+        }
+      });
+    }
+    state.body = body;
+  }
+
+  function bmiChip(bmi) {
+    const chip = document.createElement('span');
+    chip.className = 'bmi-chip';
+    chip.dataset.band = bmiBand(bmi);
+    chip.textContent = bmiText(bmi);
+    return chip;
+  }
+
+  /* Today's card: the latest weigh-in, its BMI, the change since the one
+     before, and the way to the goal. */
+  function renderBody() {
+    const card = $('#bodyCard');
+    card.hidden = !state.body.show;
+    if (card.hidden) return;
+    const now = $('#bodyNow');
+    now.innerHTML = '';
+    const entries = weighIns();
+    const latest = entries[entries.length - 1];
+    if (!latest) {
+      $('#bodyHint').textContent = '';
+      const empty = document.createElement('p');
+      empty.className = 'muted small';
+      empty.textContent = t('bodyEmpty');
+      now.appendChild(empty);
+      return;
+    }
+    $('#bodyHint').textContent = t('bodyLast', dayLabel(latest.key));
+    const top = document.createElement('div');
+    top.className = 'body-top';
+    const value = document.createElement('span');
+    value.className = 'body-value';
+    value.textContent = fmtWeight(latest.kg);
+    top.appendChild(value);
+    const bmi = bmiOf(latest.kg);
+    if (bmi) {
+      top.appendChild(bmiChip(bmi));
+    } else {
+      const ask = document.createElement('span');
+      ask.className = 'muted small';
+      ask.textContent = t('bodyNoHeight');
+      top.appendChild(ask);
+    }
+    now.appendChild(top);
+    const notes = [];
+    if (entries.length > 1) notes.push(t('bodySince', fmtWeightChange(latest.kg - entries[entries.length - 2].kg)));
+    if (state.body.goal) {
+      const left = latest.kg - state.body.goal;
+      notes.push(Math.abs(left) < 0.05 ? t('bodyGoalReached') : t('bodyToGoal', fmtWeight(Math.abs(left))));
+    }
+    if (notes.length) {
+      const line = document.createElement('p');
+      line.className = 'body-notes';
+      line.textContent = notes.join(' · ');
+      now.appendChild(line);
+    }
+  }
+
+  /* ── The weigh-in dialog ── */
+  function openWeightDialog() {
+    const today = todayKey();
+    $('#fWeightDate').max = today;
+    $('#weightError').hidden = true;
+    fillWeighIn(selectedDate <= today ? selectedDate : today);
+    renderHeightInputs();
+    renderWeightPreview();
+    $('#weightDialog').showModal();
+    setTimeout(() => $('#fWeight').focus(), 60);
+  }
+
+  /* That day's weigh-in if there is one, else the latest, as a starting point. */
+  function fillWeighIn(date) {
+    $('#fWeightDate').value = date;
+    const existing = state.body.weights[date];
+    const latest = weighIns().slice(-1)[0];
+    const kg = existing || (latest && latest.kg);
+    $('#fWeight').value = kg ? inputNumber(shownWeight(kg)) : '';
+    $('#fWeightLabel').textContent = t('bodyWeight', weightUnit());
+    $('#btnDeleteWeight').hidden = !existing;
+  }
+
+  function renderHeightInputs() {
+    const host = $('#heightInputs');
+    host.innerHTML = '';
+    const cm = state.body.height;
+    const field = (id, value, suffix) => {
+      const wrap = document.createElement('label');
+      wrap.className = 'height-input';
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.id = id;
+      input.inputMode = 'decimal';
+      input.min = '0';
+      input.step = '1';
+      input.value = value === null ? '' : String(value);
+      input.addEventListener('input', renderWeightPreview);
+      const unit = document.createElement('span');
+      unit.textContent = suffix;
+      wrap.append(input, unit);
+      return wrap;
+    };
+    if (inLb()) {
+      let feet = null;
+      let inches = null;
+      if (cm) {
+        const total = Math.round(cm / CM_PER_IN);
+        feet = Math.floor(total / 12);
+        inches = total - feet * 12;
+      }
+      host.append(field('fHeightFt', feet, t('bodyFeet')), field('fHeightIn', inches, t('bodyInches')));
+    } else {
+      host.append(field('fHeightCm', cm ? Math.round(cm) : null, 'cm'));
+    }
+  }
+
+  function readWeightKg() {
+    const value = parseFloat(String($('#fWeight').value).replace(',', '.'));
+    if (!isFinite(value)) return null;
+    return inLb() ? value * KG_PER_LB : value;
+  }
+
+  /* null when left empty, NaN when filled in wrongly. */
+  function readHeightCm() {
+    if (inLb()) {
+      const ft = $('#fHeightFt').value;
+      const inch = $('#fHeightIn').value;
+      if (ft === '' && inch === '') return null;
+      const total = (parseFloat(ft) || 0) * 12 + (parseFloat(inch) || 0);
+      return total > 0 ? total * CM_PER_IN : NaN;
+    }
+    const cm = $('#fHeightCm').value;
+    if (cm === '') return null;
+    const value = parseFloat(String(cm).replace(',', '.'));
+    return isFinite(value) ? value : NaN;
+  }
+
+  function renderWeightPreview() {
+    const box = $('#weightPreview');
+    box.innerHTML = '';
+    const kg = readWeightKg();
+    const cm = readHeightCm();
+    if (!kg || !cm || kg < WEIGHT_MIN || kg > WEIGHT_MAX || cm < HEIGHT_MIN || cm > HEIGHT_MAX) return;
+    box.appendChild(bmiChip(kg / Math.pow(cm / 100, 2)));
+  }
+
+  function saveWeighIn() {
+    const fail = (message) => {
+      const box = $('#weightError');
+      box.textContent = message;
+      box.hidden = false;
+      return false;
+    };
+    const kg = readWeightKg();
+    const cm = readHeightCm();
+    const date = $('#fWeightDate').value;
+    if (!kg || kg < WEIGHT_MIN || kg > WEIGHT_MAX) return fail(t('errWeight'));
+    if (cm !== null && !(cm >= HEIGHT_MIN && cm <= HEIGHT_MAX)) return fail(t('errHeight'));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > todayKey()) return fail(t('errWeight'));
+    state.body.weights[date] = Math.round(kg * 100) / 100;
+    if (cm !== null) state.body.height = Math.round(cm * 10) / 10;
+    save();
+    $('#weightDialog').close();
+    renderBody();
+    renderProgressIfVisible();
+    toast(t('weightSaved'));
+    return true;
+  }
+
+  function deleteWeighIn() {
+    const date = $('#fWeightDate').value;
+    if (!state.body.weights[date]) return;
+    delete state.body.weights[date];
+    save();
+    $('#weightDialog').close();
+    renderBody();
+    renderProgressIfVisible();
+    toast(t('weightDeleted'));
+  }
+
+  /* ── Settings ── */
+  function renderBodySettings() {
+    $('#bodyUnit').value = state.body.unit;
+    $('#bodyGoalLabel').textContent = t('bodyGoal') + ' (' + weightUnit() + ')';
+    $('#bodyGoal').value = state.body.goal ? inputNumber(shownWeight(state.body.goal)) : '';
+    $('#bodyShow').checked = state.body.show;
+  }
+
+  /* ── Progress: the weight line and where the BMI sits ── */
+  function niceTicks(lo, hi) {
+    const step = [0.5, 1, 2, 2.5, 5, 10, 20, 50].find((s) => (hi - lo) / s <= 4) || 100;
+    const from = Math.floor(lo / step) * step;
+    const to = Math.ceil(hi / step) * step;
+    const ticks = [];
+    for (let v = from; v <= to + step / 2; v += step) ticks.push(Math.round(v * 10) / 10);
+    return { min: from, max: to, ticks: ticks, digits: step < 1 ? 1 : 0 };
+  }
+
+  function renderWeightChart(days) {
+    const entries = weighIns();
+    const figure = $('#figWeight');
+    figure.hidden = !entries.length;
+    if (!entries.length) return;
+    const host = $('#chartWeight');
+    const inRange = days.filter((key) => state.body.weights[key]);
+    const latest = entries[entries.length - 1];
+    const bmi = bmiOf(latest.kg);
+    const change = inRange.length > 1
+      ? fmtWeightChange(state.body.weights[inRange[inRange.length - 1]] - state.body.weights[inRange[0]]) : '';
+    $('#chartWeightSub').textContent = t('chartWeightSub', { change: change, bmi: bmi ? bmiText(bmi) : '' });
+    const enough = inRange.length > 1;
+    $('#chartWeightEmpty').hidden = enough;
+    $('#chartWeightEmpty').textContent = enough ? '' : t('chartNoWeight');
+    host.hidden = !enough;
+    if (enough) {
+      const shown = inRange.map((key) => shownWeight(state.body.weights[key]));
+      const goal = state.body.goal ? shownWeight(state.body.goal) : null;
+      let lo = Math.min(...shown);
+      let hi = Math.max(...shown);
+      // The goal is drawn only when it is near enough not to flatten the line.
+      const showGoal = goal !== null && goal > lo - (hi - lo + 2) && goal < hi + (hi - lo + 2);
+      if (showGoal) {
+        lo = Math.min(lo, goal);
+        hi = Math.max(hi, goal);
+      }
+      const pad = Math.max(0.5, (hi - lo) * 0.15);
+      const scale = niceTicks(lo - pad, hi + pad);
+      Charts.line(host, {
+        points: days.map((key) => {
+          const kg = state.body.weights[key];
+          const dateLabel = fmtDate(key, { day: 'numeric', month: 'short' });
+          const tip = '<b>' + dateLabel + '</b>' + (kg ? '<br>' + escapeHtml(fmtWeight(kg)) +
+            (bmiOf(kg) ? '<br><span class="tip-sub">' + escapeHtml(bmiText(bmiOf(kg))) + '</span>' : '') : '');
+          return { label: dateLabel, value: kg ? shownWeight(kg) : null, tip: tip };
+        }),
+        min: scale.min,
+        max: scale.max,
+        yTicks: scale.ticks,
+        tickFormat: (v) => fmtNum(v, scale.digits),
+        connect: true,
+        color: 'var(--s3)',
+        ref: showGoal ? { value: goal, label: t('chartWeightGoal') } : null,
+        ariaLabel: t('chartWeightTitle'),
+      });
+    } else {
+      host.innerHTML = '';
+    }
+    renderBmiScale(bmi);
+  }
+
+  /* A strip from 15 to 40 in the four bands, with a mark where the latest
+     weigh-in puts the BMI. */
+  function renderBmiScale(bmi) {
+    const box = $('#bmiScale');
+    box.hidden = !bmi;
+    box.innerHTML = '';
+    if (!bmi) return;
+    const span = 40 - 15;
+    const track = document.createElement('div');
+    track.className = 'bmi-track';
+    BMI_BANDS.forEach((band) => {
+      const part = document.createElement('span');
+      part.className = 'bmi-band';
+      part.dataset.band = band.band;
+      part.style.width = ((band.to - band.from) / span) * 100 + '%';
+      part.title = t('bmi' + band.band);
+      track.appendChild(part);
+    });
+    const mark = document.createElement('span');
+    mark.className = 'bmi-mark';
+    mark.style.left = (Math.max(0, Math.min(1, (bmi - 15) / span)) * 100) + '%';
+    track.appendChild(mark);
+    const labels = document.createElement('div');
+    labels.className = 'bmi-labels';
+    BMI_BANDS.forEach((band) => {
+      const label = document.createElement('span');
+      label.style.width = ((band.to - band.from) / span) * 100 + '%';
+      label.textContent = t('bmi' + band.band);
+      labels.appendChild(label);
+    });
+    box.append(track, labels, bmiChip(bmi));
+  }
+
   function escapeHtml(str) {
     return String(str).replace(/[&<>"']/g, (c) => (
       { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -874,6 +1209,7 @@
     renderDayStrip();
     renderSummary();
     renderMood();
+    renderBody();
     renderHabitList();
   }
 
@@ -1621,7 +1957,10 @@
   function renderTable(days) {
     const head = $('#dataTableHead');
     const body = $('#dataTableBody');
-    head.innerHTML = '<tr><th>' + t('tableDate') + '</th><th>' + t('tableMood') + '</th><th>' + t('tableDone') + '</th></tr>';
+    // A weight column once there is any weigh-in to show (2.12).
+    const withWeight = Object.keys(state.body.weights).length > 0;
+    head.innerHTML = '<tr><th>' + t('tableDate') + '</th><th>' + t('tableMood') + '</th><th>' + t('tableDone') + '</th>' +
+      (withWeight ? '<th>' + escapeHtml(t('chartWeightTitle')) + '</th>' : '') + '</tr>';
     body.innerHTML = '';
     days.slice().reverse().forEach((key) => {
       const stats = dayStats(key);
@@ -1632,6 +1971,7 @@
         mood && mood.score ? MOOD_EMOJI[mood.score] + ' ' + mood.score : t('noneYet'),
         stats.due ? stats.done + '/' + stats.due : t('noneYet'),
       ];
+      if (withWeight) cells.push(state.body.weights[key] ? fmtWeight(state.body.weights[key]) : '');
       cells.forEach((text) => {
         const td = document.createElement('td');
         td.textContent = text;
@@ -1646,6 +1986,7 @@
     renderRangeSelect();
     renderProgressStats(days);
     renderMoodChart(days);
+    renderWeightChart(days);
     renderRatesChart(days);
     renderHeatSelect();
     renderHeatmap(days);
@@ -1712,6 +2053,7 @@
     fillCategorySelect();
     buildLayoutPickers();
     renderCastSettings();
+    renderBodySettings();
     renderChatButton();
     if (isChatOpen()) renderChat();
     updateViewTitle();
@@ -2332,6 +2674,14 @@
     stopVoice();
     noteError = null;
     const forDraft = draft;
+    // Made in the tap itself, where Android always lets an audio context run.
+    let ctx = null;
+    try {
+      ctx = new AudioContext();
+    } catch (err) {
+      ctx = null;       // it records all the same, without the live level
+    }
+    const dropCtx = () => { if (ctx) ctx.close().catch(() => {}); };
     let stream;
     try {
       // A memo, not a call: echo cancelling would put the phone in call mode
@@ -2341,12 +2691,14 @@
       });
     } catch (err) {
       noteError = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError') ? 'denied' : 'failed';
+      dropCtx();
       renderOwnVoice();
       return;
     }
     // The editor may have closed while Android asked for the permission.
     if (draft !== forDraft || !$('#habitDialog').open) {
       stopTracks(stream);
+      dropCtx();
       return;
     }
     const mime = ['audio/webm;codecs=opus', 'audio/webm'].find((type) => MediaRecorder.isTypeSupported(type));
@@ -2358,6 +2710,7 @@
     }
     if (!media) {
       stopTracks(stream);
+      dropCtx();
       noteError = 'failed';
       renderOwnVoice();
       return;
@@ -2370,7 +2723,8 @@
     media.addEventListener('dataavailable', (evt) => { if (evt.data && evt.data.size) take.chunks.push(evt.data); });
     media.addEventListener('stop', () => finishRecording(take));
     try {
-      take.ctx = new AudioContext();
+      take.ctx = ctx;
+      if (ctx.state !== 'running') ctx.resume().catch(() => {});
       take.analyser = take.ctx.createAnalyser();
       take.analyser.fftSize = 1024;
       take.ctx.createMediaStreamSource(stream).connect(take.analyser);
@@ -2582,10 +2936,6 @@
   const BOT_KINDS = ['intro', 'habit', 'praise', 'generic'];
   const BOT_RATE = 22050;        // Hz, for the cut lines (16-bit WAV)
   const OWN_PATH_RE = /^mine\/[a-z0-9]{6,40}\.(webm|wav)$/;
-  const CALIBRATE = 0.5;         // s of the room's own sound before listening
-  const PHRASE_GAP = 0.8;        // s of quiet that ends a phrase
-  const PHRASE_MIN = 0.35;       // s of voice before a phrase counts
-  const PHRASE_MAX = 15;         // s, then it is cut anyway
 
   const castById = (id) => (id === BOT_ID ? (state.bot ? BOT_CAST : null) : GLOW_CAST.byId(id));
   const botLines = () => (state.bot && Array.isArray(state.bot.lines) ? state.bot.lines : []);
@@ -2594,7 +2944,7 @@
   const clipPath = (clip) => 'mine/' + clip.id + '.' + (clip.ext === 'webm' ? 'webm' : 'wav');
   const lineId = () => 'l' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const lowerFirst = (text) => text.charAt(0).toLocaleLowerCase(I18N.locale()) + text.slice(1);
-  const needsTake = (line) => !line.clip || line.clip.said !== line.text;
+  const needsTake = (line) => !line.clip;
 
   function botCastLines() {
     const intro = botLines().find((line) => line.kind === 'intro');
@@ -2852,8 +3202,10 @@
       }
     });
     input.addEventListener('change', () => {
+      // The words can change after recording: they are what the message shows.
       const text = input.value.trim();
       if (text) line.text = text;
+      if (line.clip) line.clip.said = line.text;
       save();
       renderStudio();
     });
@@ -2881,20 +3233,33 @@
     });
     tools.append(mic, remove);
     row.append(input, tools);
-    if (line.clip && line.clip.said !== line.text) {
-      const warn = document.createElement('p');
-      warn.className = 'script-warn';
-      warn.textContent = t('studioTextChanged');
-      row.appendChild(warn);
-    }
     return row;
   }
 
-  /* ── Reading the script aloud ── */
+  /* ── Reading the script aloud ──
+     Each line owns the stretch of the take during which it was on screen:
+     whatever was said then is that line, found and cut out afterwards from
+     the take itself. Turning the page is the reader's call (the big Next
+     button) or, with automatic advance on, a pause after the line. A pause
+     read wrongly only turns a page early or late; nothing ever slides onto
+     the wrong line, which is what 2.11's purely live detection could do. */
+  /* Automatic page turns: a short pause once most of the line has been
+     said, a long one before that. How long a line takes is guessed from its
+     length at the reader's own pace, learnt as they read; so a comma in the
+     middle of a line does not cut it, and a quick reader's short breath
+     between lines still turns the page. */
+  const AUTO_GAP = 0.6;            // s of quiet that ends a line mostly said
+  const AUTO_GAP_EARLY = 1.6;      // s of quiet that ends one that seems unfinished
+  const AUTO_DONE = 0.55;          // share of a line's expected length that counts as mostly said
+  const AUTO_MIN_VOICE = 0.3;      // s of voice before any pause counts
+  const READ_PACE = 15;            // characters a second, until the reader's own is known
+  const NO_SIGNAL = 4;             // s with nothing from the microphone before saying so
   const freshVad = () => ({ loud: 0, speaking: false, start: 0, last: 0, voiced: 0 });
+  const takeTime = (rd) => (performance.now() - rd.t0) / 1000;
 
-  /* The microphone, a recorder on it, and an analyser for the live level. */
-  async function openMic() {
+  /* The microphone, a recorder on it, and an analyser for the live level.
+     The audio context is made by the caller, inside the tap. */
+  async function openMic(ctx) {
     let stream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({
@@ -2905,18 +3270,16 @@
     }
     const mime = ['audio/webm;codecs=opus', 'audio/webm'].find((type) => MediaRecorder.isTypeSupported(type));
     let media = null;
-    let ctx = null;
     let analyser = null;
     try {
+      if (ctx.state !== 'running') await ctx.resume();
       // A generous rate: the take is only an intermediate, cut into lines and re-encoded.
       media = new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 96000 });
-      ctx = new AudioContext();
       analyser = ctx.createAnalyser();
       analyser.fftSize = 2048;
       ctx.createMediaStreamSource(stream).connect(analyser);
     } catch (err) {
       stopTracks(stream);
-      if (ctx) ctx.close().catch(() => {});
       return { error: 'failed' };
     }
     return { stream: stream, media: media, mime: mime, ctx: ctx, analyser: analyser };
@@ -2928,8 +3291,18 @@
     const session = studio;
     session.error = null;
     session.note = '';
-    const mic = await openMic();
+    // Made in the tap itself: Android lets an audio context made there run.
+    let ctx;
+    try {
+      ctx = new AudioContext();
+    } catch (err) {
+      session.error = 'failed';
+      renderStudio();
+      return;
+    }
+    const mic = await openMic(ctx);
     if (mic.error) {
+      ctx.close().catch(() => {});
       session.error = mic.error;
       if (studio === session) renderStudio();
       return;
@@ -2937,13 +3310,15 @@
     // The studio may have closed while Android asked for the microphone.
     if (studio !== session || !$('#studio').open) {
       stopTracks(mic.stream);
-      mic.ctx.close().catch(() => {});
+      ctx.close().catch(() => {});
       return;
     }
     const rd = {
-      session: session, queue: queue, index: 0, phrases: new Map(), mic: mic, chunks: [],
-      t0: 0, last: 0, floor: null, calib: [], levels: [], buf: new Float32Array(mic.analyser.fftSize),
-      v: freshVad(), gotAt: -1, raf: 0, done: false, cut: false,
+      session: session, queue: queue, index: 0, windows: new Map(), mic: mic, chunks: [],
+      t0: 0, last: 0, hist: [], levels: [], buf: new Float32Array(mic.analyser.fftSize),
+      v: freshVad(), voiceNow: false, spoken: 0, paceChars: 0, paceSeconds: 0,
+      gotAt: -1, heardAt: -1, raf: 0, done: false, cut: false,
+      auto: !state.bot || state.bot.auto !== false,
     };
     session.reading = rd;
     session.mode = 'reading';
@@ -2951,8 +3326,73 @@
     mic.media.addEventListener('stop', () => cutReading(rd));
     mic.media.start(250);
     rd.t0 = performance.now();
+    openWindow(rd, 0);
     renderStudio();
     listen(rd);
+  }
+
+  function openWindow(rd, at) {
+    rd.windows.set(rd.queue[rd.index], { start: at, end: null });
+    rd.v = freshVad();
+    rd.spoken = 0;                    // seconds of voice heard for this line
+  }
+
+  function closeWindow(rd, at) {
+    const span = rd.windows.get(rd.queue[rd.index]);
+    if (span && span.end === null) span.end = at;
+  }
+
+  /* Next, or a pause with automatic advance: this line is done. */
+  function readerNext(rd) {
+    if (rd.done) return;
+    const now = takeTime(rd);
+    // Learn the reader's pace from each line read through.
+    const line = botLines().find((l) => l.id === rd.queue[rd.index]);
+    if (line && rd.spoken > 0.5) {
+      rd.paceChars += line.text.length;
+      rd.paceSeconds += rd.spoken;
+    }
+    closeWindow(rd, now);
+    rd.index++;
+    rd.gotAt = now;
+    if (rd.index >= rd.queue.length) {
+      finishReading(rd);
+      return;
+    }
+    openWindow(rd, now);
+    renderStudio();
+  }
+
+  /* Back: the previous line is read again; this one waits its turn. */
+  function readerBack(rd) {
+    if (rd.done || rd.index === 0) return;
+    rd.windows.delete(rd.queue[rd.index]);
+    rd.index--;
+    openWindow(rd, takeTime(rd));
+    rd.gotAt = -1;
+    renderStudio();
+  }
+
+  /* Again: this line starts over; what was said of it so far is dropped. */
+  function readerRedo(rd) {
+    if (rd.done) return;
+    openWindow(rd, takeTime(rd));
+    rd.gotAt = -1;
+    renderStudio();
+  }
+
+  /* Skip: this line stays as it was. */
+  function readerSkip(rd) {
+    if (rd.done) return;
+    rd.windows.delete(rd.queue[rd.index]);
+    rd.index++;
+    rd.gotAt = -1;
+    if (rd.index >= rd.queue.length) {
+      finishReading(rd);
+      return;
+    }
+    openWindow(rd, takeTime(rd));
+    renderStudio();
   }
 
   function levelDb(rd) {
@@ -2962,79 +3402,59 @@
     return 10 * Math.log10(sum / rd.buf.length + 1e-12);
   }
 
-  /* One look at the microphone per frame. The first half second learns the
-     room; after that a phrase starts when the level stands clear of the
-     room's, and ends after a pause. */
+  /* The room's own level: the quiet end of the last four seconds. It follows
+     a fan switched on or a voice that starts at once, with nothing to learn
+     first. */
+  function roomFloor(rd) {
+    const sorted = rd.hist.slice().sort((a, b) => a - b);
+    return Math.max(-90, Math.min(-25, sorted[Math.floor(sorted.length * 0.15)]));
+  }
+
+  /* One look at the microphone per frame: the meter, the "is anything
+     arriving" check, and the pause that turns the page when that is on. */
   function listen(rd) {
     if (rd.done || rd.session.reading !== rd) return;
-    const now = (performance.now() - rd.t0) / 1000;
+    const now = takeTime(rd);
     const dt = Math.min(0.1, Math.max(0, now - rd.last));
     rd.last = now;
     const db = levelDb(rd);
+    rd.hist.push(db);
+    if (rd.hist.length > 240) rd.hist.shift();
     while (rd.levels.length < Math.floor(now * 10)) rd.levels.push(db);
-    if (now < CALIBRATE) {
-      rd.calib.push(db);
-    } else {
-      if (rd.floor === null) {
-        const sorted = rd.calib.slice().sort((a, b) => a - b);
-        rd.floor = sorted.length ? sorted[sorted.length >> 1] : -60;
-      }
-      hearFrame(rd, now, dt, db);
-      if (rd.done) return;
-    }
+    if (db > -70) rd.heardAt = now;
+    const floor = roomFloor(rd);
+    rd.voiceNow = db > Math.max(floor + 10, -60);
+    if (db > Math.max(floor + 6, -64)) rd.spoken += dt;
+    if (rd.auto) hearFrame(rd, now, dt, db, floor);
+    if (rd.done) return;
     paintPrompter(rd, now);
     rd.raf = requestAnimationFrame(() => listen(rd));
   }
 
-  function hearFrame(rd, now, dt, db) {
+  function hearFrame(rd, now, dt, db, floor) {
     const v = rd.v;
-    const on = db > Math.max(rd.floor + 14, -50);
-    const stay = db > Math.max(rd.floor + 8, -56);
     if (!v.speaking) {
-      // The room's own level drifts; quiet frames pull the floor along.
-      if (db < rd.floor) rd.floor = db;
-      else if (db < rd.floor + 6) rd.floor += (db - rd.floor) * 0.02;
-      v.loud = on ? v.loud + 1 : 0;
+      v.loud = rd.voiceNow ? v.loud + 1 : 0;
       if (v.loud >= 3) {
         v.speaking = true;
-        v.start = now - 0.1;
+        v.start = now;
         v.last = now;
         v.voiced = 0;
       }
       return;
     }
-    if (stay) {
+    if (db > Math.max(floor + 6, -64)) {
       v.voiced += dt;
       v.last = now;
     }
-    if (now - v.last >= PHRASE_GAP || now - v.start >= PHRASE_MAX) {
-      if (v.voiced >= PHRASE_MIN) phraseHeard(rd, v.start, v.last, now);
+    const line = botLines().find((l) => l.id === rd.queue[rd.index]);
+    const pace = rd.paceSeconds > 2 ? Math.max(8, Math.min(25, rd.paceChars / rd.paceSeconds)) : READ_PACE;
+    const expected = line ? line.text.length / pace : 1;
+    const gap = rd.spoken >= expected * AUTO_DONE ? AUTO_GAP : AUTO_GAP_EARLY;
+    if (now - v.last >= gap) {
+      if (v.voiced >= AUTO_MIN_VOICE) readerNext(rd);
       else rd.v = freshVad();                 // a cough or a click, not a line
     }
-  }
-
-  function phraseHeard(rd, start, end, now) {
-    rd.phrases.set(rd.queue[rd.index], { start: Math.max(0, start - 0.15), end: end + 0.25 });
-    rd.index++;
-    rd.v = freshVad();
-    rd.gotAt = now;
-    if (rd.index >= rd.queue.length) finishReading(rd);
-    else renderStudio();
-  }
-
-  function readerMove(rd, step) {
-    if (rd.done) return;
-    if (step < 0) {
-      if (rd.index === 0) return;
-      rd.index--;
-      rd.phrases.delete(rd.queue[rd.index]);    // that line is read again
-    } else {
-      rd.index++;                               // that line stays as it was
-    }
-    rd.v = freshVad();
-    rd.gotAt = -1;
-    if (rd.index >= rd.queue.length) finishReading(rd);
-    else renderStudio();
   }
 
   function sectionTitleOf(line) {
@@ -3049,6 +3469,7 @@
     const rd = studio.reading;
     const line = botLines().find((l) => l.id === rd.queue[rd.index]);
     const next = botLines().find((l) => l.id === rd.queue[rd.index + 1]);
+    const last = rd.index === rd.queue.length - 1;
     const box = document.createElement('div');
     box.className = 'prompter';
     const step = document.createElement('p');
@@ -3067,47 +3488,72 @@
     const status = document.createElement('p');
     status.className = 'prompter-status';
     status.setAttribute('aria-live', 'polite');
-    box.append(step, words, after, wave, status);
+    const go = button('btn btn-primary prompter-go', last ? t('studioLastDone') : t('studioNextLine'));
+    go.id = 'studioNext';
+    go.addEventListener('click', () => readerNext(rd));
+    const auto = document.createElement('label');
+    auto.className = 'switch-inline prompter-auto';
+    const tick = document.createElement('input');
+    tick.type = 'checkbox';
+    tick.id = 'studioAuto';
+    tick.checked = rd.auto;
+    tick.addEventListener('change', () => {
+      rd.auto = tick.checked;
+      rd.v = freshVad();
+      if (state.bot) state.bot.auto = tick.checked;
+      save();
+      paintPrompter(rd, takeTime(rd));
+    });
+    const autoText = document.createElement('span');
+    autoText.textContent = t('studioAuto');
+    auto.append(tick, autoText);
+    box.append(step, words, after, wave, status, go, auto);
     body.appendChild(box);
 
-    const back = button('btn', t('studioBackLine'));
+    const back = button('btn btn-sm', t('studioBackLine'));
     back.disabled = rd.index === 0;
-    back.addEventListener('click', () => readerMove(rd, -1));
-    const skip = button('btn', t('studioSkip'));
-    skip.addEventListener('click', () => readerMove(rd, 1));
+    back.addEventListener('click', () => readerBack(rd));
+    const redo = button('btn btn-sm', t('studioRedo'));
+    redo.addEventListener('click', () => readerRedo(rd));
+    const skip = button('btn btn-sm', t('studioSkip'));
+    skip.addEventListener('click', () => readerSkip(rd));
     const spacer = document.createElement('span');
     spacer.className = 'spacer';
-    const finish = button('btn btn-primary', t('studioFinish'));
+    const finish = button('btn btn-sm', t('studioFinish'));
     finish.id = 'studioFinish';
     finish.addEventListener('click', () => finishReading(rd));
-    foot.append(back, skip, spacer, finish);
-    paintPrompter(rd, (performance.now() - rd.t0) / 1000);
+    foot.append(back, redo, skip, spacer, finish);
+    paintPrompter(rd, takeTime(rd));
   }
 
   function paintPrompter(rd, now) {
     const box = $('#studioBody .prompter');
     if (!box) return;
-    const mode = now < CALIBRATE ? 'calibrating'
-      : rd.gotAt >= 0 && now - rd.gotAt < 0.9 ? 'got'
-      : rd.v.speaking ? 'hearing' : 'listening';
+    const mode = rd.heardAt < 0 && now > NO_SIGNAL ? 'silent'
+      : rd.gotAt >= 0 && now - rd.gotAt < 0.8 ? 'got'
+      : rd.voiceNow ? 'hearing'
+      : rd.auto ? 'listening' : 'manual';
     if (box.dataset.state !== mode) {
       box.dataset.state = mode;
       box.querySelector('.prompter-status').textContent = t({
-        calibrating: 'studioCalibrating', got: 'studioGotIt', hearing: 'studioHearing', listening: 'studioListening',
+        silent: 'studioNoSignal', got: 'studioGotIt', hearing: 'studioHearing',
+        listening: 'studioListening', manual: 'studioManual',
       }[mode]);
     }
     const bars = box.querySelectorAll('.rec-wave i');
     const recent = rd.levels.slice(-bars.length);
     const offset = bars.length - recent.length;
-    const floor = rd.floor === null ? -60 : rd.floor;
+    const floor = rd.hist.length ? roomFloor(rd) : -60;
     bars.forEach((bar, i) => {
       const above = i < offset ? 0 : Math.max(0, Math.min(1, (recent[i - offset] - floor) / 40));
       bar.style.height = (12 + above * 88) + '%';
     });
   }
 
+  /* Finish, or the last line done: the line on screen keeps what was said. */
   function finishReading(rd) {
     if (rd.done) return;
+    if (rd.index < rd.queue.length) closeWindow(rd, takeTime(rd));
     rd.done = true;
     cancelAnimationFrame(rd.raf);
     rd.session.mode = 'cutting';
@@ -3121,18 +3567,22 @@
   }
 
   /* The take, cut into its lines: each saved by the shell as a WAV of its
-     own, the recording it replaces deleted. */
+     own, the recording it replaces deleted. A line in whose stretch nothing
+     was heard stays as it was. */
   async function cutReading(rd) {
     if (rd.cut) return;
     rd.cut = true;
     stopTracks(rd.mic.stream);
+    const windows = rd.queue
+      .filter((id) => rd.windows.has(id) && rd.windows.get(id).end !== null)
+      .map((id) => Object.assign({ id: id }, rd.windows.get(id)));
     let saved = 0;
     let failed = false;
-    if (rd.phrases.size) {
+    if (windows.length) {
       try {
         const blob = new Blob(rd.chunks, { type: rd.mic.mime });
         const audio = await rd.mic.ctx.decodeAudioData(await blob.arrayBuffer());
-        for (const cut of planCuts(audio, rd)) {
+        for (const cut of planCuts(audio, windows)) {
           const line = botLines().find((l) => l.id === cut.id);
           if (!line) continue;
           const take = await renderPhrase(audio, cut);
@@ -3162,23 +3612,25 @@
     const session = rd.session;
     session.reading = null;
     session.mode = 'script';
-    session.note = saved ? t('studioSaved', saved) : '';
+    session.note = !saved ? ''
+      : saved === rd.queue.length ? t('studioSaved', saved)
+      : t('studioSavedSome', { saved: saved, of: rd.queue.length });
     session.error = failed ? 'failed' : saved ? null : 'none';
     if (studio === session) {
       renderStudio();
     } else {
       // Closed while its lines were being cut: say how it went, then finish closing.
-      if (saved) toast(t('studioSaved', saved));
+      if (saved) toast(session.note);
       afterStudio(session);
     }
   }
 
-  /* Where each phrase really starts and ends. The live detection lags a
-     little and pads generously; here the take itself is measured in 10 ms
-     frames against its own quietest level, and each phrase is trimmed to its
-     voice (never past the middle of the pause to its neighbours) and given
-     a gain that brings it to one common level. */
-  function planCuts(audio, rd) {
+  /* Where each line's voice really is. The take is measured in 10 ms frames
+     against its own quiet level; within the stretch each line was on screen
+     (with a little slack for the screen's lag), the voice runs from its
+     first sound to its last, clicks under 60 ms ignored. Each is trimmed with
+     a short margin and given a gain that brings it to one common level. */
+  function planCuts(audio, windows) {
     const data = audio.getChannelData(0);
     const rate = audio.sampleRate;
     const hop = Math.max(1, Math.round(rate / 100));
@@ -3191,27 +3643,43 @@
     }
     const sorted = Array.from(db).sort((a, b) => a - b);
     const floor = sorted.length ? sorted[Math.floor(sorted.length * 0.1)] : -80;
-    const voice = Math.min(Math.max(floor + 12, -55), -28);
-    const order = rd.queue.filter((id) => rd.phrases.has(id))
-      .map((id) => Object.assign({ id: id }, rd.phrases.get(id)))
-      .sort((a, b) => a.start - b.start);
-    return order.map((p, i) => {
-      const lo = Math.max(0, p.start - 0.35, i > 0 ? (order[i - 1].end + p.start) / 2 : 0);
-      const hi = Math.min(audio.duration, p.end + 0.35,
-        i < order.length - 1 ? (p.end + order[i + 1].start) / 2 : audio.duration);
+    const voice = Math.min(Math.max(floor + 10, -62), -30);
+    return windows.map((w) => {
+      // A run of voice belongs to this line if it starts while the line is on
+      // screen: one already under way when it appeared is the previous line's
+      // tail, one starting after the page turned is the next line's start. A
+      // word still being said at the turn may run on a little.
+      const lo = Math.max(0, w.start - 0.1);
+      const startF = Math.floor(lo * 100);
+      const endF = Math.min(frames, Math.ceil(w.end * 100));
+      const tailF = Math.min(frames, Math.ceil((w.end + 0.4) * 100));
+      const hi = tailF / 100;
       let first = -1;
       let last = -1;
       let energy = 0;
       let count = 0;
-      for (let f = Math.floor(lo * 100); f < Math.min(frames, Math.ceil(hi * 100)); f++) {
-        if (db[f] <= voice) continue;
-        if (first < 0) first = f;
-        last = f;
-        energy += Math.pow(10, db[f] / 10);
-        count++;
+      let f = startF;
+      // (The first line has no previous one: a voice there from the start is its own.)
+      if (w.start > 0.05) while (f < endF && db[f] > voice) f++;
+      while (f < tailF) {
+        if (db[f] <= voice) {
+          f++;
+          continue;
+        }
+        if (f >= endF && !(last >= 0 && f - last <= 15)) break;
+        const run = f;
+        while (f < tailF && db[f] > voice) f++;
+        if (f - run < 6 && !(last >= 0 && run - last <= 15)) continue;     // a click, not a word
+        if (first < 0) first = run;
+        last = f - 1;
+        for (let g = run; g < f; g++) {
+          energy += Math.pow(10, db[g] / 10);
+          count++;
+        }
       }
-      const from = first < 0 ? lo : Math.max(lo, first / 100 - 0.12);
-      const to = last < 0 ? hi : Math.min(hi, (last + 1) / 100 + 0.18);
+      if (first < 0) return null;
+      const from = Math.max(lo, first / 100 - 0.12);
+      const to = Math.min(hi, (last + 1) / 100 + 0.2, from + 30);
       let peak = 0;
       for (let s = Math.floor(from * rate); s < Math.min(data.length, Math.ceil(to * rate)); s++) {
         const value = Math.abs(data[s]);
@@ -3220,8 +3688,8 @@
       const rms = count ? Math.sqrt(energy / count) : 0;
       // Speech at about -20 dBFS, never clipping, and never boosted past +18 dB.
       const gain = Math.min(rms ? 0.1 / rms : 1, peak ? 0.89 / peak : 1, 8);
-      return { id: p.id, from: from, to: Math.max(to, from + 0.2), gain: gain };
-    });
+      return { id: w.id, from: from, to: Math.max(to, from + 0.2), gain: gain };
+    }).filter(Boolean);
   }
 
   /* One phrase, resampled for the WAV, levelled, with 15 ms fades so it
@@ -3621,7 +4089,10 @@
     if (name === 'today') renderToday();
     if (name === 'habits') renderHabitsView();
     if (name === 'progress') renderProgress();
-    if (name === 'settings') updateStorageInfo();
+    if (name === 'settings') {
+      updateStorageInfo();
+      renderBodySettings();
+    }
     window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
   }
 
@@ -3736,6 +4207,45 @@
     });
 
     /* Habit dialog */
+    /* Weight and BMI */
+    $('#btnLogWeight').addEventListener('click', openWeightDialog);
+    $('#weightForm').addEventListener('submit', (evt) => {
+      evt.preventDefault();
+      saveWeighIn();
+    });
+    $$('#weightDialog [data-close]').forEach((btn) => {
+      btn.addEventListener('click', () => $('#weightDialog').close());
+    });
+    $('#btnDeleteWeight').addEventListener('click', deleteWeighIn);
+    $('#fWeight').addEventListener('input', renderWeightPreview);
+    $('#fWeightDate').addEventListener('change', () => {
+      const date = $('#fWeightDate').value;
+      $('#btnDeleteWeight').hidden = !state.body.weights[date];
+      if (state.body.weights[date]) $('#fWeight').value = inputNumber(shownWeight(state.body.weights[date]));
+      renderWeightPreview();
+    });
+    $('#bodyUnit').addEventListener('change', (evt) => {
+      state.body.unit = evt.target.value === 'lb' ? 'lb' : 'kg';
+      save();
+      renderBodySettings();
+      renderBody();
+      renderProgressIfVisible();
+    });
+    $('#bodyGoal').addEventListener('change', (evt) => {
+      const value = parseFloat(String(evt.target.value).replace(',', '.'));
+      const kg = isFinite(value) ? (inLb() ? value * KG_PER_LB : value) : null;
+      state.body.goal = kg && kg >= WEIGHT_MIN && kg <= WEIGHT_MAX ? Math.round(kg * 100) / 100 : null;
+      save();
+      renderBodySettings();
+      renderBody();
+      renderProgressIfVisible();
+    });
+    $('#bodyShow').addEventListener('change', (evt) => {
+      state.body.show = evt.target.checked;
+      save();
+      renderBody();
+    });
+
     $('#habitForm').addEventListener('submit', (evt) => {
       evt.preventDefault();
       saveHabit();

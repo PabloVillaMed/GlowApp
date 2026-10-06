@@ -559,6 +559,7 @@ button.habit-main:hover .habit-name { color: var(--accent); }
 .viz-cell { rx: 3; stroke: var(--surface); stroke-width: 1.5; }
 .viz-cell.is-hit { cursor: pointer; }
 .viz-crosshair { stroke: var(--border-strong); stroke-width: 1; stroke-dasharray: 3 3; }
+.viz-ref { stroke: var(--good); stroke-width: 1.5; stroke-dasharray: 6 4; opacity: 0.85; }
 
 .viz-legend {
   display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center;
@@ -1007,7 +1008,6 @@ td { font-variant-numeric: tabular-nums; }
 .script-tools .vn { flex: 1; min-width: 0; }
 .script-missing { flex: 1; padding-left: 4px; font-size: 0.78rem; color: var(--ink-3); }
 .script-mic { color: var(--cast); }
-.script-warn { font-size: 0.75rem; color: var(--danger); }
 .script-add { align-self: flex-start; }
 
 /* Reading: the line to say, big, with the next one under it. */
@@ -1021,6 +1021,9 @@ td { font-variant-numeric: tabular-nums; }
 .prompter[data-state='got'] .prompter-status,
 .prompter[data-state='got'] .prompter-line { color: var(--cast); }
 .prompter[data-state='got'] .prompter-line { transition: color 0.15s; }
+.prompter[data-state='silent'] .prompter-status { color: var(--danger); }
+.prompter-go { width: min(20rem, 100%); min-height: 54px; font-size: 1rem; }
+.prompter-auto { font-size: 0.82rem; color: var(--ink-2); }
 
 /* ── Editor: your bot's lines for this habit ── */
 .bot-picks {
@@ -1057,6 +1060,41 @@ td { font-variant-numeric: tabular-nums; }
 }
 .setting-warning .btn { flex: none; }
 .credits { line-height: 1.5; }
+
+/* ── Weight and BMI ── */
+.body-card { display: flex; flex-direction: column; gap: 10px; }
+.body-top { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.body-value { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.body-notes { font-size: 0.82rem; color: var(--ink-2); }
+.bmi-chip {
+  --band: var(--s3);
+  display: inline-flex; align-items: center; padding: 4px 10px;
+  border-radius: var(--radius-pill); font-size: 0.78rem; font-weight: 600;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--band) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--band) 45%, transparent);
+}
+.bmi-chip[data-band='Under'], .bmi-band[data-band='Under'] { --band: var(--s1); }
+.bmi-chip[data-band='Normal'], .bmi-band[data-band='Normal'] { --band: var(--s3); }
+.bmi-chip[data-band='Over'], .bmi-band[data-band='Over'] { --band: var(--s4); }
+.bmi-chip[data-band='Obese'], .bmi-band[data-band='Obese'] { --band: var(--s8); }
+.body-preview:empty { display: none; }
+.height-inputs { display: flex; gap: 8px; }
+.height-input { flex: 1; display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--ink-2); }
+.height-input input { flex: 1; min-width: 0; }
+.setting-number { width: 7.5rem; flex: none; }
+.bmi-scale { display: flex; flex-direction: column; gap: 6px; }
+.bmi-scale .bmi-chip { align-self: flex-start; }
+.bmi-track { position: relative; display: flex; height: 10px; border-radius: var(--radius-pill); overflow: visible; }
+.bmi-band { height: 100%; background: color-mix(in srgb, var(--band) 70%, transparent); }
+.bmi-band:first-child { border-radius: var(--radius-pill) 0 0 var(--radius-pill); }
+.bmi-band:last-of-type { border-radius: 0 var(--radius-pill) var(--radius-pill) 0; }
+.bmi-mark {
+  position: absolute; top: -4px; width: 4px; height: 18px; margin-left: -2px;
+  border-radius: 2px; background: var(--ink); box-shadow: 0 0 0 2px var(--surface);
+}
+.bmi-labels { display: flex; font-size: 0.66rem; color: var(--ink-2); }
+.bmi-labels span { text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── Editor: reminder times ── */
 .reminder-list { display: flex; flex-direction: column; gap: 6px; }
