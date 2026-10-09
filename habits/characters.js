@@ -148,6 +148,21 @@
             'Crack, los mejores pases se dan a los amigos. Llama hoy a alguien que quieras.',
             'Crack, un mensaje a tu gente también es jugar en equipo. ¡Escríbele a alguien!',
           ],
+          brushTeeth: [
+            'Crack, sonrisa de campeón para la foto del trofeo. Dos minutos de cepillo, sin prisas.',
+            'Antes de salir a la cancha, dientes limpios, crack. Dos minutos y listo.',
+            'Crack, el cepillo también entrena. Arriba, abajo y por dentro, como una buena jugada.',
+          ],
+          floss: [
+            'Crack, el hilo dental llega donde el cepillo no. Una pasada entre cada diente y a ganar.',
+            'Defensa cerrada, crack: hilo dental entre todos los dientes. Que no se cuele nada.',
+            'Las encías también juegan el partido, crack. Un minuto de hilo dental y al vestuario.',
+          ],
+          noFap: [
+            'Crack, otro día en el reto. Tú llevas la cinta de capitán; si llega la tentación, cambia de jugada.',
+            'Partido largo, crack. Si aprieta el impulso, sal a moverte, date una ducha o llama a alguien. Tú mandas.',
+            'Crack, cada día que sumas es un gol a tu favor. Cabeza en lo tuyo y a seguir la racha.',
+          ],
         },
         generic: [
           { text: 'Crack, «{habit}» te está esperando en la cancha. ¡A por ello!',
@@ -286,6 +301,21 @@
             'Champ, nobody wins alone. Call or text someone from your team in life.',
             'Champ, the best passes go to friends. Call someone you love today.',
             'Champ, a message to your people is team play too. Text someone!',
+          ],
+          brushTeeth: [
+            'Champ, a winner\'s smile for the trophy photo. Two minutes of brushing, no rushing.',
+            'Clean teeth before you step onto the pitch, champ. Two minutes and done.',
+            'Champ, the toothbrush trains too. Up, down and behind, like a good play.',
+          ],
+          floss: [
+            'Champ, floss reaches where the brush cannot. Once between every tooth, then on to the win.',
+            'Tight defence, champ: floss between every tooth. Let nothing through.',
+            'Your gums play the match too, champ. A minute of flossing, then the locker room.',
+          ],
+          noFap: [
+            'Champ, another day in the challenge. You wear the captain\'s armband; if temptation comes, switch the play.',
+            'Long match, champ. When the urge pushes, get moving, take a shower or call someone. You call the shots.',
+            'Champ, every day you add is a goal for you. Head in your game, and keep the streak going.',
           ],
         },
         generic: [
@@ -429,6 +459,21 @@
             'Hay una conversación pendiente flotando en el aire. Solo tú puedes empezarla.',
             'Dicen que las voces queridas se apagan si nadie las llama. Llama hoy a alguien.',
           ],
+          brushTeeth: [
+            'En el baño, un cepillo espera en silencio. Dicen que dos minutos con él hacen que una sonrisa brille en la oscuridad.',
+            'Cuentan que las caries trabajan en las sombras. Cepíllate ahora y déjalas sin historia que contar.',
+            'Un reflejo te sonríe desde el espejo. Dale dos minutos de cepillo; quiere seguir sonriendo.',
+          ],
+          floss: [
+            'Entre los dientes se esconden secretos que el cepillo nunca encuentra. El hilo dental sí.',
+            'Un hilo fino, una misión silenciosa. Pásalo entre cada diente y que nada quede escondido.',
+            'Dicen que las encías recuerdan cada olvido. Hoy dales un buen recuerdo: hilo dental.',
+          ],
+          noFap: [
+            'Esta historia trata de alguien que decidió llevar las riendas. Hoy escribe otro capítulo de su racha.',
+            'Una tentación ronda por la casa. Dicen que se desvanece si sales a caminar o hablas con alguien. Pruébalo.',
+            'Cuentan que cada día del reto deja una marca invisible de fuerza. Hoy sumas otra.',
+          ],
         },
         generic: [
           { text: 'Dicen que «{habit}» lleva un rato esperando en la oscuridad... Ve antes de que se impaciente.',
@@ -567,6 +612,21 @@
             'Someone is thinking of you right now. Break the silence: call or text them today.',
             'An unfinished conversation is floating in the air. Only you can start it.',
             'They say beloved voices fade if no one calls them. Call someone today.',
+          ],
+          brushTeeth: [
+            'In the bathroom, a toothbrush waits in silence. They say two minutes with it make a smile glow in the dark.',
+            'They say cavities work in the shadows. Brush now, and leave them no story to tell.',
+            'A reflection smiles at you from the mirror. Give it two minutes of brushing; it wants to keep smiling.',
+          ],
+          floss: [
+            'Between your teeth hide secrets the brush never finds. The floss does.',
+            'A thin thread, a silent mission. Pass it between every tooth, and leave nothing hidden.',
+            'They say gums remember every time they were forgotten. Give them a good memory today: floss.',
+          ],
+          noFap: [
+            'This story is about someone who chose to hold the reins. Today they write another chapter of their streak.',
+            'A temptation wanders the house. They say it fades if you go for a walk or talk to someone. Try it.',
+            'They say every day of the challenge leaves an invisible mark of strength. Today you add another.',
           ],
         },
         generic: [
@@ -710,6 +770,21 @@
             'Corazón, hace mucho que no llamas a alguien querido. Aunque sea un mensajito.',
             'Tesoro, la gente que nos quiere también necesita saber de nosotros. Llama a alguien.',
           ],
+          brushTeeth: [
+            'Cielo, a lavarse los dientes. Dos minutos, bien despacito, como te enseñé siempre.',
+            'Mi amor, esa sonrisa tan linda hay que cuidarla. Cepillo y pasta, ahora mismo.',
+            'Corazón, con mis años tengo todos mis dientes porque nunca me salté el cepillo. Te toca.',
+          ],
+          floss: [
+            'Tesoro, el hilo dental también, ¿eh? Que entre los dientes se esconde de todo.',
+            'Mi amor, pásate el hilo dental con cuidado, sin lastimar las encías.',
+            'Cielo, mi dentista siempre dice que el hilo dental es lo que más se olvida. Que no te pase.',
+          ],
+          noFap: [
+            'Corazón, sigue firme con tu propósito. Si te cuesta, sal a dar una vuelta o llámame, que para eso estoy.',
+            'Mi amor, la abuela está muy orgullosa de tu racha. Un día más, con calma y sin culpas.',
+            'Tesoro, cuando la cabeza se pone terca, ocúpala en otra cosa: una ducha, un libro, una llamada. Yo confío en ti.',
+          ],
         },
         generic: [
           { text: 'Mi amor, no te olvides de «{habit}». Te lo digo porque te quiero.',
@@ -848,6 +923,21 @@
             "Sweetheart, call someone you love. And if it's your grandma, even better.",
             "Darling, it's been a while since you called someone dear. A little message, at least.",
             'Treasure, the people who love us need to hear from us too. Call someone.',
+          ],
+          brushTeeth: [
+            'Honey, time to brush your teeth. Two minutes, nice and slow, like I always taught you.',
+            'Sweetheart, that lovely smile needs looking after. Brush and paste, right now.',
+            'Darling, at my age I still have all my teeth because I never skipped the brush. Your turn.',
+          ],
+          floss: [
+            'Treasure, floss too, all right? All sorts of things hide between those teeth.',
+            'Sweetheart, floss gently, and be careful with your gums.',
+            'Honey, my dentist always says floss is the most forgotten thing. Don\'t let it be yours.',
+          ],
+          noFap: [
+            'Darling, stay firm with your goal. If it gets hard, go for a little walk or call me; that\'s what I\'m here for.',
+            'Sweetheart, Grandma is very proud of your streak. One more day, calmly and without guilt.',
+            'Treasure, when your head gets stubborn, keep it busy: a shower, a book, a phone call. I believe in you.',
           ],
         },
         generic: [
@@ -991,6 +1081,21 @@
             'Bip. Conexión humana pendiente. Ninguna red la sustituye. Llama a alguien.',
             'Bip. Detecto contactos sin actividad reciente. Envía un mensaje a alguien querido.',
           ],
+          brushTeeth: [
+            'Bip. Mantenimiento dental programado. Duración recomendada: dos minutos. Inicia el cepillado.',
+            'Bip. Dato: el esmalte dental es el tejido más duro del cuerpo humano. Aun así, necesita cepillo.',
+            'Bip. Detecto una sonrisa sin limpiar. Aplica cepillo y pasta. Yo solo necesito un paño.',
+          ],
+          floss: [
+            'Bip. El cepillo no alcanza entre los dientes. Para eso existe el hilo dental. Procede.',
+            'Bip. Limpieza de espacios intermedios pendiente. Herramienta requerida: hilo dental.',
+            'Bip. Revisión de encías: aprobada si usas hilo dental hoy. Te espero.',
+          ],
+          noFap: [
+            'Bip. Reto en curso. Racha activa. Te recomiendo no interrumpir el proceso.',
+            'Bip. Si aparece un impulso, cambia de tarea: caminar, ducharte o hablar con alguien. Es un buen protocolo.',
+            'Bip. Los impulsos suben y bajan como una ola. Espera unos minutos y pasarán. Yo cronometro.',
+          ],
         },
         generic: [
           { text: 'Bip. Tarea pendiente: «{habit}». Prioridad: alta. Excusas: no compatibles.',
@@ -1129,6 +1234,21 @@
             'Beep. Humans need other humans. That is a fact. Call someone you love.',
             'Beep. Human connection pending. No network can replace it. Call someone.',
             'Beep. Contacts with no recent activity detected. Send a message to someone dear.',
+          ],
+          brushTeeth: [
+            'Beep. Scheduled dental maintenance. Recommended duration: two minutes. Begin brushing.',
+            'Beep. Fact: tooth enamel is the hardest tissue in the human body. It still needs a brush.',
+            'Beep. Uncleaned smile detected. Apply brush and toothpaste. I only need a cloth.',
+          ],
+          floss: [
+            'Beep. The brush cannot reach between your teeth. That is what floss is for. Proceed.',
+            'Beep. Cleaning of in-between spaces pending. Required tool: dental floss.',
+            'Beep. Gum inspection: passed if you floss today. I will wait.',
+          ],
+          noFap: [
+            'Beep. Challenge in progress. Streak active. I recommend not interrupting the process.',
+            'Beep. If an urge appears, switch tasks: walk, shower or talk to someone. It is a good protocol.',
+            'Beep. Urges rise and fall like a wave. Wait a few minutes and they pass. I will keep time.',
           ],
         },
         generic: [
@@ -1272,6 +1392,21 @@
             'Una voz amiga es un refugio. Llama a alguien que aprecias.',
             'Compartir un momento con alguien querido alimenta el alma. Escríbele hoy.',
           ],
+          brushTeeth: [
+            'Cepillar los dientes despacio también es meditar. Dos minutos de atención plena.',
+            'Cuida tu sonrisa con calma. Lo pequeño, hecho cada día, se vuelve salud.',
+            'Un gesto sencillo y constante: el cepillo. Hazlo sin prisa, con presencia.',
+          ],
+          floss: [
+            'Entre diente y diente, como entre respiración y respiración, hay un espacio que merece cuidado.',
+            'El hilo dental es paciencia en movimiento. Pásalo con suavidad.',
+            'Lo que no se ve también importa. Cuida tus encías con calma.',
+          ],
+          noFap: [
+            'El deseo llega como una ola. Obsérvalo, respira, y deja que pase.',
+            'Cada día que eliges con conciencia fortalece la mente. Sigue tu camino, sin prisa y sin culpa.',
+            'Si la mente se agita, mueve el cuerpo: camina, respira, vuelve al presente.',
+          ],
         },
         generic: [
           { text: 'Respira. Es el momento de «{habit}». Hazlo con calma, sin prisa.',
@@ -1410,6 +1545,21 @@
             'Our roots hold us up. Talk today with someone you love.',
             'A friendly voice is a shelter. Call someone you care about.',
             'Sharing a moment with someone dear feeds the soul. Write to them today.',
+          ],
+          brushTeeth: [
+            'Brushing your teeth slowly is meditation too. Two minutes of full attention.',
+            'Care for your smile calmly. Small things, done every day, become health.',
+            'A simple, steady gesture: the brush. Do it without hurry, fully present.',
+          ],
+          floss: [
+            'Between tooth and tooth, as between breath and breath, there is a space that deserves care.',
+            'Flossing is patience in motion. Move it gently.',
+            'What cannot be seen matters too. Care for your gums, calmly.',
+          ],
+          noFap: [
+            'Desire arrives like a wave. Watch it, breathe, and let it pass.',
+            'Each day you choose with awareness strengthens the mind. Keep to your path, without hurry and without guilt.',
+            'If the mind is restless, move the body: walk, breathe, return to the present.',
           ],
         },
         generic: [

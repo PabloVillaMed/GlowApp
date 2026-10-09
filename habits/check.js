@@ -8,7 +8,7 @@
    - a character line without its recording would play silence */
 const fs = require('fs');
 
-const FILES = ['app.js', 'characters.js', 'charts.js', 'i18n.js', 'sounds.js', 'sw.js'];
+const FILES = ['app.js', 'characters.js', 'charts.js', 'i18n.js', 'pico.js', 'sounds.js', 'sw.js'];
 let failures = 0;
 
 function fail(file, line, message) {

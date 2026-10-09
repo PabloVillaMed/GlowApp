@@ -19,10 +19,16 @@
   const LAYOUTS = ['comfortable', 'compact', 'grid', 'focus'];
   const DENSITIES = ['small', 'default', 'large'];
 
+  /* Colour palettes (2.13): each is a set of tokens in styles.css keyed by
+     data-palette on the root. Ultra oscura exists only in dark. */
+  const PALETTES = ['classic', 'electric', 'pastel', 'ultra', 'forest', 'sunset', 'ocean', 'contrast'];
+  const DARK_ONLY_PALETTES = ['ultra'];
+
   const EMOJIS = [
     '🧘', '💪', '🏃', '🚶', '🚴', '🏋️', '🧠', '📓', '📖', '💧',
     '🥗', '🍎', '😴', '☀️', '🌙', '🙏', '💊', '🚭', '📵', '🧹',
-    '🎯', '🎸', '🎨', '💻', '🗣️', '❤️', '🌱', '🧴', '🧎',
+    '🎯', '🎸', '🎨', '💻', '🗣️', '❤️', '🌱', '🧴', '🧎', '🦷',
+    '🧵', '🛡️',
   ];
 
   const CATEGORIES = [
@@ -97,6 +103,7 @@
      Spanish-first app, and the toggle in the bar switches it in one tap. */
     lang: 'es',
     theme: 'system',
+    palette: 'classic',
     weekStart: 1,
     layout: 'comfortable',
     density: 'default',
@@ -110,6 +117,10 @@
     chat: [],
     chatUnread: 0,
     castPromoDismissed: false,
+    /* Pico's tour (2.13): taken or skipped, and whether its invitation on
+       Today was put off for good. */
+    tourDone: false,
+    tourPromoDismissed: false,
     habits: [],
     entries: {},
     moods: {},
@@ -167,6 +178,9 @@
     state.chatUnread = Math.max(0, Number(state.chatUnread) || 0);
     normalizeBot();
     normalizeBody();
+    if (!PALETTES.includes(state.palette)) state.palette = 'classic';
+    state.tourDone = state.tourDone === true;
+    state.tourPromoDismissed = state.tourPromoDismissed === true;
     if (state.character && !castById(state.character)) state.character = null;
     state.habits.forEach((habit) => {
       // One reminder time per habit until 2.8; now a short list of them.
@@ -931,7 +945,7 @@
         ring.classList.add('celebrate');
         setTimeout(() => ring.classList.remove('celebrate'), 800);
       }
-      toast('🎉 ' + t('allDoneTitle'));
+      picoCheer();
     }
   }
 
@@ -1205,6 +1219,7 @@
   }
 
   function renderToday() {
+    renderTourPromo();
     renderCastPromo();
     renderDayStrip();
     renderSummary();
@@ -1223,6 +1238,9 @@
     { key: 'presetSleep', desc: 'dsSleepEarly', emoji: '😴', colorIndex: 4, category: 'health', type: 'binary', schedule: { kind: 'daily' } },
     { key: 'presetRead', desc: 'dsRead', emoji: '📖', colorIndex: 6, category: 'focus', type: 'quantity', target: 20, unitKey: 'unitPages', schedule: { kind: 'daily' } },
     { key: 'presetNoPhone', desc: 'dsNoPhoneBed', emoji: '📵', colorIndex: 8, category: 'mental', type: 'binary', schedule: { kind: 'daily' } },
+    { key: 'hbBrushTeeth', desc: 'dsBrushTeeth', emoji: '🦷', colorIndex: 1, category: 'health', type: 'quantity', target: 2, unitKey: 'unitTimes', schedule: { kind: 'daily' } },
+    { key: 'hbFloss', desc: 'dsFloss', emoji: '🧵', colorIndex: 3, category: 'health', type: 'binary', schedule: { kind: 'daily' } },
+    { key: 'hbNoFap', desc: 'dsNoFap', emoji: '🛡️', colorIndex: 8, category: 'mental', type: 'binary', schedule: { kind: 'daily' } },
   ];
 
   function renderPresets() {
@@ -1612,9 +1630,64 @@
 
     buildEmojiGrid();
     buildColorRow();
+    renderIdeas(!existing);
     syncDialogFields();
     $('#habitDialog').showModal();
     setTimeout(() => $('#fName').focus(), 60);
+  }
+
+  /* Quick ideas (2.13): catalogue habits the list does not have yet, one tap
+     to fill the form with the name, icon, colour, target and description
+     that the characters' own lines belong to. The newest catalogue habits
+     come first. Shown only for a new habit. */
+  const IDEAS_FIRST = ['brushTeeth', 'floss', 'noFap'];
+
+  function renderIdeas(show) {
+    const field = $('#ideaField');
+    const row = $('#ideaRow');
+    row.innerHTML = '';
+    const taken = new Set(activeHabits().map((h) => h.nameKey).filter(Boolean));
+    const ideas = IDEAS_FIRST.map(catalogueById)
+      .concat(HABIT_CATALOGUE.filter((entry) => !IDEAS_FIRST.includes(entry.id)))
+      .filter((entry) => entry && !taken.has(entry.key));
+    field.hidden = !show || !ideas.length;
+    if (field.hidden) return;
+    ideas.forEach((entry) => {
+      const chip = button('idea-chip', null, { 'aria-pressed': String(draft.nameKey === entry.key), 'data-key': entry.key });
+      const icon = document.createElement('span');
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = entry.emoji;
+      chip.append(icon, document.createTextNode(t(entry.key)));
+      chip.addEventListener('click', () => applyIdea(entry));
+      row.appendChild(chip);
+    });
+  }
+
+  function applyIdea(entry) {
+    readDialog();
+    Object.assign(draft, {
+      name: t(entry.key),
+      nameKey: entry.key,
+      description: entry.desc ? t(entry.desc) : '',
+      descKey: entry.desc || '',
+      emoji: entry.emoji,
+      colorIndex: entry.color,
+      category: entry.cat,
+      type: entry.type,
+      target: entry.type === 'quantity' ? entry.target : 1,
+      unit: entry.type === 'quantity' ? t(entry.unit) : '',
+    });
+    $('#fName').value = draft.name;
+    $('#fDescription').value = draft.description;
+    $('#fTarget').value = draft.target;
+    $('#fUnit').value = draft.unit;
+    $('#fCategory').value = draft.category;
+    $('#formError').hidden = true;
+    buildEmojiGrid();
+    buildColorRow();
+    syncDialogFields();
+    $$('#ideaRow .idea-chip').forEach((chip) => chip.setAttribute('aria-pressed', String(chip.dataset.key === entry.key)));
+    Sounds.play('tick');
   }
 
   function readDialog() {
@@ -2014,12 +2087,89 @@
     if (label) label.textContent = t(state.sound !== false ? 'soundOn' : 'soundOff');
   }
 
+  /* ── Theme and palette ─────────────────────────────────────────────
+     Choosing a palette is one attribute; the stylesheet does the rest. While
+     a dark-only palette is chosen the theme resolves to dark whatever the
+     setting says, and the setting waits, disabled, for another palette. */
+  const currentPalette = () => (PALETTES.includes(state.palette) ? state.palette : 'classic');
+  const paletteIsDarkOnly = () => DARK_ONLY_PALETTES.includes(currentPalette());
+  const paletteKey = (id) => 'pal' + id.charAt(0).toUpperCase() + id.slice(1);
+
+  function resolvedTheme() {
+    if (paletteIsDarkOnly()) return 'dark';
+    return state.theme === 'system' ? (systemDark.matches ? 'dark' : 'light') : state.theme;
+  }
+
   function applyTheme() {
-    const resolved = state.theme === 'system' ? (systemDark.matches ? 'dark' : 'light') : state.theme;
-    document.documentElement.setAttribute('data-theme', resolved);
+    const root = document.documentElement;
+    root.setAttribute('data-palette', currentPalette());
+    root.setAttribute('data-theme', resolvedTheme());
+    // The browser's bar takes the palette's own background (the Android
+    // shell reads the body's for the system bars).
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', resolved === 'dark' ? '#0D1117' : '#F4F5F7');
-    $('#themeSelect').value = state.theme;
+    const bg = getComputedStyle(root).getPropertyValue('--bg').trim();
+    if (meta && bg) meta.setAttribute('content', bg);
+    const select = $('#themeSelect');
+    select.value = state.theme;
+    select.disabled = paletteIsDarkOnly();
+    $('#themeLockedHint').hidden = !paletteIsDarkOnly();
+    renderPalettePicker();
+  }
+
+  /* One card per palette, each painted by its own tokens (styles.css gives
+     .palette-card[data-palette] the palette's variables). */
+  function buildPalettePicker() {
+    const host = $('#paletteGrid');
+    host.innerHTML = '';
+    PALETTES.forEach((id) => {
+      const card = button('palette-card', null, { role: 'radio', 'data-palette': id, 'aria-checked': 'false' });
+      const preview = document.createElement('span');
+      preview.className = 'pc-preview';
+      preview.setAttribute('aria-hidden', 'true');
+      preview.innerHTML = '<span class="pc-ring"></span><span class="pc-lines"><i></i><i></i><i></i></span>';
+      const name = document.createElement('span');
+      name.className = 'pc-name';
+      const note = document.createElement('span');
+      note.className = 'pc-note';
+      card.append(preview, name, note);
+      card.addEventListener('click', () => pickPalette(id));
+      host.appendChild(card);
+    });
+    // One stop in the tab order; the arrows move between palettes, as in any
+    // radio group, and choose as they go.
+    host.addEventListener('keydown', (evt) => {
+      const steps = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+      const at = PALETTES.indexOf(currentPalette());
+      let next = null;
+      if (evt.key in steps) next = (at + steps[evt.key] + PALETTES.length) % PALETTES.length;
+      else if (evt.key === 'Home') next = 0;
+      else if (evt.key === 'End') next = PALETTES.length - 1;
+      if (next === null) return;
+      evt.preventDefault();
+      pickPalette(PALETTES[next]);
+      const card = $('.palette-card[data-palette="' + PALETTES[next] + '"]', host);
+      if (card) card.focus();
+    });
+  }
+
+  function renderPalettePicker() {
+    const current = currentPalette();
+    $$('#paletteGrid .palette-card').forEach((card) => {
+      const id = card.dataset.palette;
+      card.setAttribute('aria-checked', String(id === current));
+      card.tabIndex = id === current ? 0 : -1;
+      $('.pc-name', card).textContent = t(paletteKey(id));
+      $('.pc-note', card).textContent = DARK_ONLY_PALETTES.includes(id) ? t('palDarkOnly') : '';
+    });
+  }
+
+  function pickPalette(id) {
+    if (!PALETTES.includes(id) || id === currentPalette()) return;
+    state.palette = id;
+    save();
+    applyTheme();
+    renderProgressIfVisible();
+    Sounds.play('tick');
   }
 
   function fillCategorySelect() {
@@ -2052,6 +2202,8 @@
     applySound();                     // its label is translated
     fillCategorySelect();
     buildLayoutPickers();
+    renderPalettePicker();
+    if (tour.open) showTourStep(tour.at);
     renderCastSettings();
     renderBodySettings();
     renderChatButton();
@@ -2379,6 +2531,10 @@
       text: text,
       voice: GLOW_CAST.voicePath(id, lang, 'h-' + key + '-' + (i + 1)),
     }));
+    // The generic lines say the habit's name, which a discreet habit keeps
+    // off the lock screen: its own lines never say what it is about.
+    const entry = catalogueById(key);
+    if (entry && entry.discreet) return own;
     // Mostly its own lines, with a generic one now and then for variety.
     return [own[0], own[1], generic[0], own[2], generic[2]];
   }
@@ -3996,7 +4152,7 @@
 
   function renderCastPromo() {
     $('#castPromo').hidden = !shell || !!state.character || !!state.castPromoDismissed ||
-      activeHabits().length === 0;
+      activeHabits().length === 0 || !$('#picoPromo').hidden;   // one invitation at a time
   }
 
   /* Sends one message now, with whichever habit is still open today. Each
@@ -4030,6 +4186,10 @@
 
   /* Android's back button closes whatever is on top before leaving. */
   function handleBack() {
+    if (tour.open) {
+      endTour(false);
+      return 'handled';
+    }
     const dialogs = $$('dialog[open]');
     if (dialogs.length) {
       dialogs[dialogs.length - 1].close();
@@ -4055,6 +4215,7 @@
       pendingRoute = name;
       return;
     }
+    if (tour.open) endTour(false);
     openChat();
   }
 
@@ -4301,12 +4462,19 @@
       renderProgressIfVisible();
     });
     $('#themeToggle').addEventListener('click', () => {
-      const resolved = document.documentElement.getAttribute('data-theme');
-      state.theme = resolved === 'dark' ? 'light' : 'dark';
+      if (paletteIsDarkOnly()) {
+        // Ultra oscura has no light side, so asking for light leaves it for classic.
+        state.palette = 'classic';
+        state.theme = 'light';
+        toast(t('paletteBackToLight'));
+      } else {
+        state.theme = resolvedTheme() === 'dark' ? 'light' : 'dark';
+      }
       save();
       applyTheme();
       renderProgressIfVisible();
     });
+    buildPalettePicker();
     $('#soundToggle').addEventListener('change', (evt) => {
       state.sound = evt.target.checked;
       save();
@@ -4320,6 +4488,33 @@
     });
 
     $('#btnRetakeTest').addEventListener('click', () => startOnboarding());
+
+    /* Pico's tour */
+    $('#btnReplayTour').addEventListener('click', startTour);
+    $('#btnTourGo').addEventListener('click', startTour);
+    $('#btnTourLater').addEventListener('click', () => {
+      state.tourPromoDismissed = true;
+      save();
+      renderTourPromo();
+      renderCastPromo();
+    });
+    $('#tourNext').addEventListener('click', tourNext);
+    $('#tourBack').addEventListener('click', tourBack);
+    $('#tourSkip').addEventListener('click', () => endTour(false));
+    // Nothing behind the overlay may scroll away from the spotlight.
+    $('#tour').addEventListener('wheel', (evt) => evt.preventDefault(), { passive: false });
+    document.addEventListener('keydown', (evt) => {
+      if (!tour.open) return;
+      if (evt.key === 'Escape') { evt.preventDefault(); endTour(false); }
+      else if (evt.key === 'ArrowRight') { evt.preventDefault(); tourNext(); }
+      else if (evt.key === 'ArrowLeft') { evt.preventDefault(); tourBack(); }
+    });
+    window.addEventListener('resize', () => {
+      if (!tour.open) return;
+      cancelAnimationFrame(tour.frame);
+      tour.frame = requestAnimationFrame(placeTour);
+    });
+    $('#picoCheer').addEventListener('click', hidePicoCheer);
 
     /* Reminder cast */
     $('#btnAddReminder').addEventListener('click', addReminderTime);
@@ -4423,9 +4618,16 @@
     { id: 'veggies', key: 'hbVeggies', desc: 'dsVeggies', emoji: '🥗', color: 6, area: 'health', cat: 'health', type: 'binary', cost: 5 },
     { id: 'vitamins', key: 'hbVitamins', desc: 'dsVitamins', emoji: '💊', color: 4, area: 'health', cat: 'health', type: 'binary', cost: 1 },
     { id: 'skincare', key: 'hbSkincare', desc: 'dsSkincare', emoji: '🧴', color: 5, area: 'health', cat: 'health', type: 'binary', cost: 3, moment: 'evening' },
+    { id: 'brushTeeth', key: 'hbBrushTeeth', desc: 'dsBrushTeeth', emoji: '🦷', color: 1, area: 'health', cat: 'health', type: 'quantity', target: 2, unit: 'unitTimes', cost: 4 },
+    { id: 'floss', key: 'hbFloss', desc: 'dsFloss', emoji: '🧵', color: 3, area: 'health', cat: 'health', type: 'binary', cost: 2, moment: 'evening' },
     { id: 'sunlight', key: 'hbSunlight', desc: 'dsSunlight', emoji: '☀️', color: 4, area: 'health', cat: 'health', type: 'binary', cost: 10, moment: 'morning' },
     { id: 'sleepEarly', key: 'hbSleepEarly', desc: 'dsSleepEarly', emoji: '😴', color: 7, area: 'sleep', cat: 'health', type: 'binary', cost: 0, moment: 'evening' },
     { id: 'noPhoneBed', key: 'hbNoPhoneBed', desc: 'dsNoPhoneBed', emoji: '📵', color: 8, area: 'sleep', cat: 'mental', type: 'binary', cost: 0, moment: 'evening' },
+    /* A personal challenge, never put to someone who did not go looking for
+       it: the test does not suggest it; the presets and the editor's ideas
+       offer it. Discreet: a character's reminder never names it (see
+       reminderMessages), since it shows on the lock screen. */
+    { id: 'noFap', key: 'hbNoFap', desc: 'dsNoFap', emoji: '🛡️', color: 8, area: 'mental', cat: 'mental', type: 'binary', cost: 0, suggest: false, discreet: true },
     { id: 'nightRoutine', key: 'hbNightRoutine', desc: 'dsNightRoutine', emoji: '🌙', color: 7, area: 'sleep', cat: 'health', type: 'binary', cost: 10, moment: 'evening' },
     { id: 'read', key: 'hbRead', desc: 'dsRead', emoji: '📖', color: 6, area: 'focus', cat: 'focus', type: 'quantity', target: 20, unit: 'unitPages', cost: 20, moment: 'evening' },
     { id: 'study', key: 'hbStudy', desc: 'dsStudy', emoji: '💻', color: 1, area: 'focus', cat: 'focus', type: 'quantity', target: 25, unit: 'unitMin', cost: 25 },
@@ -4495,7 +4697,7 @@
     };
 
     const scored = HABIT_CATALOGUE
-      .filter((entry) => !already.includes(entry.id))
+      .filter((entry) => !already.includes(entry.id) && entry.suggest !== false)
       .map((entry) => {
         let score = 0;
         if (areas.includes(entry.area)) score += 5;
@@ -4848,6 +5050,8 @@
     obResult = null;
     obChosen = null;
 
+    // The tour is about to start: its invitation would only flash on Today.
+    tour.pending = !state.tourDone;
     renderAll();
     if (habits.length) {
       Sounds.play('complete');
@@ -4855,6 +5059,14 @@
       setView('today');
     } else {
       toast(t('obNothingPicked'));
+    }
+    // Someone new gets Pico's tour once the test has made way.
+    if (tour.pending) {
+      setTimeout(() => {
+        tour.pending = false;
+        if ($('#onboarding').hidden && !$$('dialog[open]').length) startTour();
+        else renderTourPromo();
+      }, 900);
     }
   }
 
@@ -4954,6 +5166,213 @@
 
     splash.addEventListener('click', dismiss);
     setTimeout(dismiss, SPLASH_HOLD);
+  }
+
+  /* ── Pico's tour (2.13) ────────────────────────────────────────────────
+     One stop at a time: the screen dims around what is being explained and
+     Pico, the app's crow, says what it is for. It runs once right after the
+     starting test, waits on Today as an invitation for anyone who had the
+     app before, and can be replayed from Ajustes. A stop whose target is
+     missing (nothing due today, Android-only settings in the browser) adapts
+     its words or stands in the middle, so the tour never points at nothing. */
+  const tour = { open: false, pending: false, steps: [], at: 0, frame: 0 };
+
+  function tourSteps() {
+    const steps = [
+      { id: 'hello', view: 'today', pose: 'wave' },
+      { id: 'days', view: 'today', target: '#dayStrip', pose: 'point' },
+      { id: 'ring', view: 'today', target: '.summary-card', pose: 'happy' },
+      { id: 'habits', view: 'today', pose: 'point',
+        target: () => $('#habitList .habit-row') || $('#todayEmpty'),
+        body: (node) => (node && node.classList.contains('habit-row') ? 'tourHabitsBody' : 'tourHabitsEmptyBody') },
+      { id: 'mood', view: 'today', target: '.mood-card', pose: 'think' },
+      { id: 'manage', view: 'habits', target: '#tabBar .tab[data-view="habits"]', pose: 'point' },
+      { id: 'progress', view: 'progress', target: '#tabBar .tab[data-view="progress"]', pose: 'point' },
+      { id: 'palette', view: 'settings', target: '#paletteField', pose: 'happy' },
+    ];
+    if (shell) steps.push({ id: 'cast', view: 'settings', target: '#castSettings', pose: 'talk' });
+    steps.push({ id: 'bye', view: 'today', pose: 'cheer' });
+    return steps;
+  }
+
+  function tourTarget(step) {
+    if (!step || !step.target) return null;
+    const node = typeof step.target === 'function' ? step.target() : $(step.target);
+    return node && node.getClientRects().length ? node : null;   // hidden things have no boxes
+  }
+
+  function startTour() {
+    if (tour.open) return;
+    if (isChatOpen()) closeChat();
+    $$('dialog[open]').forEach((dlg) => dlg.close());
+    tour.steps = tourSteps();
+    tour.open = true;
+    $('#tourPico').innerHTML = Pico.svg('wave');
+    $('#tour').hidden = false;
+    setBackgroundInert(true);
+    renderTourPromo();
+    showTourStep(0);
+  }
+
+  function showTourStep(index) {
+    const step = tour.steps[index];
+    if (!step) return;
+    tour.at = index;
+    if (step.view !== view) setView(step.view);
+    const key = 'tour' + step.id.charAt(0).toUpperCase() + step.id.slice(1);
+    const last = index === tour.steps.length - 1;
+    $('#tourStep').textContent = t('tourStep', { at: index + 1, of: tour.steps.length });
+    $('#tourTitle').textContent = t(key + 'Title');
+    $('#tourBody').textContent = t(step.body ? step.body(tourTarget(step)) : key + 'Body');
+    $('#tourBack').hidden = index === 0;
+    $('#tourSkip').hidden = last;
+    $('#tourNext').textContent = t(index === 0 ? 'tourStart' : last ? 'tourDone' : 'tourNext');
+    const dots = $('#tourDots');
+    dots.innerHTML = '';
+    tour.steps.forEach((s, i) => {
+      const dot = document.createElement('i');
+      if (i === index) dot.className = 'is-on';
+      dots.appendChild(dot);
+    });
+    Pico.pose($('#tourPico'), step.pose);
+    const coach = $('#tourCoach');
+    coach.classList.remove('is-entering');
+    void coach.offsetWidth;            // restart the entrance for each stop
+    coach.classList.add('is-entering');
+    placeTour();
+    $('#tourNext').focus({ preventScroll: true });
+  }
+
+  /* Frames the stop's target and puts the coach below it when it fits, else
+     above, else over the far end of the screen; then Pico looks, and points
+     if the pose says so, at the middle of the target. */
+  function placeTour() {
+    if (!tour.open) return;
+    const node = tourTarget(tour.steps[tour.at]);
+    const overlay = $('#tour');
+    const spot = $('#tourSpot');
+    const coach = $('#tourCoach');
+    const picoHost = $('#tourPico');
+    overlay.dataset.mode = node ? 'target' : 'center';
+    if (!node) {
+      spot.removeAttribute('style');
+      coach.style.top = '';
+      Pico.look(picoHost, 0, 0);
+      return;
+    }
+    const inBar = !!node.closest('#tabBar');          // fixed; never scrolled
+    if (!inBar) node.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+    const vw = document.documentElement.clientWidth;
+    const vh = window.innerHeight;
+    const ceiling = inBar ? 4 : $('.app-bar').getBoundingClientRect().bottom + 4;   // the sticky bar covers the top
+    const pad = 6;
+    const frame = () => {
+      const r = node.getBoundingClientRect();
+      return {
+        left: Math.max(4, r.left - pad), top: Math.max(ceiling, r.top - pad),
+        right: Math.min(vw - 4, r.right + pad), bottom: Math.min(vh - 4, r.bottom + pad),
+      };
+    };
+    let box = frame();
+
+    const height = coach.offsetHeight;
+    const rise = Math.max(0, -picoHost.offsetTop);   // how far Pico stands above the coach
+    const gap = 14;
+    const margin = 12;
+    const below = height + gap + rise + margin;       // room the coach needs under the target
+    let top;
+    if (box.bottom + below <= vh) top = box.bottom + gap + rise;
+    else if (box.top - gap - height - rise - margin >= 0) top = box.top - gap - height;
+    else {
+      /* No room either side, which happens on a small screen or with a tall
+         target: lift the target to just under the app bar, frame as much of
+         it as fits, and put the coach underneath. */
+      if (!inBar) {
+        window.scrollBy({ top: box.top - ceiling - 4, behavior: 'instant' });
+        box = frame();
+      }
+      const floor = vh - below;
+      if (floor - box.top >= 64) {
+        box.bottom = Math.min(box.bottom, floor);
+        top = box.bottom + gap + rise;
+      } else {
+        top = margin + rise;
+        box.top = Math.max(box.top, top + height + gap);
+      }
+    }
+    spot.style.left = box.left + 'px';
+    spot.style.top = box.top + 'px';
+    spot.style.width = (box.right - box.left) + 'px';
+    spot.style.height = Math.max(0, box.bottom - box.top) + 'px';
+    coach.style.top = Math.round(top) + 'px';
+
+    // Pico looks, and points, at the middle of what is framed.
+    const pr = picoHost.getBoundingClientRect();
+    const px = pr.left + pr.width / 2;
+    const py = top + picoHost.offsetTop + pr.height / 2;
+    const dx = (box.left + box.right) / 2 - px;
+    const dy = (box.top + box.bottom) / 2 - py;
+    const length = Math.hypot(dx, dy) || 1;
+    Pico.look(picoHost, dx / length, dy / length);
+    Pico.point(picoHost, (Math.atan2(dy, dx) * 180) / Math.PI);
+  }
+
+  function tourNext() {
+    if (!tour.open) return;
+    if (tour.at >= tour.steps.length - 1) endTour(true);
+    else showTourStep(tour.at + 1);
+  }
+
+  function tourBack() {
+    if (tour.open && tour.at > 0) showTourStep(tour.at - 1);
+  }
+
+  /* Finished, skipped or backed out of, it counts as taken: Ajustes has it
+     for whoever wants it again. */
+  function endTour(finished) {
+    if (!tour.open) return;
+    tour.open = false;
+    cancelAnimationFrame(tour.frame);
+    $('#tour').hidden = true;
+    $('#tourPico').innerHTML = '';
+    setBackgroundInert(false);
+    state.tourDone = true;
+    save();
+    setView('today');
+    if (finished) Sounds.play('complete');
+  }
+
+  function renderTourPromo() {
+    const show = !tour.open && !tour.pending && !state.tourDone && !state.tourPromoDismissed &&
+      !!(state.onboarding && state.onboarding.done);
+    const art = $('#picoPromoArt');
+    if (show && !art.firstChild) art.innerHTML = Pico.svg('wave');
+    $('#picoPromo').hidden = !show;
+  }
+
+  /* Pico hops up when the day completes, in place of the plain toast. */
+  let cheerTimer = null;
+  function picoCheer() {
+    const box = $('#picoCheer');
+    const lines = t('picoCheers');
+    $('#picoCheerArt').innerHTML = Pico.svg('cheer');
+    $('#picoCheerText').textContent = Array.isArray(lines) && lines.length
+      ? lines[Math.floor(Math.random() * lines.length)] : t('allDoneTitle');
+    box.classList.remove('is-leaving');
+    box.hidden = false;
+    clearTimeout(cheerTimer);
+    cheerTimer = setTimeout(hidePicoCheer, 3200);
+  }
+
+  function hidePicoCheer() {
+    const box = $('#picoCheer');
+    if (box.hidden) return;
+    clearTimeout(cheerTimer);
+    box.classList.add('is-leaving');
+    cheerTimer = setTimeout(() => {
+      box.hidden = true;
+      box.classList.remove('is-leaving');
+    }, 240);
   }
 
   /* ── Boot ──────────────────────────────────────────────────────────── */

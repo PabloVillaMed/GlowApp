@@ -77,7 +77,7 @@ public class MainActivity extends Activity {
     + "  }"
     + "  report();"
     + "  new MutationObserver(report).observe(document.documentElement,"
-    + "    { attributes: true, attributeFilter: ['data-theme'] });"
+    + "    { attributes: true, attributeFilter: ['data-theme', 'data-palette'] });"
     + "})();";
 
   private static final Pattern RGB =

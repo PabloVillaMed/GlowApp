@@ -9,21 +9,6 @@
   <title>GlowApp</title>
   <meta name="description" content="Seguimiento de hábitos, ejercicio y estado de ánimo, sin conexión y sin cuentas.">
   <meta name="theme-color" content="#0D1117">
-  <script>
-    /* The saved theme, resolved as applyTheme() in app.js resolves it, before
-       anything paints: until app.js ran, a light theme opened on a dark
-       launch screen that turned light halfway through. */
-    (function () {
-      try {
-        var theme = JSON.parse(localStorage.getItem('glow.v1') || '{}').theme || 'system';
-        if (theme === 'system') theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        document.documentElement.setAttribute('data-theme', theme);
-        document.querySelector('meta[name="theme-color"]').setAttribute('content', theme === 'dark' ? '#0D1117' : '#F4F5F7');
-      } catch (err) {
-        /* Dark until app.js applies the theme, as before. */
-      }
-    })();
-  </script>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -31,8 +16,30 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="GlowApp">
-  <link rel="stylesheet" href="styles.css?v=2.12">
-  <script src="i18n.js?v=2.12"></script>
+  <link rel="stylesheet" href="styles.css?v=2.13">
+  <script>
+    /* The saved theme and palette, resolved as applyTheme() in app.js resolves
+       them, before anything paints: until app.js ran, a light theme opened on
+       a dark launch screen that turned light halfway through. It runs after
+       the stylesheet so the browser bar can take the palette's own --bg. */
+    (function () {
+      try {
+        var saved = JSON.parse(localStorage.getItem('glow.v1') || '{}');
+        var root = document.documentElement;
+        var palette = typeof saved.palette === 'string' ? saved.palette : 'classic';
+        var theme = saved.theme || 'system';
+        if (theme === 'system') theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        if (palette === 'ultra') theme = 'dark';      // Ultra oscura has no light side
+        root.setAttribute('data-palette', palette);
+        root.setAttribute('data-theme', theme);
+        var bg = getComputedStyle(root).getPropertyValue('--bg').trim();
+        if (bg) document.querySelector('meta[name="theme-color"]').setAttribute('content', bg);
+      } catch (err) {
+        /* Dark until app.js applies the theme, as before. */
+      }
+    })();
+  </script>
+  <script src="i18n.js?v=2.13"></script>
 </head>
 <body>
   <!-- Launch screen. The mark draws itself, then a phrase lands under it.
@@ -117,6 +124,21 @@
     <section class="view" id="view-today" aria-labelledby="todayHeading">
       <div class="view-inner">
         <div class="day-strip" id="dayStrip" role="tablist" aria-label="Días"></div>
+
+        <!-- Pico's invitation (2.13), for anyone who had the app before his tour
+             existed or left it halfway. New users get the tour itself, right
+             after the starting test. -->
+        <section class="card pico-promo" id="picoPromo" hidden aria-labelledby="picoPromoTitle">
+          <div class="pico-promo-art" id="picoPromoArt" aria-hidden="true"></div>
+          <div class="pico-promo-text">
+            <h3 id="picoPromoTitle" data-i18n="tourPromoTitle">Conoce a Pico</h3>
+            <p data-i18n="tourPromoBody"></p>
+            <div class="button-row">
+              <button type="button" class="btn btn-primary btn-sm" id="btnTourGo" data-i18n="tourPromoGo">Hacer el tour</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btnTourLater" data-i18n="promoLater">Ahora no</button>
+            </div>
+          </div>
+        </section>
 
         <!-- Introduces the reminder characters, once, inside the Android app. -->
         <section class="card cast-promo" id="castPromo" hidden aria-labelledby="promoTitle">
@@ -327,6 +349,11 @@
               <option value="light" data-i18n="themeLight">Claro</option>
             </select>
           </div>
+          <p class="muted small" id="themeLockedHint" hidden data-i18n="paletteThemeLocked"></p>
+          <div class="setting-row setting-row-stack" id="paletteField">
+            <span class="setting-label" id="paletteLabel" data-i18n="paletteLabel">Paleta de colores</span>
+            <div class="palette-grid" id="paletteGrid" role="radiogroup" aria-labelledby="paletteLabel"></div>
+          </div>
           <div class="setting-row setting-row-stack">
             <label for="layoutSelect" data-i18n="setLayout">Diseño de Hoy</label>
             <div class="segmented segmented-wrap" id="layoutSelect" role="radiogroup" aria-label="Diseño"></div>
@@ -424,6 +451,7 @@
           <h3 id="setApp" data-i18n="setApp">Aplicación</h3>
           <div class="button-row">
             <button type="button" class="btn btn-primary" id="btnInstall" hidden data-i18n="installApp">Instalar app</button>
+            <button type="button" class="btn" id="btnReplayTour" data-i18n="tourReplay">Repetir el tour con Pico</button>
           </div>
           <p class="muted small" id="installHint"></p>
           <p class="muted small" data-i18n="version">GlowApp</p>
@@ -463,6 +491,12 @@
       </header>
 
       <div class="sheet-body">
+        <!-- Catalogue habits in one tap (2.13); new habits only. -->
+        <div class="field" id="ideaField" hidden>
+          <span class="field-label" id="ideaLabel" data-i18n="ideasLabel">Ideas rápidas</span>
+          <div class="idea-row" id="ideaRow" role="group" aria-labelledby="ideaLabel"></div>
+        </div>
+
         <label class="field">
           <span class="field-label" data-i18n="fieldName">Nombre</span>
           <input type="text" id="fName" required maxlength="60" data-i18n-placeholder="fieldNamePlaceholder">
@@ -665,6 +699,34 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
+  <!-- Pico when the day completes (2.13): replaces the plain toast. -->
+  <div class="pico-cheer" id="picoCheer" role="status" aria-live="polite" hidden>
+    <div class="pico-cheer-art" id="picoCheerArt" aria-hidden="true"></div>
+    <p class="pico-cheer-text" id="picoCheerText"></p>
+  </div>
+
+  <!-- Pico's tour (2.13). One stop at a time: the spotlight frames what is
+       being explained and the coach says what it is for. -->
+  <div class="tour" id="tour" hidden>
+    <div class="tour-spot" id="tourSpot" aria-hidden="true"></div>
+    <section class="tour-coach" id="tourCoach" role="dialog" aria-modal="true"
+             aria-labelledby="tourTitle" aria-describedby="tourBody">
+      <div class="tour-pico" id="tourPico" aria-hidden="true"></div>
+      <div class="tour-text" aria-live="polite">
+        <p class="tour-step" id="tourStep"></p>
+        <h2 id="tourTitle"></h2>
+        <p id="tourBody"></p>
+      </div>
+      <div class="tour-dots" id="tourDots" aria-hidden="true"></div>
+      <footer class="tour-foot">
+        <button type="button" class="btn btn-ghost btn-sm" id="tourSkip" data-i18n="tourSkip">Saltar</button>
+        <span class="spacer"></span>
+        <button type="button" class="btn btn-sm" id="tourBack" data-i18n="tourBack">Atrás</button>
+        <button type="button" class="btn btn-primary btn-sm" id="tourNext" data-i18n="tourNext">Siguiente</button>
+      </footer>
+    </section>
+  </div>
+
   <!-- Icon sprite -->
   <svg style="display:none" aria-hidden="true">
     <symbol id="i-today" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -729,9 +791,10 @@
     </symbol>
   </svg>
 
-  <script src="sounds.js?v=2.12"></script>
-  <script src="charts.js?v=2.12"></script>
-  <script src="characters.js?v=2.12"></script>
-  <script src="app.js?v=2.12"></script>
+  <script src="sounds.js?v=2.13"></script>
+  <script src="pico.js?v=2.13"></script>
+  <script src="charts.js?v=2.13"></script>
+  <script src="characters.js?v=2.13"></script>
+  <script src="app.js?v=2.13"></script>
 </body>
 </html>

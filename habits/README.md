@@ -62,6 +62,39 @@ Answers are kept in `state.onboarding`, which is also what lets the Habits tab
 show personalised starters instead of the generic ones. **Ajustes → Repetir el
 test inicial** runs it again; erasing all data offers it again too.
 
+2.13 adds dental care — *Cepillarse los dientes* (twice a day) and *Usar hilo
+dental* — and *No fap* to the catalogue, with every character's lines and
+voice notes. No fap is marked `suggest: false`: the test never puts it to
+someone who did not go looking for it. It is one tap away instead, among the
+starters of an empty Habits tab and the editor's **Ideas rápidas**, a row of
+catalogue habits the list does not have yet (the newest first) that fills the
+form, keys included. It is also `discreet`: a character's reminder for it uses
+only its own three lines, which never say what it is about, and none of the
+generic ones, which name the habit — a reminder shows on the lock screen.
+
+## Pico and the tour (2.13)
+
+Pico is GlowApp's guide: a crow, because crows collect shiny things and
+nothing in the app shines like a streak. He is an original drawing (`pico.js`),
+inline SVG so CSS can move his parts — the wings wave and point, the eyes
+blink and look at what he is pointing at, the beak talks — in fixed colours,
+the same in every palette, with a light rim that keeps him readable on the
+darkest ones. Under reduced motion he holds each pose without moving.
+
+The tour runs once, right after the starting test (finished or skipped), and
+waits on Today as an invitation for anyone who had the app before it existed;
+**Ajustes → Repetir el tour con Pico** replays it. Each stop dims the screen
+around one thing — the week, the ring, today's habits, mood, the Habits and
+Progress tabs, the palettes and, in the Android app, the reminder characters —
+and the coach sits below or above it, wherever it fits. On a small screen a
+tall target is lifted under the app bar and framed as far as it fits. The
+overlay takes every touch and the app behind is inert; Next, Back, Skip, the
+arrow keys, Escape and Android's back all work, and finishing, skipping or
+backing out all count as taken (`state.tourDone`).
+
+When a day completes, Pico hops up over the tab bar with one of his lines
+instead of the plain toast, and leaves by himself.
+
 ## Reminders from a character (Android app)
 
 Inside the Android app, reminders can come from one of five original
@@ -206,12 +239,24 @@ pinch-zoom, which is deliberately disabled: every text size is in `rem` and the
 layout paddings with them, so changing the root size rescales the interface in
 one step while tap targets stay pinned in pixels.
 
-## Language and theme
+## Language, theme and palette
 
 Both are switchable at runtime — the toggles in the app bar, or Ajustes. The
 interface ships complete in Spanish and English (`i18n.js` holds every string;
 the two tables are kept at full key parity) and starts in Spanish. The theme
 follows the system by default and can be pinned to light or dark.
+
+Since 2.13 the colours come in eight palettes, under **Ajustes → Apariencia**:
+Clásica, Eléctrica, Pastel, Ultra oscura, Bosque, Atardecer, Océano and Alto
+contraste. Each is a block of colour tokens in `styles.css` keyed by
+`data-palette` on the root, in a light and a dark version (Ultra oscura is dark
+only: while it is chosen the theme resolves to dark and the theme setting
+waits, disabled; the app-bar toggle leaves it for classic in light). The
+picker's cards carry `data-palette` too, so each previews its palette with the
+very same tokens. The inline script in `index.html` applies the saved palette
+before the first paint and gives the browser bar the palette's own `--bg`; the
+Android shell watches `data-palette` as well as `data-theme` for the system
+bars.
 
 ## Your data
 
@@ -269,6 +314,7 @@ because every asset already comes from the APK.
 | `characters.js` | The five characters and every line they say, in both languages |
 | `charts.js` | Hand-rolled SVG charts (line, bars, grouped bars, heatmap) |
 | `sounds.js` | The small synthesised interface sounds |
+| `pico.js` | Pico, the guide: his drawing and the calls that pose him |
 | `i18n.js` | Spanish and English string tables |
 | `sw.js` | Service worker: precached shell, offline fallback |
 | `check.js` | The pre-ship checks above |
@@ -281,9 +327,18 @@ the whole thing run from the cache with the network off.
 
 ## Notes for changing it
 
-- Chart colours come from a colour-vision-safe categorical palette defined as
-  CSS custom properties (`--s1`…`--s8`) with separate, individually chosen steps
-  for light and dark. Change them in `styles.css` in both blocks, not one.
+- Chart and habit colours come from colour-vision-safe categorical palettes
+  defined as CSS custom properties (`--s1`…`--s8`), with separate,
+  individually chosen steps for light and dark in every palette. A slot keeps
+  its hue family in all of them — s1 blue, s2 orange, s3 teal, s4 amber,
+  s5 pink, s6 green, s7 violet, s8 red — so a habit keeps its colour when the
+  palette changes, and the BMI bands (s1, s3, s4, s8) keep their meaning.
+  Every set was checked against its own surface the way classic was:
+  lightness band (light 0.43–0.77, dark 0.48–0.67 in OKLCH), chroma of at
+  least 0.1, adjacent pairs at least 8 ΔE apart under protanopia and
+  deuteranopia and 15 with full colour vision. Text, accent and status
+  colours hold at least classic's own contrast. Change a palette in both of
+  its blocks, and re-check it.
 - Charts draw at the container's pixel width so label sizes are true; they
   redraw on resize.
 - The snapshot sent to Android (`buildSnapshot()` in `app.js`) covers this week

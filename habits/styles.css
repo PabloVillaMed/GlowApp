@@ -97,6 +97,242 @@
   --shadow: 0 8px 28px rgba(11, 11, 11, 0.10);
 }
 
+/* ── Palettes (2.13) ──────────────────────────────────────────────────
+   Classic is the two blocks above. Every other palette restates each colour
+   token for dark and for light (Ultra oscura is dark only: the app resolves
+   the theme to dark while it is chosen), and so does each card of the picker
+   in Ajustes, which previews its palette with the very same tokens.
+   The habit colours keep their family per slot in every palette — s1 blue,
+   s2 orange, s3 teal, s4 amber, s5 pink, s6 green, s7 violet, s8 red — so a
+   habit keeps its colour when the palette changes and the BMI bands keep
+   their meaning. Each set passes the same checks as classic against its own
+   surface: lightness band, chroma floor, adjacent-pair separation under
+   protanopia and deuteranopia, and the normal-vision floor; text, accent and
+   status colours hold at least classic's own contrast. */
+
+.palette-card[data-palette='classic'] {
+  --bg: #0D1117; --surface: #161B22; --surface-2: #1C2330; --surface-3: #232B39;
+  --ink: #F0F6FC; --ink-2: #9BA6B4; --ink-3: #6B7684;
+  --border: rgba(240, 246, 252, 0.09); --border-strong: rgba(240, 246, 252, 0.16);
+  --accent: #3987E5; --accent-ink: #FFFFFF; --accent-soft: rgba(57, 135, 229, 0.14);
+  --good: #0CA30C; --danger: #E66767; --danger-soft: rgba(230, 103, 103, 0.13);
+  --s1: #3987E5; --s2: #D95926; --s3: #199E70; --s4: #C98500;
+  --s5: #D55181; --s6: #008300; --s7: #9085E9; --s8: #E66767;
+  --seq-0: #1B2330; --seq-1: #184F95; --seq-2: #256ABF;
+  --seq-3: #3987E5; --seq-4: #6DA7EC; --seq-5: #9EC5F4;
+  --grid: #2C2C2A; --axis: #383835; --muted-ink: #898781;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.42);
+}
+
+:root[data-theme='light'] .palette-card[data-palette='classic'] {
+  --bg: #F4F5F7; --surface: #FFFFFF; --surface-2: #FFFFFF; --surface-3: #EFF1F5;
+  --ink: #0B0B0B; --ink-2: #52514E; --ink-3: #898781;
+  --border: rgba(11, 11, 11, 0.10); --border-strong: rgba(11, 11, 11, 0.20);
+  --accent: #2A78D6; --accent-ink: #FFFFFF; --accent-soft: rgba(42, 120, 214, 0.12);
+  --good: #006300; --danger: #D03B3B; --danger-soft: rgba(208, 59, 59, 0.10);
+  --s1: #2A78D6; --s2: #EB6834; --s3: #1BAF7A; --s4: #EDA100;
+  --s5: #E87BA4; --s6: #008300; --s7: #4A3AA7; --s8: #E34948;
+  --seq-0: #EEF1F5; --seq-1: #CDE2FB; --seq-2: #9EC5F4;
+  --seq-3: #5598E7; --seq-4: #2A78D6; --seq-5: #184F95;
+  --grid: #E1E0D9; --axis: #C3C2B7; --muted-ink: #898781;
+  --shadow: 0 8px 28px rgba(11, 11, 11, 0.10);
+}
+
+:root[data-palette='electric'],
+.palette-card[data-palette='electric'] {
+  --bg: #0A0816; --surface: #120F24; --surface-2: #191530; --surface-3: #231D3F;
+  --ink: #F5F2FF; --ink-2: #ADA6D8; --ink-3: #8079B0;
+  --border: rgba(170, 150, 255, 0.14); --border-strong: rgba(170, 150, 255, 0.26);
+  --accent: #1FD5F0; --accent-ink: #06111B; --accent-soft: rgba(31, 213, 240, 0.14);
+  --good: #0FA34E; --danger: #FF4F7B; --danger-soft: rgba(255, 79, 123, 0.14);
+  --s1: #086EFF; --s2: #FB5000; --s3: #00A9A6; --s4: #B27F01;
+  --s5: #F800CF; --s6: #009F32; --s7: #7200FE; --s8: #CE013B;
+  --seq-0: #231D3F; --seq-1: #00515D; --seq-2: #04707F;
+  --seq-3: #0290A4; --seq-4: #18B5CC; --seq-5: #84D3E2;
+  --grid: #241F40; --axis: #342D57; --muted-ink: #8C86B5;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+}
+
+:root[data-palette='electric'][data-theme='light'],
+:root[data-theme='light'] .palette-card[data-palette='electric'] {
+  --bg: #F5F3FF; --surface: #FFFFFF; --surface-2: #FFFFFF; --surface-3: #EEEAFD;
+  --ink: #0D0A1F; --ink-2: #4B4570; --ink-3: #78729E;
+  --border: rgba(60, 30, 160, 0.12); --border-strong: rgba(60, 30, 160, 0.24);
+  --accent: #6A1BFF; --accent-ink: #FFFFFF; --accent-soft: rgba(106, 27, 255, 0.10);
+  --good: #00853A; --danger: #DB0049; --danger-soft: rgba(219, 0, 73, 0.09);
+  --s1: #122EFF; --s2: #FE4801; --s3: #008F86; --s4: #F29E00;
+  --s5: #FD01D4; --s6: #319D00; --s7: #7100CE; --s8: #C00331;
+  --seq-0: #EEEAFD; --seq-1: #DEDEFB; --seq-2: #BFBDF6;
+  --seq-3: #9893E5; --seq-4: #756BC8; --seq-5: #4F4591;
+  --grid: #E6E2F5; --axis: #CBC5E6; --muted-ink: #78729E;
+  --shadow: 0 8px 28px rgba(40, 20, 120, 0.12);
+}
+
+:root[data-palette='pastel'],
+.palette-card[data-palette='pastel'] {
+  --bg: #1C1A24; --surface: #25222F; --surface-2: #2C2938; --surface-3: #353144;
+  --ink: #F4EFFA; --ink-2: #BDB5CC; --ink-3: #958DA4;
+  --border: rgba(244, 239, 250, 0.09); --border-strong: rgba(244, 239, 250, 0.17);
+  --accent: #B9AAF7; --accent-ink: #1C1A24; --accent-soft: rgba(185, 170, 247, 0.16);
+  --good: #3F9A6E; --danger: #D87486; --danger-soft: rgba(216, 116, 134, 0.14);
+  --s1: #6195CE; --s2: #B76935; --s3: #2FA7A1; --s4: #B48E23;
+  --s5: #B06098; --s6: #71A252; --s7: #746FBC; --s8: #CD777E;
+  --seq-0: #353144; --seq-1: #4B397D; --seq-2: #6752A6;
+  --seq-3: #846ECC; --seq-4: #A493E6; --seq-5: #C5BBF4;
+  --grid: #34303F; --axis: #433E52; --muted-ink: #9A93A8;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.38);
+}
+
+:root[data-palette='pastel'][data-theme='light'],
+:root[data-theme='light'] .palette-card[data-palette='pastel'] {
+  --bg: #FBF7F3; --surface: #FFFFFF; --surface-2: #FFFFFF; --surface-3: #F4EFF7;
+  --ink: #2F2A3B; --ink-2: #5E586E; --ink-3: #857E94;
+  --border: rgba(47, 42, 59, 0.10); --border-strong: rgba(47, 42, 59, 0.18);
+  --accent: #7563CF; --accent-ink: #FFFFFF; --accent-soft: rgba(117, 99, 207, 0.13);
+  --good: #2F8A5C; --danger: #C64560; --danger-soft: rgba(198, 69, 96, 0.10);
+  --s1: #8AB4F5; --s2: #D98753; --s3: #57C7C1; --s4: #D4AD49;
+  --s5: #D07FB6; --s6: #8EC270; --s7: #918DDD; --s8: #ED979C;
+  --seq-0: #F4EFF7; --seq-1: #DFDEFB; --seq-2: #C1BDF6;
+  --seq-3: #9B92E5; --seq-4: #776AC8; --seq-5: #514490;
+  --grid: #EFE8EE; --axis: #D9D0DC; --muted-ink: #857E94;
+  --shadow: 0 8px 28px rgba(80, 60, 100, 0.10);
+}
+
+:root[data-palette='ultra'],
+.palette-card[data-palette='ultra'] {
+  --bg: #000000; --surface: #0A0A0A; --surface-2: #111111; --surface-3: #1A1A1A;
+  --ink: #F2F2F2; --ink-2: #A6A6A6; --ink-3: #737373;
+  --border: rgba(255, 255, 255, 0.08); --border-strong: rgba(255, 255, 255, 0.15);
+  --accent: #3987E5; --accent-ink: #FFFFFF; --accent-soft: rgba(57, 135, 229, 0.16);
+  --good: #0CA30C; --danger: #E66767; --danger-soft: rgba(230, 103, 103, 0.14);
+  --s1: #3987E5; --s2: #D95926; --s3: #199E70; --s4: #C98500;
+  --s5: #D55181; --s6: #008300; --s7: #9085E9; --s8: #E66767;
+  --seq-0: #141414; --seq-1: #184F95; --seq-2: #256ABF;
+  --seq-3: #3987E5; --seq-4: #6DA7EC; --seq-5: #9EC5F4;
+  --grid: #1F1F1F; --axis: #2B2B2B; --muted-ink: #7D7D7D;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.8);
+}
+
+:root[data-palette='forest'],
+.palette-card[data-palette='forest'] {
+  --bg: #0E1611; --surface: #15211B; --surface-2: #1B2922; --surface-3: #23332A;
+  --ink: #ECF3EE; --ink-2: #A5B6AB; --ink-3: #77897D;
+  --border: rgba(236, 243, 238, 0.09); --border-strong: rgba(236, 243, 238, 0.16);
+  --accent: #6CC18F; --accent-ink: #0E1611; --accent-soft: rgba(108, 193, 143, 0.15);
+  --good: #3E9B43; --danger: #E27265; --danger-soft: rgba(226, 114, 101, 0.13);
+  --s1: #338DDF; --s2: #DE6F46; --s3: #00A89D; --s4: #997D00;
+  --s5: #B569AB; --s6: #2A7612; --s7: #7B46A4; --s8: #B0423F;
+  --seq-0: #23332A; --seq-1: #005631; --seq-2: #007746;
+  --seq-3: #11985C; --seq-4: #5AB882; --seq-5: #99D4AF;
+  --grid: #22302A; --axis: #2F3E36; --muted-ink: #84958A;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-palette='forest'][data-theme='light'],
+:root[data-theme='light'] .palette-card[data-palette='forest'] {
+  --bg: #F2F4EE; --surface: #FFFFFF; --surface-2: #FFFFFF; --surface-3: #EAEFE5;
+  --ink: #14211A; --ink-2: #4A5A50; --ink-3: #74837A;
+  --border: rgba(20, 33, 26, 0.11); --border-strong: rgba(20, 33, 26, 0.20);
+  --accent: #2C7A4F; --accent-ink: #FFFFFF; --accent-soft: rgba(44, 122, 79, 0.12);
+  --good: #3B7F12; --danger: #B73E2D; --danger-soft: rgba(183, 62, 45, 0.10);
+  --s1: #3A85CC; --s2: #D46E2B; --s3: #01A48F; --s4: #E4A623;
+  --s5: #AB53A0; --s6: #266800; --s7: #6A3491; --s8: #AE3B3B;
+  --seq-0: #EAEFE5; --seq-1: #CDEAD6; --seq-2: #9AD4AE;
+  --seq-3: #58B47E; --seq-4: #059255; --seq-5: #036338;
+  --grid: #E3E8DE; --axis: #C7CFC0; --muted-ink: #74837A;
+  --shadow: 0 8px 28px rgba(20, 40, 25, 0.10);
+}
+
+:root[data-palette='sunset'],
+.palette-card[data-palette='sunset'] {
+  --bg: #1A0F12; --surface: #25171B; --surface-2: #2D1C21; --surface-3: #38242A;
+  --ink: #FFF1EA; --ink-2: #D1AFA3; --ink-3: #A2827A;
+  --border: rgba(255, 241, 234, 0.09); --border-strong: rgba(255, 241, 234, 0.17);
+  --accent: #FF8C52; --accent-ink: #1A0F12; --accent-soft: rgba(255, 140, 82, 0.15);
+  --good: #3C9E58; --danger: #EF6582; --danger-soft: rgba(239, 101, 130, 0.14);
+  --s1: #6C8FE8; --s2: #FB5000; --s3: #00AB99; --s4: #B77D07;
+  --s5: #C2127C; --s6: #009D1A; --s7: #7C3DB6; --s8: #A7473A;
+  --seq-0: #38242A; --seq-1: #753003; --seq-2: #9D4613;
+  --seq-3: #C2612D; --seq-4: #DF885F; --seq-5: #F1B599;
+  --grid: #33222A; --axis: #442E36; --muted-ink: #A88A82;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-palette='sunset'][data-theme='light'],
+:root[data-theme='light'] .palette-card[data-palette='sunset'] {
+  --bg: #FFF5EF; --surface: #FFFFFF; --surface-2: #FFFFFF; --surface-3: #FCEBE2;
+  --ink: #2B1710; --ink-2: #6E4C42; --ink-3: #977469;
+  --border: rgba(43, 23, 16, 0.10); --border-strong: rgba(43, 23, 16, 0.19);
+  --accent: #C23F0C; --accent-ink: #FFFFFF; --accent-soft: rgba(194, 63, 12, 0.11);
+  --good: #2B8040; --danger: #BE1858; --danger-soft: rgba(190, 24, 88, 0.09);
+  --s1: #6B8EDE; --s2: #F94F00; --s3: #009283; --s4: #EEA000;
+  --s5: #EC449F; --s6: #139E02; --s7: #7539D3; --s8: #BB002C;
+  --seq-0: #FCEBE2; --seq-1: #FAD9CF; --seq-2: #F3B39F;
+  --seq-3: #DE8267; --seq-4: #BE5738; --seq-5: #87351A;
+  --grid: #F2E3DA; --axis: #DCC6BA; --muted-ink: #977469;
+  --shadow: 0 8px 28px rgba(90, 40, 20, 0.12);
+}
+
+:root[data-palette='ocean'],
+.palette-card[data-palette='ocean'] {
+  --bg: #071419; --surface: #0E2028; --surface-2: #132830; --surface-3: #1A323B;
+  --ink: #E6F6FA; --ink-2: #9EBCC6; --ink-3: #6F8D98;
+  --border: rgba(230, 246, 250, 0.09); --border-strong: rgba(230, 246, 250, 0.16);
+  --accent: #36C9DC; --accent-ink: #04161C; --accent-soft: rgba(54, 201, 220, 0.14);
+  --good: #2B9C5E; --danger: #E26F70; --danger-soft: rgba(226, 111, 112, 0.13);
+  --s1: #328DF7; --s2: #E86357; --s3: #02A7B1; --s4: #AF7B00;
+  --s5: #AA3E91; --s6: #029C4B; --s7: #564DC5; --s8: #BA2B2B;
+  --seq-0: #1A323B; --seq-1: #02525B; --seq-2: #00707D;
+  --seq-3: #0791A0; --seq-4: #11B6C8; --seq-5: #83D3DF;
+  --grid: #1A2E36; --axis: #263D46; --muted-ink: #7896A0;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-palette='ocean'][data-theme='light'],
+:root[data-theme='light'] .palette-card[data-palette='ocean'] {
+  --bg: #EEF6F8; --surface: #FFFFFF; --surface-2: #FFFFFF; --surface-3: #E2EFF3;
+  --ink: #08202A; --ink-2: #41606C; --ink-3: #6B8893;
+  --border: rgba(8, 32, 42, 0.10); --border-strong: rgba(8, 32, 42, 0.19);
+  --accent: #0B6C88; --accent-ink: #FFFFFF; --accent-soft: rgba(11, 108, 136, 0.11);
+  --good: #15804A; --danger: #C9364B; --danger-soft: rgba(201, 54, 75, 0.09);
+  --s1: #188DF3; --s2: #EF6538; --s3: #01929B; --s4: #EDA100;
+  --s5: #8F437C; --s6: #06A247; --s7: #4F44B8; --s8: #BD2F28;
+  --seq-0: #E2EFF3; --seq-1: #C6E8F5; --seq-2: #8AD0EB;
+  --seq-3: #2FAED6; --seq-4: #0887AA; --seq-5: #035B74;
+  --grid: #DCE9EE; --axis: #BCD0D8; --muted-ink: #6B8893;
+  --shadow: 0 8px 28px rgba(8, 40, 60, 0.12);
+}
+
+:root[data-palette='contrast'],
+.palette-card[data-palette='contrast'] {
+  --bg: #000000; --surface: #0B0B0B; --surface-2: #121212; --surface-3: #1E1E1E;
+  --ink: #FFFFFF; --ink-2: #E8E8E8; --ink-3: #BDBDBD;
+  --border: rgba(255, 255, 255, 0.40); --border-strong: rgba(255, 255, 255, 0.70);
+  --accent: #6FB3FF; --accent-ink: #000000; --accent-soft: rgba(111, 179, 255, 0.18);
+  --good: #2CA54A; --danger: #F46162; --danger-soft: rgba(244, 97, 98, 0.16);
+  --s1: #3D81FF; --s2: #EF6102; --s3: #00AA9D; --s4: #B08300;
+  --s5: #E903A8; --s6: #06B23A; --s7: #955EE1; --s8: #E3013B;
+  --seq-0: #1E1E1E; --seq-1: #0E4880; --seq-2: #1F65AA;
+  --seq-3: #3983D1; --seq-4: #68A5EA; --seq-5: #9FC8F7;
+  --grid: #333333; --axis: #6B6B6B; --muted-ink: #BDBDBD;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.9);
+}
+
+:root[data-palette='contrast'][data-theme='light'],
+:root[data-theme='light'] .palette-card[data-palette='contrast'] {
+  --bg: #FFFFFF; --surface: #FFFFFF; --surface-2: #FFFFFF; --surface-3: #EDEDED;
+  --ink: #000000; --ink-2: #222222; --ink-3: #4D4D4D;
+  --border: rgba(0, 0, 0, 0.42); --border-strong: rgba(0, 0, 0, 0.72);
+  --accent: #0047CC; --accent-ink: #FFFFFF; --accent-soft: rgba(0, 71, 204, 0.12);
+  --good: #006E1F; --danger: #B0001E; --danger-soft: rgba(176, 0, 30, 0.08);
+  --s1: #406BEB; --s2: #E54901; --s3: #009485; --s4: #A17400;
+  --s5: #B3088A; --s6: #326700; --s7: #6C25C3; --s8: #B60027;
+  --seq-0: #EDEDED; --seq-1: #D3E2FD; --seq-2: #A8C5F9;
+  --seq-3: #759EE9; --seq-4: #4B77CC; --seq-5: #2C4F94;
+  --grid: #D6D6D6; --axis: #8C8C8C; --muted-ink: #4D4D4D;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+}
+
 /* ── Size scale ───────────────────────────────────────────────────────
    Text is in rem throughout, and the paddings that shape the layout are
    too, so moving the root size rescales the whole interface in one step.
@@ -1096,6 +1332,22 @@ td { font-variant-numeric: tabular-nums; }
 .bmi-labels { display: flex; font-size: 0.66rem; color: var(--ink-2); }
 .bmi-labels span { text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+/* ── Editor: quick ideas (2.13) ──
+   One row that scrolls sideways and runs to the sheet's edges, so it reads
+   as a shelf of options rather than part of the form. */
+.idea-row {
+  display: flex; gap: 6px; overflow-x: auto; overscroll-behavior-x: contain;
+  margin: 0 -16px; padding: 2px 16px 4px; scrollbar-width: none;
+}
+.idea-row::-webkit-scrollbar { display: none; }
+.idea-chip {
+  flex: none; display: inline-flex; align-items: center; gap: 6px;
+  min-height: var(--tap); padding: 0 14px; border-radius: var(--radius-pill);
+  background: var(--surface-3); border: 1px solid var(--border);
+  font-size: 0.82rem; font-weight: 600; white-space: nowrap;
+}
+.idea-chip[aria-pressed='true'] { border-color: var(--accent); background: var(--accent-soft); }
+
 /* ── Editor: reminder times ── */
 .reminder-list { display: flex; flex-direction: column; gap: 6px; }
 .reminder-list:empty { display: none; }
@@ -1233,3 +1485,197 @@ td { font-variant-numeric: tabular-nums; }
 }
 .chat-chip:active { transform: scale(0.98); }
 .chat-hint { padding: 6px 0; font-size: 0.8rem; color: var(--ink-2); text-align: center; }
+
+/* ── Palette picker (2.13) ────────────────────────────────────────────
+   Each card carries data-palette, so the palette blocks at the top of this
+   file paint it with that palette's own tokens: what you see is what you
+   get, in the current light or dark. The ring around the chosen one is in
+   its own accent, which is the app's accent once it is chosen. */
+.palette-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 560px) { .palette-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.palette-card {
+  display: flex; flex-direction: column; gap: 8px; min-width: 0;
+  padding: 9px; text-align: left;
+  border-radius: var(--radius); border: 1px solid var(--border-strong);
+  background: var(--bg); color: var(--ink);
+  transition: transform 0.12s ease, box-shadow 0.15s ease;
+}
+.palette-card:active { transform: scale(0.98); }
+.palette-card[aria-checked='true'] { border-color: transparent; box-shadow: 0 0 0 2px var(--accent); }
+.pc-preview {
+  display: flex; align-items: center; gap: 8px; padding: 8px;
+  border-radius: 9px; background: var(--surface); border: 1px solid var(--border);
+}
+.pc-ring {
+  width: 1.4rem; height: 1.4rem; flex: none; border-radius: 50%;
+  background: conic-gradient(var(--accent) 0 72%, var(--surface-3) 72% 100%);
+  -webkit-mask: radial-gradient(circle, transparent 50%, #000 53%);
+  mask: radial-gradient(circle, transparent 50%, #000 53%);
+}
+.pc-lines { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.pc-lines i { display: block; height: 5px; border-radius: 999px; }
+.pc-lines i:nth-child(1) { width: 92%; background: var(--s1); }
+.pc-lines i:nth-child(2) { width: 70%; background: var(--s5); }
+.pc-lines i:nth-child(3) { width: 48%; background: var(--s3); }
+.pc-name {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  font-size: 0.82rem; font-weight: 650; line-height: 1.2;
+}
+.palette-card[aria-checked='true'] .pc-name::after { content: '✓'; color: var(--accent); font-weight: 800; }
+.pc-note { margin-top: -5px; font-size: 0.68rem; font-weight: 600; color: var(--ink-2); }
+.pc-note:empty { display: none; }
+/* The picker's heading reads like the other stacked rows' labels. */
+.setting-row-stack .setting-label { color: var(--ink-2); font-size: 0.82rem; font-weight: 600; }
+
+/* ── Pico, the guide (2.13) ───────────────────────────────────────────
+   Every moving part turns about a point in the drawing's own units (an SVG
+   element's transform box is the view box). Poses are data-pose on the svg;
+   the tour sets --point-angle for the wing and --look-x/--look-y for the
+   eyes. Under reduced motion he holds each pose without moving. */
+.pico { display: block; width: 100%; height: 100%; overflow: visible; }
+.pico .pico-all { transform-origin: 60px 108px; }
+.pico .pico-wing { transition: transform 0.35s ease; }
+.pico .pico-wing-l { transform-origin: 36px 62px; }
+.pico .pico-wing-r { transform-origin: 84px 62px; }
+.pico .pico-eyes { transform-origin: 60px 47px; animation: pico-blink 4.6s ease-in-out infinite; }
+.pico .pico-pupils { transform: translate(var(--look-x, 0px), var(--look-y, 0px)); transition: transform 0.35s ease; }
+.pico .pico-happy { opacity: 0; }
+.pico .pico-brow { transition: transform 0.3s ease; }
+.pico .pico-brow-l { transform-origin: 45px 28px; }
+.pico .pico-brow-r { transform-origin: 75px 28px; }
+.pico .pico-beak-low { transform-origin: 60px 64px; }
+.pico .pico-tuft { transform-origin: 62px 22px; animation: pico-tuft 3.2s ease-in-out infinite; }
+.pico .pico-spark { opacity: 0; transform-origin: 101px 24px; transition: opacity 0.3s; }
+.pico .pico-spark-2 { transform-origin: 15px 26px; }
+
+.pico[data-pose='idle'] .pico-all,
+.pico[data-pose='point'] .pico-all,
+.pico[data-pose='talk'] .pico-all { animation: pico-breathe 3.2s ease-in-out infinite; }
+
+.pico[data-pose='wave'] .pico-wing-r { transform: rotate(-115deg); animation: pico-wave 0.9s ease-in-out 3; }
+.pico[data-pose='wave'] .pico-brow { transform: translateY(-2.5px); }
+
+.pico[data-pose='point'] .pico-wing-r { transform: rotate(var(--point-angle, -75deg)); }
+.pico[data-pose='point'] .pico-brow-r { transform: translateY(-2px) rotate(-6deg); }
+
+.pico[data-pose='talk'] .pico-beak-low { animation: pico-talk 0.26s ease-in-out 8 alternate; }
+
+.pico[data-pose='think'] .pico-all { transform: rotate(-5deg); }
+.pico[data-pose='think'] .pico-brow-l { transform: translateY(-3.5px) rotate(-8deg); }
+.pico[data-pose='think'] .pico-brow-r { transform: translateY(1px) rotate(6deg); }
+.pico[data-pose='think'] .pico-pupils { transform: translate(2.6px, -3px); }
+
+.pico[data-pose='happy'] .pico-eyes,
+.pico[data-pose='cheer'] .pico-eyes { opacity: 0; animation: none; }
+.pico[data-pose='happy'] .pico-happy,
+.pico[data-pose='cheer'] .pico-happy { opacity: 1; }
+.pico[data-pose='happy'] .pico-brow,
+.pico[data-pose='cheer'] .pico-brow { transform: translateY(-3px); }
+.pico[data-pose='happy'] .pico-all { animation: pico-breathe 2.4s ease-in-out infinite; }
+.pico[data-pose='happy'] .pico-spark,
+.pico[data-pose='cheer'] .pico-spark { opacity: 1; animation: pico-twinkle 1.3s ease-in-out infinite; }
+.pico[data-pose='cheer'] .pico-wing-l { transform: rotate(108deg); animation: pico-flap-l 0.42s ease-in-out 6 alternate; }
+.pico[data-pose='cheer'] .pico-wing-r { transform: rotate(-108deg); animation: pico-flap-r 0.42s ease-in-out 6 alternate; }
+.pico[data-pose='cheer'] .pico-all { animation: pico-hop 0.62s ease-out 3; }
+
+@keyframes pico-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.08); } }
+@keyframes pico-breathe { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.6px) scale(1.012, 0.99); } }
+@keyframes pico-tuft { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-4deg); } }
+@keyframes pico-wave { 0%, 100% { transform: rotate(-100deg); } 50% { transform: rotate(-135deg); } }
+@keyframes pico-talk { from { transform: translateY(0); } to { transform: translateY(2.4px) scaleY(1.15); } }
+@keyframes pico-flap-l { from { transform: rotate(100deg); } to { transform: rotate(125deg); } }
+@keyframes pico-flap-r { from { transform: rotate(-100deg); } to { transform: rotate(-125deg); } }
+@keyframes pico-hop {
+  0%, 100% { transform: translateY(0); }
+  35% { transform: translateY(-10px) scale(0.97, 1.04); }
+  70% { transform: translateY(0) scale(1.05, 0.95); }
+}
+@keyframes pico-twinkle { 0%, 100% { transform: scale(0.75) rotate(0); } 50% { transform: scale(1.15) rotate(18deg); } }
+
+/* His invitation on Today, for anyone who had the app before he arrived. */
+.pico-promo {
+  display: flex; align-items: center; gap: 0.9rem;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 14%, var(--surface)), var(--surface) 72%);
+}
+.pico-promo-art { width: 4.4rem; height: 4.4rem; flex: none; }
+.pico-promo-text { min-width: 0; }
+.pico-promo h3 { margin-bottom: 3px; }
+.pico-promo p { font-size: 0.82rem; line-height: 1.45; color: var(--ink-2); }
+.pico-promo .button-row { margin-top: 10px; }
+
+/* ── The tour (2.13) ──────────────────────────────────────────────────
+   The spotlight is a box over the target whose enormous shadow dims the
+   rest of the screen, so it can glide from one stop to the next. The coach
+   sits above or below it, wherever there is room; stops with nothing to
+   point at centre the coach and let Pico stand on top of it. The overlay
+   takes every touch, so the app underneath cannot change mid-tour. */
+.tour { position: fixed; inset: 0; z-index: 850; touch-action: none; overscroll-behavior: contain; }
+.tour-spot {
+  position: fixed; left: 50%; top: 50%; width: 0; height: 0;
+  border-radius: 16px; pointer-events: none;
+  box-shadow: 0 0 0 200vmax rgba(4, 6, 12, 0.68);
+  transition: left 0.35s ease, top 0.35s ease, width 0.35s ease, height 0.35s ease;
+}
+.tour[data-mode='target'] .tour-spot::after {
+  content: ''; position: absolute; inset: -3px; border-radius: inherit;
+  border: 2px solid var(--accent);
+  animation: tour-pulse 1.8s ease-in-out infinite;
+}
+@keyframes tour-pulse { 50% { opacity: 0.35; } }
+.tour-coach {
+  position: fixed; left: 16px; right: 16px; max-width: 26rem; margin: 0 auto;
+  display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); gap: 6px 12px;
+  padding: 14px 14px 12px;
+  border-radius: var(--radius-lg); border: 1px solid var(--border-strong);
+  background: var(--surface); color: var(--ink); box-shadow: var(--shadow);
+  transition: top 0.35s ease;
+}
+.tour-coach.is-entering { animation: tour-in 0.26s ease-out both; }
+@keyframes tour-in { from { opacity: 0; transform: translateY(6px) scale(0.98); } }
+.tour-pico { width: 4.4rem; height: 4.4rem; margin-top: -1.9rem; }
+.tour-text { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.tour-step { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent); }
+.tour-text h2 { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; }
+.tour-text p:last-child { font-size: 0.88rem; line-height: 1.45; color: var(--ink-2); }
+.tour-dots { grid-column: 1 / -1; display: flex; justify-content: center; gap: 5px; margin-top: 4px; }
+.tour-dots i { width: 6px; height: 6px; border-radius: 999px; background: var(--border-strong); transition: width 0.2s, background 0.2s; }
+.tour-dots i.is-on { width: 16px; background: var(--accent); }
+.tour-foot { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; }
+.tour-foot .btn { min-height: 40px; }
+.tour[data-mode='center'] .tour-coach {
+  top: 50%; transform: translateY(-42%);
+  grid-template-columns: minmax(0, 1fr); text-align: center;
+}
+.tour[data-mode='center'] .tour-coach.is-entering { animation-name: tour-in-center; }
+@keyframes tour-in-center { from { opacity: 0; transform: translateY(-40%) scale(0.97); } }
+.tour[data-mode='center'] .tour-pico { width: 7.5rem; height: 7.5rem; margin: -5rem auto 0; }
+.tour[data-mode='center'] .tour-text { align-items: center; }
+
+/* ── Pico at 100 % ────────────────────────────────────────────────────
+   When the day completes he hops up over the tab bar for a moment. Tapping
+   him sends him off sooner. */
+.pico-cheer {
+  position: fixed; left: 50%; bottom: calc(70px + var(--safe-b)); z-index: 95;
+  display: flex; align-items: flex-end; gap: 4px;
+  width: max-content; max-width: calc(100vw - 32px);
+  transform: translateX(-50%);
+  animation: cheer-in 0.32s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+.pico-cheer.is-leaving { animation: cheer-out 0.24s ease-in both; }
+@keyframes cheer-in { from { opacity: 0; transform: translate(-50%, 24px) scale(0.9); } }
+@keyframes cheer-out { to { opacity: 0; transform: translate(-50%, 16px) scale(0.95); } }
+.pico-cheer-art { width: 4.2rem; height: 4.2rem; flex: none; }
+.pico-cheer-text {
+  margin-bottom: 1.6rem; padding: 9px 14px;
+  border-radius: 16px 16px 16px 5px;
+  background: var(--surface-2); color: var(--ink);
+  border: 1px solid var(--border-strong); box-shadow: var(--shadow);
+  font-size: 0.86rem; font-weight: 650; line-height: 1.35;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pico *, .pico .pico-all { animation: none !important; transition: none !important; }
+  .tour-spot, .tour-coach, .palette-card { transition: none; }
+  .tour[data-mode='target'] .tour-spot::after, .tour-coach.is-entering,
+  .pico-cheer, .pico-cheer.is-leaving { animation: none; }
+}

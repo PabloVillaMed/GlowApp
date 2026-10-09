@@ -6,8 +6,8 @@ truth — edit the app there, rebuild, and the APK picks the changes up.
 
 ## The built APK
 
-`GlowApp-2.12.apk` sits at the repository root, with the earlier releases
-`GlowApp-2.11.apk` and `GlowApp-2.10.apk` kept next to it. All are signed with
+`GlowApp-2.13.apk` sits at the repository root, with the earlier releases
+`GlowApp-2.12.apk`, `GlowApp-2.11.apk` and `GlowApp-2.10.apk` kept next to it. All are signed with
 the release key in `keystore/` (not committed), target API 36 (Android 16),
 and need Android 7.0 or newer. Installing a newer one over an older one keeps
 everything; going back means uninstalling first, since Android never installs
@@ -50,7 +50,7 @@ installs once they are answered. Some phones add their own layer on top:
 Over USB with developer options and USB debugging on:
 
 ```sh
-adb install GlowApp-2.12.apk
+adb install GlowApp-2.13.apk
 ```
 
 ## Native features
@@ -198,7 +198,7 @@ outside a secure context.
 The window is edge to edge on Android 11 and later (and has to be from
 targetSdk 36): the root view is padded by the system bars and the keyboard, and
 the page reports its background colour so the bars show it, with light or dark
-icons to match. The WebView's own scroll bar starts switched off and comes on
+icons to match — again whenever the theme or, since 2.13, the palette changes. The WebView's own scroll bar starts switched off and comes on
 when the page reports the launch screen gone (`splashDone`): it flashes as the
 page first lays out, which put a grey bar down the side of the launch screen
 that no CSS could reach. Back closes whatever the page has open — a dialog, the chat, a
