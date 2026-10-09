@@ -954,7 +954,36 @@
         sparkBurst(ring, 14, 82, 56);
       }
       picoCheer();
+    } else if (row) {
+      picoPeek(row);
     }
+  }
+
+  /* Pico peeks in from the left edge, beside the habit just done, winks
+     with a wing up, and goes (2.15). Brief, never in the way of a touch, not
+     again while one is on screen or within a few seconds of the last, and
+     not at all under reduced motion. The day's last habit gets his cheer
+     instead. */
+  let peekBusy = false;
+  let peekLast = 0;
+  function picoPeek(row) {
+    if (reducedMotion.matches || peekBusy || Date.now() - peekLast < 4000) return;
+    const box = $('#picoPeek');
+    const r = row.getBoundingClientRect();
+    const size = box.offsetHeight || 84;
+    const floor = window.innerHeight - 90 - size;
+    peekBusy = true;
+    peekLast = Date.now();
+    box.hidden = false;
+    box.style.top = Math.round(Math.max(64, Math.min(floor, r.top + r.height / 2 - size * 0.7))) + 'px';
+    Pico.mount($('#picoPeekArt'), 'wink');
+    requestAnimationFrame(() => requestAnimationFrame(() => box.classList.add('is-in')));
+    setTimeout(() => box.classList.remove('is-in'), 1700);
+    setTimeout(() => {
+      box.hidden = true;
+      Pico.unmount($('#picoPeekArt'));
+      peekBusy = false;
+    }, 2400);
   }
 
   /* Sparks flung out from the middle of node: count of them, travelling

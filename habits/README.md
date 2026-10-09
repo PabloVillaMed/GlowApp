@@ -75,20 +75,24 @@ generic ones, which name the habit — a reminder shows on the lock screen.
 ## Pico and the tour (2.13)
 
 Pico is GlowApp's guide: a crow, because crows collect shiny things and
-nothing in the app shines like a streak. 2.14 redrew him as a minimal crow
-in profile (`pico.js`): one solid colour, the palette's ink — near black on
-light themes, soft slate on dark ones — with negative-space lines for the
-wing, the mouth and a tail feather, and a calm, slightly lowered eyelid.
-Less cartoon, a little serious.
+nothing in the app shines like a streak. He has been drawn three times:
+2.13 as a cartoon (too childish), 2.14 as a minimal crow in profile (too
+serious), and 2.15 as he is now (`pico.js`) — facing us, minimal, one solid
+colour, the palette's ink (near black on light themes, soft slate on dark
+ones), with negative-space lines for the wings and a chest feather, a small
+crest, and an amber beak as the only accent. His expression lives in his
+eyelids: calm by default, between serious and expressive.
 
-He is rigged rather than keyframed: head, wing, eyelid, pupil, beak, tail
-and body each follow their target on a spring, so a change of pose is always
-a movement and never a jump (the tests sample it: no more than about two
-degrees a frame). Gestures sit on top — a wave, a cheer with hops and wing
-beats, a nod, talking, a caw when tapped — and while nothing is asked of him
-he breathes, blinks, glances about and bobs his head the way crows do. He
-points the way a bird does, by turning to face the target's side and tilting
-his head and eye towards it. One animation loop serves every Pico on the
+His wings are his hands. He points with the one on the target's side,
+gestures while he talks the way people do when they explain something,
+raises one beside his head to think, waves, cheers with both, and winks with
+one up. He is rigged rather than keyframed: body, crest, each wing, each
+eyelid, the pupils and the beak follow their targets on springs, so a change
+of pose is always a movement and never a jump (the tests sample it: no more
+than about two degrees a frame). Gestures sit on top — a wave, a cheer with
+hops and wing beats, a nod, talking, a caw when tapped — and while nothing
+is asked of him he breathes, blinks, glances about and ruffles his crest.
+One animation loop serves every Pico on the
 page: full rate while something plays, about fifteen frames a second while
 he only breathes, and asleep while none is on screen. Under reduced motion
 he takes each pose at once and holds it, and the loop does not run.
@@ -105,8 +109,11 @@ arrow keys, Escape and Android's back all work, and finishing, skipping or
 backing out all count as taken (`state.tourDone`).
 
 When a day completes, Pico hops up over the tab bar with one of his lines
-instead of the plain toast, and leaves by himself. He also keeps an empty
-list company, and a tap makes him hop and caw.
+instead of the plain toast, and leaves by himself. When a habit is done and
+the day is not yet, he leans in from the left edge beside it, winks with a
+wing up and goes — never in the way of a touch, not again within a few
+seconds, and not under reduced motion. He also keeps an empty list company,
+and a tap makes him hop and caw.
 
 In the tour his words appear one after another while his beak moves (the
 text is whole from the start, so a screen reader reads it at once), the

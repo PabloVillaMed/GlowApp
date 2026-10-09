@@ -6,9 +6,9 @@ truth — edit the app there, rebuild, and the APK picks the changes up.
 
 ## The built APK
 
-`GlowApp-2.14.apk` sits at the repository root, with the earlier releases
-`GlowApp-2.13.apk`, `GlowApp-2.12.apk`, `GlowApp-2.11.apk` and
-`GlowApp-2.10.apk` kept next to it. All are signed with
+`GlowApp-2.15.apk` sits at the repository root, with the earlier releases
+`GlowApp-2.14.apk`, `GlowApp-2.13.apk`, `GlowApp-2.12.apk`,
+`GlowApp-2.11.apk` and `GlowApp-2.10.apk` kept next to it. All are signed with
 the release key in `keystore/` (not committed), target API 36 (Android 16),
 and need Android 7.0 or newer. Installing a newer one over an older one keeps
 everything; going back means uninstalling first, since Android never installs
@@ -51,7 +51,7 @@ installs once they are answered. Some phones add their own layer on top:
 Over USB with developer options and USB debugging on:
 
 ```sh
-adb install GlowApp-2.14.apk
+adb install GlowApp-2.15.apk
 ```
 
 ## Native features

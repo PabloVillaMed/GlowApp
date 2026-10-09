@@ -1585,6 +1585,9 @@ td { font-variant-numeric: tabular-nums; }
 .pico .pk-glad { fill: none; stroke: var(--pico-eye); stroke-width: 2; stroke-linecap: round; }
 .pico .pk-shadow { fill: currentColor; opacity: 0.14; }
 .pico .pk-spark { fill: var(--accent); }
+/* The beak is his one warm accent, the same in every palette. */
+.pico .pk-beak-up { fill: #E3A33A; }
+.pico .pk-beak-low { fill: #B87A1E; }
 
 /* His invitation on Today, for anyone who had the app before he arrived. */
 .pico-promo {
@@ -1659,6 +1662,18 @@ td { font-variant-numeric: tabular-nums; }
 @keyframes tour-in-center { from { opacity: 0; transform: translateY(-40%) scale(0.97); } }
 .tour[data-mode='center'] .tour-pico { width: 7.5rem; height: 7.5rem; margin: -5rem auto 0; }
 .tour[data-mode='center'] .tour-text { align-items: center; }
+
+/* ── Pico peeking at a habit just done (2.15) ──
+   He leans in from the left edge, pivoting on the corner, so he looks in
+   rather than slides past. */
+.pico-peek {
+  position: fixed; left: 0; z-index: 94; width: 5.4rem; height: 5.4rem;
+  pointer-events: none; transform-origin: 0% 100%;
+  transform: translateX(-102%) rotate(-30deg);
+  transition: transform 0.6s var(--spring);
+}
+.pico-peek.is-in { transform: translateX(-30%) rotate(24deg); }
+.pico-peek-art { width: 100%; height: 100%; }
 
 /* ── Pico at 100 % ────────────────────────────────────────────────────
    When the day completes he hops up over the tab bar for a moment. Tapping

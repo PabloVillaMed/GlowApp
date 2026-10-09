@@ -16,7 +16,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="GlowApp">
-  <link rel="stylesheet" href="styles.css?v=2.14">
+  <link rel="stylesheet" href="styles.css?v=2.15">
   <script>
     /* The saved theme and palette, resolved as applyTheme() in app.js resolves
        them, before anything paints: until app.js ran, a light theme opened on
@@ -39,7 +39,7 @@
       }
     })();
   </script>
-  <script src="i18n.js?v=2.14"></script>
+  <script src="i18n.js?v=2.15"></script>
 </head>
 <body>
   <!-- Launch screen. The mark draws itself, then a phrase lands under it.
@@ -720,6 +720,11 @@
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
 
+  <!-- Pico peeking in when a habit is done (2.15). -->
+  <div class="pico-peek" id="picoPeek" aria-hidden="true" hidden>
+    <div class="pico-peek-art" id="picoPeekArt"></div>
+  </div>
+
   <!-- Pico when the day completes (2.13): replaces the plain toast. -->
   <div class="pico-cheer" id="picoCheer" role="status" aria-live="polite" hidden>
     <div class="pico-cheer-art" id="picoCheerArt" aria-hidden="true"></div>
@@ -812,10 +817,10 @@
     </symbol>
   </svg>
 
-  <script src="sounds.js?v=2.14"></script>
-  <script src="pico.js?v=2.14"></script>
-  <script src="charts.js?v=2.14"></script>
-  <script src="characters.js?v=2.14"></script>
-  <script src="app.js?v=2.14"></script>
+  <script src="sounds.js?v=2.15"></script>
+  <script src="pico.js?v=2.15"></script>
+  <script src="charts.js?v=2.15"></script>
+  <script src="characters.js?v=2.15"></script>
+  <script src="app.js?v=2.15"></script>
 </body>
 </html>
