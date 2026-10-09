@@ -6,8 +6,10 @@
    Piper (an open-source text-to-speech engine that runs offline) speaks each
    line with a stock voice from its catalogue; ffmpeg then gives each
    character its sound — a stadium-sized compressor for the footballer, a
-   cellar reverb for the narrator, a singing bowl for the master — and
+   lower pitch for the narrator, a singing bowl for the master — and
    encodes it as Opus in WebM, which both Android and the WebView play.
+   Since 2.14 they all speak dry but Bip: the echoes they had until then
+   sounded like a hall and blurred the words.
 
    Output:  habits/voices/<character>/<lang>/<clip>.webm
             habits/voices/index.json  (duration and waveform of every clip)
@@ -80,11 +82,12 @@ const PROFILES = {
    and arrive as [s0], [s1]... */
 const SR = 22050;
 const FX = {
-  /* Close, punchy and bright, like a voice over a stadium's PA. The intro
-     opens with a referee's whistle. */
+  /* Close, punchy and bright, like a voice over a stadium's PA, but dry: the
+     slapback echo it had until 2.13 is gone. The intro opens with a
+     referee's whistle. */
   crack(clip) {
     const voice = '[v]acompressor=threshold=-22dB:ratio=3.5:attack=4:release=90:makeup=2,' +
-      'equalizer=f=3200:t=q:w=1.2:g=3,aecho=0.8:0.55:38:0.12';
+      'equalizer=f=3200:t=q:w=1.2:g=3';
     if (clip !== 'intro') return { graph: voice + '[fx]', sources: [] };
     return {
       sources: ['sine=f=2950:d=0.55:sample_rate=' + SR],
@@ -93,21 +96,21 @@ const FX = {
     };
   },
 
-  /* Lower, slower and in a cellar: two and a half semitones down, a long
-     echo, and a dark rumble underneath the whole story. The rumble has a
-     fixed seed, so every pass over a clip hears the same one. */
+  /* Lower and slower, a storyteller close to the microphone: two and a half
+     semitones down, a little warmth at the bottom, the top softened. Until
+     2.13 he told his stories from a cellar, with a long echo and a rumble
+     underneath; it muddied the words. */
   narrator() {
     const k = 0.865;
     return {
-      sources: ['anoisesrc=color=brown:amplitude=0.6:seed=1:sample_rate=' + SR],
+      sources: [],
       graph: '[v]asetrate=' + Math.round(SR * k) + ',aresample=' + SR + ',atempo=' + (1 / k).toFixed(4) + ',' +
-        'lowpass=f=6200,apad=pad_dur=0.7,aecho=0.8:0.85:70|130:0.3|0.18[vv];' +
-        '[s0]lowpass=f=320,volume=0.05[bed];' +
-        '[vv][bed]amix=inputs=2:duration=first:normalize=0[fx]',
+        'equalizer=f=180:t=q:w=1:g=2,lowpass=f=6200[fx]',
     };
   },
 
-  /* A touch lower and warmer, with the faint waver of an older voice.
+  /* A touch lower and warmer, with the faint waver of an older voice, and
+     dry since 2.14 (it had a small room's echo).
      ffmpeg's vibrato reads its delay line before it has written it, so its
      first few milliseconds are whatever was left in memory: usually
      silence, sometimes a full-scale click or Infinity, and the loudness
@@ -121,7 +124,7 @@ const FX = {
       graph: '[v]asetrate=' + Math.round(SR * k) + ',aresample=' + SR + ',atempo=' + (1 / k).toFixed(4) + ',' +
         'asetpts=N/SR/TB,adelay=' + lead + 'S:all=1,vibrato=f=5.2:d=0.035,' +
         'atrim=start_sample=' + lead + ',asetpts=PTS-STARTPTS,' +
-        'equalizer=f=260:t=q:w=1:g=2.5,lowpass=f=7800,aecho=0.8:0.4:25:0.08[fx]',
+        'equalizer=f=260:t=q:w=1:g=2.5,lowpass=f=7800[fx]',
     };
   },
 
@@ -140,21 +143,23 @@ const FX = {
     };
   },
 
-  /* Slow and warm, opening on a singing bowl that keeps ringing under the
-     first words. The bowl is built from a bowl's inharmonic partials, with a
-     pair of close tones beating against each other for the shimmer. */
+  /* Slow and warm, opening on a singing bowl. The bowl is built from a
+     bowl's inharmonic partials, with a pair of close tones beating against
+     each other for the shimmer. Until 2.13 it rang on for four seconds and
+     the voice had a long echo, which together washed the words out; now the
+     bowl dies away under the first words and the voice is dry. */
   zen() {
     const f = 311;
     const partial = (freq, dur) => 'sine=f=' + freq + ':d=' + dur + ':sample_rate=' + SR;
     return {
       sources: [
-        partial(f, 4.5), partial(f + 1.8, 4.5),
-        partial(Math.round(f * 2.71), 3.2), partial(Math.round(f * 5.02), 2),
+        partial(f, 1.8), partial(f + 1.8, 1.8),
+        partial(Math.round(f * 2.71), 1.6), partial(Math.round(f * 5.02), 1.2),
       ],
       graph: '[s0]volume=0.5[p0];[s1]volume=0.42[p1];[s2]volume=0.22[p2];[s3]volume=0.08[p3];' +
         '[p0][p1][p2][p3]amix=inputs=4:duration=longest:normalize=0,' +
-        'afade=t=in:d=0.006,afade=t=out:st=0.03:d=4.4:curve=exp,volume=0.45[bowl];' +
-        '[v]lowpass=f=7200,equalizer=f=210:t=q:w=1:g=2,apad=pad_dur=0.8,aecho=0.8:0.88:90|160:0.2|0.12,adelay=750:all=1[vv];' +
+        'afade=t=in:d=0.006,afade=t=out:st=0.03:d=1.7:curve=exp,volume=0.45[bowl];' +
+        '[v]lowpass=f=7200,equalizer=f=210:t=q:w=1:g=2,adelay=750:all=1[vv];' +
         '[bowl][vv]amix=inputs=2:duration=longest:normalize=0[fx]',
     };
   },

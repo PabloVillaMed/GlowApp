@@ -827,6 +827,8 @@ td { font-variant-numeric: tabular-nums; }
 
 /* ── Settings ── */
 .setting-group { display: flex; flex-direction: column; gap: 12px; }
+.data-block { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.data-block h4 { font-size: 0.88rem; font-weight: 650; }
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .setting-row label { font-size: 0.88rem; }
 .setting-row select { width: auto; min-width: 140px; }
@@ -1124,6 +1126,32 @@ td { font-variant-numeric: tabular-nums; }
 .summary-ring.celebrate svg { animation: ring-celebrate 0.7s ease-out; }
 .summary-ring.celebrate .ring-value { stroke: var(--good); }
 
+/* Sparks from a ticked circle — the shiny things Pico collects. Small
+   diamonds in the palette's good and accent colours, flung out and gone in
+   well under a second. */
+.spark-burst { position: fixed; z-index: 96; width: 0; height: 0; pointer-events: none; }
+.spark-burst i {
+  position: absolute; left: -3.5px; top: -3.5px; width: 7px; height: 7px; border-radius: 1.5px;
+  background: var(--good); opacity: 0;
+  animation: spark-fly 0.66s cubic-bezier(0.2, 0.75, 0.3, 1) both;
+}
+.spark-burst i:nth-child(even) { left: -2.5px; top: -2.5px; width: 5px; height: 5px; background: var(--accent); }
+/* Born at the circle's edge, full size, and fading as they slow. */
+@keyframes spark-fly {
+  0% { opacity: 0; transform: rotate(var(--a)) translateX(var(--r0, 20px)) rotate(45deg) scale(0.7); }
+  14% { opacity: 1; }
+  70% { opacity: 1; transform: rotate(var(--a)) translateX(calc(var(--d) * 0.86)) rotate(45deg) scale(1); }
+  100% { opacity: 0; transform: rotate(var(--a)) translateX(var(--d)) rotate(45deg) scale(0.35); }
+}
+
+/* A tab eases in rather than snapping (opacity only: a transform here would
+   become the containing block of anything fixed inside the view). */
+.view.view-enter { animation: view-in 0.24s ease-out both; }
+@keyframes view-in { from { opacity: 0; } }
+
+/* Pico keeps an empty list company. */
+.empty-pico { width: 4.2rem; height: 4.2rem; margin: 0 auto -2px; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
@@ -1318,7 +1346,11 @@ td { font-variant-numeric: tabular-nums; }
 .height-inputs { display: flex; gap: 8px; }
 .height-input { flex: 1; display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--ink-2); }
 .height-input input { flex: 1; min-width: 0; }
-.setting-number { width: 7.5rem; flex: none; }
+/* As specific as the generic number field it overrides (input[type='number']
+   is 100 % wide): until 2.14 that rule won, the box took the whole row, the
+   label broke over three lines and the box ran out of the card. */
+.setting-row input.setting-number { width: 7.5rem; flex: none; }
+.setting-row > label, .setting-row > .setting-label { flex: 1 1 auto; min-width: 0; }
 .bmi-scale { display: flex; flex-direction: column; gap: 6px; }
 .bmi-scale .bmi-chip { align-self: flex-start; }
 .bmi-track { position: relative; display: flex; height: 10px; border-radius: var(--radius-pill); overflow: visible; }
@@ -1527,70 +1559,32 @@ td { font-variant-numeric: tabular-nums; }
 /* The picker's heading reads like the other stacked rows' labels. */
 .setting-row-stack .setting-label { color: var(--ink-2); font-size: 0.82rem; font-weight: 600; }
 
-/* ── Pico, the guide (2.13) ───────────────────────────────────────────
-   Every moving part turns about a point in the drawing's own units (an SVG
-   element's transform box is the view box). Poses are data-pose on the svg;
-   the tour sets --point-angle for the wing and --look-x/--look-y for the
-   eyes. Under reduced motion he holds each pose without moving. */
-.pico { display: block; width: 100%; height: 100%; overflow: visible; }
-.pico .pico-all { transform-origin: 60px 108px; }
-.pico .pico-wing { transition: transform 0.35s ease; }
-.pico .pico-wing-l { transform-origin: 36px 62px; }
-.pico .pico-wing-r { transform-origin: 84px 62px; }
-.pico .pico-eyes { transform-origin: 60px 47px; animation: pico-blink 4.6s ease-in-out infinite; }
-.pico .pico-pupils { transform: translate(var(--look-x, 0px), var(--look-y, 0px)); transition: transform 0.35s ease; }
-.pico .pico-happy { opacity: 0; }
-.pico .pico-brow { transition: transform 0.3s ease; }
-.pico .pico-brow-l { transform-origin: 45px 28px; }
-.pico .pico-brow-r { transform-origin: 75px 28px; }
-.pico .pico-beak-low { transform-origin: 60px 64px; }
-.pico .pico-tuft { transform-origin: 62px 22px; animation: pico-tuft 3.2s ease-in-out infinite; }
-.pico .pico-spark { opacity: 0; transform-origin: 101px 24px; transition: opacity 0.3s; }
-.pico .pico-spark-2 { transform-origin: 15px 26px; }
-
-.pico[data-pose='idle'] .pico-all,
-.pico[data-pose='point'] .pico-all,
-.pico[data-pose='talk'] .pico-all { animation: pico-breathe 3.2s ease-in-out infinite; }
-
-.pico[data-pose='wave'] .pico-wing-r { transform: rotate(-115deg); animation: pico-wave 0.9s ease-in-out 3; }
-.pico[data-pose='wave'] .pico-brow { transform: translateY(-2.5px); }
-
-.pico[data-pose='point'] .pico-wing-r { transform: rotate(var(--point-angle, -75deg)); }
-.pico[data-pose='point'] .pico-brow-r { transform: translateY(-2px) rotate(-6deg); }
-
-.pico[data-pose='talk'] .pico-beak-low { animation: pico-talk 0.26s ease-in-out 8 alternate; }
-
-.pico[data-pose='think'] .pico-all { transform: rotate(-5deg); }
-.pico[data-pose='think'] .pico-brow-l { transform: translateY(-3.5px) rotate(-8deg); }
-.pico[data-pose='think'] .pico-brow-r { transform: translateY(1px) rotate(6deg); }
-.pico[data-pose='think'] .pico-pupils { transform: translate(2.6px, -3px); }
-
-.pico[data-pose='happy'] .pico-eyes,
-.pico[data-pose='cheer'] .pico-eyes { opacity: 0; animation: none; }
-.pico[data-pose='happy'] .pico-happy,
-.pico[data-pose='cheer'] .pico-happy { opacity: 1; }
-.pico[data-pose='happy'] .pico-brow,
-.pico[data-pose='cheer'] .pico-brow { transform: translateY(-3px); }
-.pico[data-pose='happy'] .pico-all { animation: pico-breathe 2.4s ease-in-out infinite; }
-.pico[data-pose='happy'] .pico-spark,
-.pico[data-pose='cheer'] .pico-spark { opacity: 1; animation: pico-twinkle 1.3s ease-in-out infinite; }
-.pico[data-pose='cheer'] .pico-wing-l { transform: rotate(108deg); animation: pico-flap-l 0.42s ease-in-out 6 alternate; }
-.pico[data-pose='cheer'] .pico-wing-r { transform: rotate(-108deg); animation: pico-flap-r 0.42s ease-in-out 6 alternate; }
-.pico[data-pose='cheer'] .pico-all { animation: pico-hop 0.62s ease-out 3; }
-
-@keyframes pico-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.08); } }
-@keyframes pico-breathe { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-1.6px) scale(1.012, 0.99); } }
-@keyframes pico-tuft { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-4deg); } }
-@keyframes pico-wave { 0%, 100% { transform: rotate(-100deg); } 50% { transform: rotate(-135deg); } }
-@keyframes pico-talk { from { transform: translateY(0); } to { transform: translateY(2.4px) scaleY(1.15); } }
-@keyframes pico-flap-l { from { transform: rotate(100deg); } to { transform: rotate(125deg); } }
-@keyframes pico-flap-r { from { transform: rotate(-100deg); } to { transform: rotate(-125deg); } }
-@keyframes pico-hop {
-  0%, 100% { transform: translateY(0); }
-  35% { transform: translateY(-10px) scale(0.97, 1.04); }
-  70% { transform: translateY(0) scale(1.05, 0.95); }
+/* ── Pico, the guide ─────────────────────────────────────────────────
+   2.14: one solid colour, the palette's own — near black on light themes,
+   soft slate on dark ones — with the eye and the negative-space lines (the
+   wing's edge, the mouth, a tail feather) in the surface he stands on.
+   pico.js moves him; nothing here animates. */
+:root {
+  --pico-body: var(--ink-2);
+  --pico-eye: var(--ink);
+  --pico-pupil: var(--bg);
+  --pico-cut: var(--surface);
 }
-@keyframes pico-twinkle { 0%, 100% { transform: scale(0.75) rotate(0); } 50% { transform: scale(1.15) rotate(18deg); } }
+:root[data-theme='light'] {
+  --pico-body: var(--ink);
+  --pico-eye: var(--surface);
+  --pico-pupil: var(--ink);
+}
+.pico { display: block; width: 100%; height: 100%; overflow: visible; color: var(--pico-body); }
+.pico .pk-fill { fill: currentColor; }
+.pico .pk-legs { stroke: currentColor; }
+.pico .pk-cut { fill: none; stroke: var(--pico-cut); stroke-width: 1.4; stroke-linecap: round; }
+.pico .pk-wing-shape { stroke: var(--pico-cut); stroke-width: 1.7; stroke-linejoin: round; }
+.pico .pk-white { fill: var(--pico-eye); }
+.pico .pk-pupil { fill: var(--pico-pupil); }
+.pico .pk-glad { fill: none; stroke: var(--pico-eye); stroke-width: 2; stroke-linecap: round; }
+.pico .pk-shadow { fill: currentColor; opacity: 0.14; }
+.pico .pk-spark { fill: var(--accent); }
 
 /* His invitation on Today, for anyone who had the app before he arrived. */
 .pico-promo {
@@ -1610,11 +1604,23 @@ td { font-variant-numeric: tabular-nums; }
    point at centre the coach and let Pico stand on top of it. The overlay
    takes every touch, so the app underneath cannot change mid-tour. */
 .tour { position: fixed; inset: 0; z-index: 850; touch-action: none; overscroll-behavior: contain; }
+/* A damped spring (about 8 % of overshoot), sampled for linear(); browsers
+   without linear() keep the cubic curve before it. */
+:root { --spring: cubic-bezier(0.2, 0.9, 0.25, 1.06); --spring-time: 0.55s; }
+@supports (transition-timing-function: linear(0, 1)) {
+  :root {
+    --spring: linear(0, 0.0686 4%, 0.228 8%, 0.4224 12%, 0.6133 15%, 0.7779 19%, 0.9058 23%, 0.9952 27%,
+      1.05 31%, 1.0769 35%, 1.0835 38%, 1.0769 42%, 1.0632 46%, 1.0468 50%, 1.031 54%, 1.0175 58%,
+      1.0071 62%, 0.9999 65%, 0.9955 69%, 0.9935 73%, 0.993 77%, 0.9937 81%, 0.9948 85%, 0.9962 88%,
+      0.9975 92%, 0.9986 96%, 1);
+  }
+}
 .tour-spot {
   position: fixed; left: 50%; top: 50%; width: 0; height: 0;
   border-radius: 16px; pointer-events: none;
   box-shadow: 0 0 0 200vmax rgba(4, 6, 12, 0.68);
-  transition: left 0.35s ease, top 0.35s ease, width 0.35s ease, height 0.35s ease;
+  transition: left var(--spring-time) var(--spring), top var(--spring-time) var(--spring),
+    width var(--spring-time) var(--spring), height var(--spring-time) var(--spring);
 }
 .tour[data-mode='target'] .tour-spot::after {
   content: ''; position: absolute; inset: -3px; border-radius: inherit;
@@ -1628,7 +1634,7 @@ td { font-variant-numeric: tabular-nums; }
   padding: 14px 14px 12px;
   border-radius: var(--radius-lg); border: 1px solid var(--border-strong);
   background: var(--surface); color: var(--ink); box-shadow: var(--shadow);
-  transition: top 0.35s ease;
+  transition: top var(--spring-time) var(--spring);
 }
 .tour-coach.is-entering { animation: tour-in 0.26s ease-out both; }
 @keyframes tour-in { from { opacity: 0; transform: translateY(6px) scale(0.98); } }
@@ -1637,6 +1643,9 @@ td { font-variant-numeric: tabular-nums; }
 .tour-step { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent); }
 .tour-text h2 { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; }
 .tour-text p:last-child { font-size: 0.88rem; line-height: 1.45; color: var(--ink-2); }
+/* Pico's words, appearing as he says them (pico.js times his beak to them). */
+.tour-text .tw { animation: tw-in 0.34s ease-out both; }
+@keyframes tw-in { from { opacity: 0; } }
 .tour-dots { grid-column: 1 / -1; display: flex; justify-content: center; gap: 5px; margin-top: 4px; }
 .tour-dots i { width: 6px; height: 6px; border-radius: 999px; background: var(--border-strong); transition: width 0.2s, background 0.2s; }
 .tour-dots i.is-on { width: 16px; background: var(--accent); }
@@ -1674,7 +1683,6 @@ td { font-variant-numeric: tabular-nums; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pico *, .pico .pico-all { animation: none !important; transition: none !important; }
   .tour-spot, .tour-coach, .palette-card { transition: none; }
   .tour[data-mode='target'] .tour-spot::after, .tour-coach.is-entering,
   .pico-cheer, .pico-cheer.is-leaving { animation: none; }

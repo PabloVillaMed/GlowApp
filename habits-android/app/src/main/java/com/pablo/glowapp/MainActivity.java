@@ -22,6 +22,7 @@ import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.ServiceWorkerClient;
 import android.webkit.ServiceWorkerController;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -40,6 +41,8 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.lang.ref.WeakReference;
 import java.util.HashMap;
 import java.util.Map;
@@ -85,6 +88,8 @@ public class MainActivity extends Activity {
 
   private static final int REQUEST_NOTIFICATIONS = 1;
   private static final int REQUEST_MIC = 2;
+  private static final int REQUEST_SAVE = 3;
+  private static final int REQUEST_OPEN = 4;
 
   /** The activity on screen, if any, so a receiver can tell the page something changed. */
   private static WeakReference<MainActivity> resumed = new WeakReference<>(null);
@@ -95,6 +100,10 @@ public class MainActivity extends Activity {
   private String pendingRoute;
   /** The page's request for the microphone, waiting on Android's own permission dialog. */
   private PermissionRequest pendingMic;
+  /** A file the page made (a backup, a table), waiting for the user to pick where it goes. */
+  private String pendingSave;
+  /** The page's file input, waiting for the user to pick a file. */
+  private ValueCallback<Uri[]> pendingChooser;
 
   @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
   @Override
@@ -180,6 +189,26 @@ public class MainActivity extends Activity {
       public void onPermissionRequestCanceled(PermissionRequest request) {
         if (pendingMic == request) pendingMic = null;
       }
+
+      /* The page's file input (restoring a backup). A WebView shows no picker
+         of its own; through 2.13 the button did nothing in the app. Any file
+         may be picked: a backup sent through WhatsApp or Drive does not always
+         keep a JSON type, and the page reads what is inside before it trusts it. */
+      @Override
+      public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback, FileChooserParams params) {
+        if (pendingChooser != null) pendingChooser.onReceiveValue(null);
+        pendingChooser = callback;
+        final Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("*/*");
+        try {
+          startActivityForResult(pick, REQUEST_OPEN);
+          return true;
+        } catch (ActivityNotFoundException missing) {
+          pendingChooser = null;
+          return false;
+        }
+      }
     });
 
     // The page registers a service worker in a browser; its fetches bypass
@@ -198,6 +227,47 @@ public class MainActivity extends Activity {
     } else {
       webView.loadUrl(START_URL);
     }
+  }
+
+  @Override
+  protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+    super.onActivityResult(requestCode, resultCode, data);
+    if (requestCode == REQUEST_OPEN) {
+      final ValueCallback<Uri[]> callback = pendingChooser;
+      pendingChooser = null;
+      if (callback != null) callback.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(resultCode, data));
+      return;
+    }
+    if (requestCode != REQUEST_SAVE) return;
+    final String text = pendingSave;
+    pendingSave = null;
+    if (resultCode != RESULT_OK || data == null || data.getData() == null || text == null) {
+      tellFileSaved("cancelled");
+      return;
+    }
+    tellFileSaved(write(data.getData(), text) ? "saved" : "failed");
+  }
+
+  /** Writes text to a document the user picked, truncating anything already there. */
+  private boolean write(Uri target, String text) {
+    final byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+    for (String mode : new String[] { "wt", "w" }) {
+      try (OutputStream out = getContentResolver().openOutputStream(target, mode)) {
+        if (out == null) return false;
+        out.write(bytes);
+        return true;
+      } catch (IllegalArgumentException | FileNotFoundException unsupported) {
+        // Some providers know only "w"; try that next.
+      } catch (IOException | SecurityException failed) {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  private void tellFileSaved(String status) {
+    if (webView == null) return;
+    webView.evaluateJavascript("window.__glow && window.__glow.fileSaved && window.__glow.fileSaved('" + status + "')", null);
   }
 
   /** Grants the microphone to the app's own page once Android has granted it to the app. */
@@ -406,6 +476,33 @@ public class MainActivity extends Activity {
     @JavascriptInterface
     public String listVoiceNotes() {
       return OwnNotes.list(MainActivity.this);
+    }
+
+    /**
+     * Saves a file the page made — a backup or a table — wherever the user
+     * picks in Android's own "save as" (the phone, Drive, Downloads…). A
+     * WebView cannot download, so this replaces the browser's download. The
+     * outcome comes back through __glow.fileSaved.
+     */
+    @JavascriptInterface
+    public boolean saveFile(String name, String mime, String text) {
+      if (name == null || text == null) return false;
+      final String title = name.replaceAll("[^A-Za-z0-9 ._()-]", "_");
+      final String type = mime == null || mime.isEmpty() ? "application/octet-stream" : mime;
+      runOnUiThread(() -> {
+        pendingSave = text;
+        final Intent create = new Intent(Intent.ACTION_CREATE_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType(type)
+            .putExtra(Intent.EXTRA_TITLE, title);
+        try {
+          startActivityForResult(create, REQUEST_SAVE);
+        } catch (ActivityNotFoundException missing) {
+          pendingSave = null;
+          tellFileSaved("failed");
+        }
+      });
+      return true;
     }
 
     /** Android's page for this app, where a permission refused for good can still be given. */

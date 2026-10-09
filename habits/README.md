@@ -75,11 +75,23 @@ generic ones, which name the habit — a reminder shows on the lock screen.
 ## Pico and the tour (2.13)
 
 Pico is GlowApp's guide: a crow, because crows collect shiny things and
-nothing in the app shines like a streak. He is an original drawing (`pico.js`),
-inline SVG so CSS can move his parts — the wings wave and point, the eyes
-blink and look at what he is pointing at, the beak talks — in fixed colours,
-the same in every palette, with a light rim that keeps him readable on the
-darkest ones. Under reduced motion he holds each pose without moving.
+nothing in the app shines like a streak. 2.14 redrew him as a minimal crow
+in profile (`pico.js`): one solid colour, the palette's ink — near black on
+light themes, soft slate on dark ones — with negative-space lines for the
+wing, the mouth and a tail feather, and a calm, slightly lowered eyelid.
+Less cartoon, a little serious.
+
+He is rigged rather than keyframed: head, wing, eyelid, pupil, beak, tail
+and body each follow their target on a spring, so a change of pose is always
+a movement and never a jump (the tests sample it: no more than about two
+degrees a frame). Gestures sit on top — a wave, a cheer with hops and wing
+beats, a nod, talking, a caw when tapped — and while nothing is asked of him
+he breathes, blinks, glances about and bobs his head the way crows do. He
+points the way a bird does, by turning to face the target's side and tilting
+his head and eye towards it. One animation loop serves every Pico on the
+page: full rate while something plays, about fifteen frames a second while
+he only breathes, and asleep while none is on screen. Under reduced motion
+he takes each pose at once and holds it, and the loop does not run.
 
 The tour runs once, right after the starting test (finished or skipped), and
 waits on Today as an invitation for anyone who had the app before it existed;
@@ -93,7 +105,19 @@ arrow keys, Escape and Android's back all work, and finishing, skipping or
 backing out all count as taken (`state.tourDone`).
 
 When a day completes, Pico hops up over the tab bar with one of his lines
-instead of the plain toast, and leaves by himself.
+instead of the plain toast, and leaves by himself. He also keeps an empty
+list company, and a tap makes him hop and caw.
+
+In the tour his words appear one after another while his beak moves (the
+text is whole from the start, so a screen reader reads it at once), the
+spotlight and the coach move on a sampled spring curve (`linear()`, with a
+cubic fallback), and a swipe on the coach goes to the next stop or back.
+
+Elsewhere, 2.14 adds a little motion where it says something: a ticked
+circle throws a few sparks (a day completed, a ring of them), a tab eases in
+instead of snapping, and a palette or theme change cross-fades through the
+View Transitions API where the browser has it. All of it is off under
+reduced motion.
 
 ## Reminders from a character (Android app)
 
@@ -139,7 +163,7 @@ no character chosen gets it too.
   was refused, the editor says so and offers Android's settings page.
 - The page records (`MediaRecorder`, WebM/Opus at 32 kbps) and hands the file
   to the shell once, on save; it lives in the app's private storage, not in
-  `glow.v1`, so the JSON export does not carry it. Android's own backup does.
+  `glow.v1`, so the backup file does not carry it. Android's own backup does.
   On start the page and the shell compare notes: a file no habit uses is
   deleted, and a habit whose file is missing (a backup from another phone)
   forgets it.
@@ -204,8 +228,12 @@ as Opus audio in `voices/` (about 16 MB for 790 clips). They are spoken by
 [Piper](https://github.com/rhasspy/piper), an open-source text-to-speech
 engine, using stock voices from its catalogue — none of them cloned from a
 person — and then given each character's sound with ffmpeg: a compressor and
-a referee's whistle for El Crack, a lower pitch and a cellar echo for El
-Narrador, a robot filter and two beeps for Bip, a singing bowl for Maestro Zen.
+a referee's whistle for El Crack, a lower, slower pitch for El Narrador, a
+faint waver for Abuela Rosa, a robot filter and two beeps for Bip, a singing
+bowl for Maestro Zen. Since 2.14 all of them but Bip speak dry: the echoes
+they had until then (a cellar for the narrator, a hall for the rest) sounded
+like reverb and blurred the words. Bip keeps his short metallic comb, which
+is part of being a robot.
 `voices/index.json` holds each clip's length and waveform for the chat bubbles.
 
 | Character | Spanish voice | English voice |
@@ -264,9 +292,26 @@ Everything lives in one `localStorage` record (`glow.v1`) in the browser that
 runs the app. It never leaves the device: there is no server to send it to.
 
 That also means clearing site data erases it, and nothing syncs between your
-phone and your laptop. **Ajustes → Exportar JSON** writes a full backup, and
-*Importar JSON* restores one — the same file moves your history to another
-device.
+phone and your laptop. **Ajustes → Tus datos** offers two ways out, named for
+what they are rather than for their format (until 2.13 the buttons said
+"Exportar JSON", which means nothing to most people):
+
+- **Guardar copia** writes a backup: the whole record in one file,
+  `GlowApp-copia-<date>.json`, marked as a GlowApp backup. **Restaurar una
+  copia** reads one back — on this device or another — but first says what is
+  in it (its date, how many habits and logged days) and replaces nothing
+  until the user agrees. A file that is not a backup is refused with a plain
+  sentence. Ajustes shows the date of the last backup saved.
+- **Descargar tabla** writes the history as a spreadsheet,
+  `GlowApp-tabla-<date>.csv`: one row a day from the first record to
+  today, one column a habit (Sí / No, or the amount for a counted one), then
+  mood, energy, the mood note, weight and BMI. In Spanish it uses semicolons
+  and a decimal comma, in English commas and a point, which is what Excel
+  expects in each; a byte-order mark tells Excel it is UTF-8.
+
+In a browser both download. Inside the Android app, where a WebView cannot
+download, both go through Android's own "save as", and a restore through its
+file picker (see the Android README).
 
 ## Names follow the language
 

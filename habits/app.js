@@ -117,6 +117,8 @@
     chat: [],
     chatUnread: 0,
     castPromoDismissed: false,
+    /* The day of the last backup saved (2.14), to say how old it is. */
+    lastBackup: null,
     /* Pico's tour (2.13): taken or skipped, and whether its invitation on
        Today was put off for good. */
     tourDone: false,
@@ -180,6 +182,7 @@
     normalizeBody();
     if (!PALETTES.includes(state.palette)) state.palette = 'classic';
     state.tourDone = state.tourDone === true;
+    if (typeof state.lastBackup !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(state.lastBackup)) state.lastBackup = null;
     state.tourPromoDismissed = state.tourPromoDismissed === true;
     if (state.character && !castById(state.character)) state.character = null;
     state.habits.forEach((habit) => {
@@ -405,11 +408,12 @@
     toastTimer = setTimeout(() => { box.hidden = true; }, 2200);
   }
 
-  function confirmDialog(title, body) {
+  function confirmDialog(title, body, okLabel) {
     return new Promise((resolve) => {
       const dlg = $('#confirmDialog');
       $('#confirmTitle').textContent = title;
       $('#confirmBody').textContent = body;
+      $('#confirmOk').textContent = okLabel || t('confirm');
       const done = (value) => {
         dlg.close();
         $('#confirmOk').removeEventListener('click', ok);
@@ -933,7 +937,10 @@
     if (row && !reducedMotion.matches) {
       row.classList.add('just-done');
       const check = $('.check-btn', row);
-      if (check) check.classList.add('just-done');
+      if (check) {
+        check.classList.add('just-done');
+        sparkBurst(check, 8, 46, 24);
+      }
     }
 
     const stats = dayStats(selectedDate);
@@ -944,9 +951,32 @@
       if (ring && !reducedMotion.matches) {
         ring.classList.add('celebrate');
         setTimeout(() => ring.classList.remove('celebrate'), 800);
+        sparkBurst(ring, 14, 82, 56);
       }
       picoCheer();
     }
+  }
+
+  /* Sparks flung out from the middle of node: count of them, travelling
+     about reach pixels, starting from start pixels out. */
+  function sparkBurst(node, count, reach, start) {
+    if (!node || reducedMotion.matches) return;
+    const r = node.getBoundingClientRect();
+    const burst = document.createElement('div');
+    burst.className = 'spark-burst';
+    burst.setAttribute('aria-hidden', 'true');
+    burst.style.left = (r.left + r.width / 2) + 'px';
+    burst.style.top = (r.top + r.height / 2) + 'px';
+    for (let i = 0; i < count; i++) {
+      const spark = document.createElement('i');
+      spark.style.setProperty('--a', ((360 / count) * i + Math.random() * 18).toFixed(1) + 'deg');
+      spark.style.setProperty('--d', (reach * (0.8 + Math.random() * 0.4)).toFixed(1) + 'px');
+      if (start) spark.style.setProperty('--r0', start + 'px');
+      spark.style.animationDelay = Math.round(Math.random() * 50) + 'ms';
+      burst.appendChild(spark);
+    }
+    document.body.appendChild(burst);
+    setTimeout(() => burst.remove(), 800);
   }
 
   /* Water gets an actual drop; everything else counted gets a softer tick.
@@ -1135,6 +1165,7 @@
     const shown = showAllToday ? all : due;
     list.innerHTML = '';
     $('#todayEmpty').hidden = shown.length > 0;
+    perchPico('#todayEmptyPico', !shown.length);
     $('#todayEmpty').querySelector('p').textContent =
       all.length === 0 ? t('emptyHabitsTitle') : t('emptyTodayTitle');
 
@@ -1216,6 +1247,12 @@
 
       list.appendChild(li);
     });
+  }
+
+  /* Pico perches in an empty list, thinking about what could go there. */
+  function perchPico(sel, empty) {
+    const host = $(sel);
+    if (empty && !host.firstChild) Pico.mount(host, 'think');
   }
 
   function renderToday() {
@@ -1475,6 +1512,7 @@
     list.innerHTML = '';
     active.forEach((h) => list.appendChild(manageRow(h, false)));
     $('#habitsEmpty').hidden = active.length > 0;
+    perchPico('#habitsEmptyPico', !active.length);
     if (active.length === 0) renderPresets();
 
     const block = $('#archiveBlock');
@@ -2167,9 +2205,21 @@
     if (!PALETTES.includes(id) || id === currentPalette()) return;
     state.palette = id;
     save();
-    applyTheme();
-    renderProgressIfVisible();
+    withFade(() => {
+      applyTheme();
+      renderProgressIfVisible();
+    });
     Sounds.play('tick');
+  }
+
+  /* Colour changes cross-fade where the browser can (View Transitions)
+     rather than snapping from one palette to the next. */
+  function withFade(change) {
+    if (document.startViewTransition && !reducedMotion.matches && !document.hidden) {
+      document.startViewTransition(change);
+    } else {
+      change();
+    }
   }
 
   function fillCategorySelect() {
@@ -2203,6 +2253,7 @@
     fillCategorySelect();
     buildLayoutPickers();
     renderPalettePicker();
+    renderBackupInfo();
     if (tour.open) showTourStep(tour.at);
     renderCastSettings();
     renderBodySettings();
@@ -2498,6 +2549,12 @@
     applyInbox: applyInboxFromShell,
     route: (name) => routeTo(name),
     back: () => handleBack(),
+    // Android's "save as" answers here: 'saved', 'cancelled' or 'failed'.
+    fileSaved: (status) => {
+      const done = fileSaved;
+      fileSaved = null;
+      if (done) done(status);
+    },
   };
 
   /* ══ Reminder cast ═══════════════════════════════════════════════════
@@ -4240,7 +4297,14 @@
       history.replaceState(null, '', '#' + name);
     }
     VIEWS.forEach((id) => {
-      $('#view-' + id).hidden = id !== name;
+      const section = $('#view-' + id);
+      const showing = !section.hidden;
+      section.hidden = id !== name;
+      if (id === name && !showing && !reducedMotion.matches) {
+        section.classList.remove('view-enter');
+        void section.offsetWidth;
+        section.classList.add('view-enter');
+      }
     });
     $$('#tabBar .tab').forEach((tab) => {
       if (tab.dataset.view === name) tab.setAttribute('aria-current', 'page');
@@ -4252,6 +4316,7 @@
     if (name === 'progress') renderProgress();
     if (name === 'settings') {
       updateStorageInfo();
+      renderBackupInfo();
       renderBodySettings();
     }
     window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
@@ -4263,42 +4328,145 @@
     if (view === 'progress') renderProgress();
   }
 
-  /* ── Import / export ───────────────────────────────────────────────── */
-  function exportData() {
-    const payload = JSON.stringify(state, null, 2);
-    const blob = new Blob([payload], { type: 'application/json' });
+  /* ── Backups and tables ───────────────────────────────────────────────
+     Two ways out, named for what they are rather than their format: a
+     backup, the whole app in one file to bring back here or on another
+     phone, and a table of the days for a spreadsheet. A WebView cannot
+     download, so inside the Android app both go through Android's own "save
+     as" (NativeShell.saveFile, which answers through __glow.fileSaved); in a
+     browser they download. Through 2.13 the APK's export did nothing. */
+  let fileSaved = null;
+
+  function offerFile(name, mime, text, done) {
+    if (shell && shell.saveFile) {
+      fileSaved = done;
+      let started = false;
+      try { started = !!shell.saveFile(name, mime, text); } catch (err) { started = false; }
+      if (!started) {
+        fileSaved = null;
+        done('failed');
+      }
+      return;
+    }
+    const blob = new Blob([text], { type: mime });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'habitos-' + todayKey() + '.json';
+    link.download = name;
     document.body.appendChild(link);
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    toast(t('exported'));
+    done('saved');
   }
 
-  function importData(file) {
+  const longDate = (date) => date.toLocaleDateString(I18N.locale(), { day: 'numeric', month: 'long', year: 'numeric' });
+
+  function saveBackup() {
+    const copy = Object.assign({ backup: { app: 'GlowApp', at: new Date().toISOString() } }, state);
+    offerFile('GlowApp-' + t('backupWord') + '-' + todayKey() + '.json', 'application/json',
+      JSON.stringify(copy, null, 2), (status) => {
+        if (status === 'saved') {
+          state.lastBackup = todayKey();
+          save();
+          renderBackupInfo();
+          toast(t('backupSaved'));
+        } else if (status === 'failed') {
+          toast(t('fileFailed'));
+        }
+      });
+  }
+
+  function renderBackupInfo() {
+    $('#backupInfo').textContent = state.lastBackup
+      ? t('backupLast', longDate(parseKey(state.lastBackup))) : t('backupNever');
+    $('#backupVoices').hidden = !shell;
+  }
+
+  /* Reads a backup, says what is in it, and replaces nothing until the user
+     agrees. */
+  function readBackup(file) {
     const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed = JSON.parse(String(reader.result));
-        if (!parsed || !Array.isArray(parsed.habits)) throw new Error('bad shape');
-        state = Object.assign(defaultState(), parsed);
-        state.entries = state.entries || {};
-        state.moods = state.moods || {};
-        normalizeState();
-        save();
-        applyTheme();
-        applyLang();
-        toast(t('imported'));
-      } catch (err) {
-        console.warn(err);
-        toast(t('importFailed'));
+    reader.onload = async () => {
+      let copy = null;
+      try { copy = JSON.parse(String(reader.result)); } catch (err) { copy = null; }
+      if (!copy || typeof copy !== 'object' || !Array.isArray(copy.habits)) {
+        toast(t('restoreBad'));
+        return;
       }
+      const made = copy.backup && copy.backup.at ? new Date(copy.backup.at)
+        : file.lastModified ? new Date(file.lastModified) : null;
+      const days = new Set(Object.keys(copy.moods || {}));
+      Object.values(copy.entries || {}).forEach((byDay) => Object.keys(byDay || {}).forEach((key) => days.add(key)));
+      const agreed = await confirmDialog(t('restoreTitle'), t('restoreBody', {
+        date: made && !isNaN(made) ? longDate(made) : '—',
+        habits: copy.habits.filter((h) => h && !h.archived).length,
+        days: days.size,
+      }), t('restoreOk'));
+      if (!agreed) return;
+      delete copy.backup;
+      state = Object.assign(defaultState(), copy);
+      state.entries = state.entries && typeof state.entries === 'object' ? state.entries : {};
+      state.moods = state.moods && typeof state.moods === 'object' ? state.moods : {};
+      state.habits = state.habits.filter((h) => h && typeof h === 'object');
+      normalizeState();
+      reconcileVoiceNotes();
+      save();
+      applyTheme();
+      applyLang();
+      renderBackupInfo();
+      toast(t('restoreDone'));
     };
-    reader.onerror = () => toast(t('importFailed'));
+    reader.onerror = () => toast(t('restoreBad'));
     reader.readAsText(file);
+  }
+
+  /* One row a day, one column a habit, then mood, energy, note, weight and
+     BMI: what a spreadsheet wants. Spanish spreadsheets expect semicolons and
+     a decimal comma, English ones commas and a point; the byte-order mark
+     tells Excel the text is UTF-8. Archived habits keep their columns: their
+     history is still history. */
+  function buildTable() {
+    const es = I18N.getLang() === 'es';
+    const sep = es ? ';' : ',';
+    const num = (value, digits) => (digits === undefined ? String(value) : value.toFixed(digits)).replace('.', es ? ',' : '.');
+    const cell = (value) => {
+      const text = value === null || value === undefined ? '' : String(value);
+      // Quoted only when it must be: Excel reads a quoted "72,4" as text.
+      return /["\r\n]/.test(text) || text.includes(sep) ? '"' + text.replace(/"/g, '""') + '"' : text;
+    };
+    const habits = state.habits.slice();
+    const today = todayKey();
+    const known = new Set(Object.keys(state.moods).concat(Object.keys(state.body.weights)));
+    Object.keys(state.entries).forEach((id) => Object.keys(state.entries[id] || {}).forEach((key) => known.add(key)));
+    habits.forEach((h) => { if (h.createdAt) known.add(h.createdAt); });
+    const first = [...known].filter((key) => key <= today).sort()[0] || today;
+    const head = [t('csvDate')]
+      .concat(habits.map((h) => habitName(h) + (h.type === 'quantity' && h.unit ? ' (' + h.unit + ')' : '')))
+      .concat([t('csvMood'), t('csvEnergy'), t('csvNote'), t('csvWeight', weightUnit()), t('csvBmi')]);
+    const rows = [head];
+    for (let day = parseKey(first); keyOf(day) <= today; day = addDays(day, 1)) {
+      const key = keyOf(day);
+      const mood = state.moods[key];
+      const kg = state.body.weights[key];
+      const bmi = kg ? bmiOf(kg) : null;
+      rows.push([key]
+        .concat(habits.map((h) => {
+          if (!isScheduled(h, key)) return '';
+          const value = valueOf(h, key);
+          return h.type === 'quantity' ? num(value) : value >= 1 ? t('csvYes') : t('csvNo');
+        }))
+        .concat([mood && mood.score ? mood.score : '', mood && mood.score && mood.energy ? mood.energy : '',
+          mood && mood.note ? mood.note : '', kg ? num(shownWeight(kg), 1) : '', bmi ? num(bmi, 1) : '']));
+    }
+    return '\uFEFF' + rows.map((row) => row.map(cell).join(sep)).join('\r\n') + '\r\n';
+  }
+
+  function saveTable() {
+    offerFile('GlowApp-' + t('tableWord') + '-' + todayKey() + '.csv', 'text/csv', buildTable(), (status) => {
+      if (status === 'saved') toast(t('tableSaved'));
+      else if (status === 'failed') toast(t('fileFailed'));
+    });
   }
 
   /* ── Install prompt ────────────────────────────────────────────────── */
@@ -4458,8 +4626,10 @@
     $('#themeSelect').addEventListener('change', (evt) => {
       state.theme = evt.target.value;
       save();
-      applyTheme();
-      renderProgressIfVisible();
+      withFade(() => {
+        applyTheme();
+        renderProgressIfVisible();
+      });
     });
     $('#themeToggle').addEventListener('click', () => {
       if (paletteIsDarkOnly()) {
@@ -4471,8 +4641,10 @@
         state.theme = resolvedTheme() === 'dark' ? 'light' : 'dark';
       }
       save();
-      applyTheme();
-      renderProgressIfVisible();
+      withFade(() => {
+        applyTheme();
+        renderProgressIfVisible();
+      });
     });
     buildPalettePicker();
     $('#soundToggle').addEventListener('change', (evt) => {
@@ -4515,6 +4687,28 @@
       tour.frame = requestAnimationFrame(placeTour);
     });
     $('#picoCheer').addEventListener('click', hidePicoCheer);
+    // Swipe the coach: right to left for the next stop, left to right to go back.
+    let swipe = null;
+    $('#tourCoach').addEventListener('pointerdown', (evt) => {
+      swipe = evt.isPrimary ? { x: evt.clientX, y: evt.clientY, at: evt.timeStamp } : null;
+    });
+    $('#tourCoach').addEventListener('pointerup', (evt) => {
+      if (!swipe || !tour.open) return;
+      const dx = evt.clientX - swipe.x;
+      const dy = evt.clientY - swipe.y;
+      const quick = evt.timeStamp - swipe.at < 700;
+      swipe = null;
+      if (!quick || Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      if (dx < 0) tourNext();
+      else tourBack();
+    });
+    ['#tourPico', '#picoPromoArt'].forEach((sel) => {
+      $(sel).addEventListener('click', (evt) => {
+        evt.stopPropagation();
+        Pico.react($(sel));
+        Sounds.play('tick');
+      });
+    });
 
     /* Reminder cast */
     $('#btnAddReminder').addEventListener('click', addReminderTime);
@@ -4546,11 +4740,12 @@
     $('#btnExactSettings').addEventListener('click', () => {
       if (shell && shell.openExactAlarmSettings) shell.openExactAlarmSettings();
     });
-    $('#btnExport').addEventListener('click', exportData);
-    $('#btnImport').addEventListener('click', () => $('#importFile').click());
+    $('#btnBackup').addEventListener('click', saveBackup);
+    $('#btnRestore').addEventListener('click', () => $('#importFile').click());
+    $('#btnTable').addEventListener('click', saveTable);
     $('#importFile').addEventListener('change', (evt) => {
       const file = evt.target.files && evt.target.files[0];
-      if (file) importData(file);
+      if (file) readBackup(file);
       evt.target.value = '';
     });
     $('#btnReset').addEventListener('click', async () => {
@@ -5207,7 +5402,7 @@
     $$('dialog[open]').forEach((dlg) => dlg.close());
     tour.steps = tourSteps();
     tour.open = true;
-    $('#tourPico').innerHTML = Pico.svg('wave');
+    Pico.mount($('#tourPico'), 'wave');
     $('#tour').hidden = false;
     setBackgroundInert(true);
     renderTourPromo();
@@ -5223,7 +5418,7 @@
     const last = index === tour.steps.length - 1;
     $('#tourStep').textContent = t('tourStep', { at: index + 1, of: tour.steps.length });
     $('#tourTitle').textContent = t(key + 'Title');
-    $('#tourBody').textContent = t(step.body ? step.body(tourTarget(step)) : key + 'Body');
+    const speech = revealWords($('#tourBody'), t(step.body ? step.body(tourTarget(step)) : key + 'Body'));
     $('#tourBack').hidden = index === 0;
     $('#tourSkip').hidden = last;
     $('#tourNext').textContent = t(index === 0 ? 'tourStart' : last ? 'tourDone' : 'tourNext');
@@ -5235,6 +5430,7 @@
       dots.appendChild(dot);
     });
     Pico.pose($('#tourPico'), step.pose);
+    Pico.say($('#tourPico'), speech);
     const coach = $('#tourCoach');
     coach.classList.remove('is-entering');
     void coach.offsetWidth;            // restart the entrance for each stop
@@ -5317,6 +5513,32 @@
     Pico.point(picoHost, (Math.atan2(dy, dx) * 180) / Math.PI);
   }
 
+  /* Puts text into node a word at a time (each word fades in after the one
+     before) and returns, in milliseconds, how long that takes: how long Pico
+     talks. Under reduced motion the words are simply there. */
+  function revealWords(node, text) {
+    node.textContent = '';
+    if (reducedMotion.matches) {
+      node.textContent = text;
+      return 0;
+    }
+    let count = 0;
+    text.split(/(\s+)/).forEach((part) => {
+      if (!part) return;
+      if (/^\s+$/.test(part)) {
+        node.appendChild(document.createTextNode(part));
+        return;
+      }
+      const word = document.createElement('span');
+      word.className = 'tw';
+      word.style.animationDelay = Math.min(count * 34, 2200) + 'ms';
+      word.textContent = part;
+      node.appendChild(word);
+      count++;
+    });
+    return Math.min(count * 34, 2200) + 260;
+  }
+
   function tourNext() {
     if (!tour.open) return;
     if (tour.at >= tour.steps.length - 1) endTour(true);
@@ -5334,7 +5556,7 @@
     tour.open = false;
     cancelAnimationFrame(tour.frame);
     $('#tour').hidden = true;
-    $('#tourPico').innerHTML = '';
+    Pico.unmount($('#tourPico'));
     setBackgroundInert(false);
     state.tourDone = true;
     save();
@@ -5346,7 +5568,7 @@
     const show = !tour.open && !tour.pending && !state.tourDone && !state.tourPromoDismissed &&
       !!(state.onboarding && state.onboarding.done);
     const art = $('#picoPromoArt');
-    if (show && !art.firstChild) art.innerHTML = Pico.svg('wave');
+    if (show && !art.firstChild) Pico.mount(art, 'wave');
     $('#picoPromo').hidden = !show;
   }
 
@@ -5355,7 +5577,7 @@
   function picoCheer() {
     const box = $('#picoCheer');
     const lines = t('picoCheers');
-    $('#picoCheerArt').innerHTML = Pico.svg('cheer');
+    Pico.mount($('#picoCheerArt'), 'cheer');
     $('#picoCheerText').textContent = Array.isArray(lines) && lines.length
       ? lines[Math.floor(Math.random() * lines.length)] : t('allDoneTitle');
     box.classList.remove('is-leaving');

@@ -16,7 +16,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="GlowApp">
-  <link rel="stylesheet" href="styles.css?v=2.13">
+  <link rel="stylesheet" href="styles.css?v=2.14">
   <script>
     /* The saved theme and palette, resolved as applyTheme() in app.js resolves
        them, before anything paints: until app.js ran, a light theme opened on
@@ -39,7 +39,7 @@
       }
     })();
   </script>
-  <script src="i18n.js?v=2.13"></script>
+  <script src="i18n.js?v=2.14"></script>
 </head>
 <body>
   <!-- Launch screen. The mark draws itself, then a phrase lands under it.
@@ -226,6 +226,7 @@
           </div>
           <ul class="habit-list" id="habitList"></ul>
           <div class="empty-state" id="todayEmpty" hidden>
+            <div class="empty-pico" id="todayEmptyPico" aria-hidden="true"></div>
             <p data-i18n="emptyTodayTitle">Nada programado para hoy.</p>
             <button type="button" class="btn btn-primary" data-action="new-habit" data-i18n="addHabit">Nuevo hábito</button>
           </div>
@@ -244,6 +245,7 @@
         </div>
         <ul class="manage-list" id="manageList"></ul>
         <div class="empty-state" id="habitsEmpty" hidden>
+          <div class="empty-pico" id="habitsEmptyPico" aria-hidden="true"></div>
           <p data-i18n="emptyHabitsTitle">Todavía no tienes hábitos.</p>
           <p class="muted" data-i18n="emptyHabitsBody">Empieza con uno pequeño: dos minutos de respiración, un vaso de agua, diez flexiones.</p>
           <div class="preset-grid" id="presetGrid"></div>
@@ -414,16 +416,35 @@
           <!-- Shown only inside the APK, where the system backup can copy this
                data to the user's Google account. Saying otherwise would be a lie. -->
           <p class="muted small" id="backupNote" hidden data-i18n="dataBackupNote"></p>
-          <div class="button-row">
-            <button type="button" class="btn" id="btnRetakeTest" data-i18n="obRetake">Repetir el test inicial</button>
+          <!-- A backup and a table, named for what they are (2.14): nobody
+               should need to know what JSON is to keep their history safe. -->
+          <div class="data-block">
+            <h4 data-i18n="backupTitle">Copia de seguridad</h4>
+            <p class="muted small" data-i18n="backupHint"></p>
+            <div class="button-row">
+              <button type="button" class="btn btn-primary" id="btnBackup" data-i18n="backupSave">Guardar copia</button>
+              <button type="button" class="btn" id="btnRestore" data-i18n="backupRestore">Restaurar una copia</button>
+            </div>
+            <p class="muted small" id="backupInfo"></p>
+            <p class="muted small" id="backupVoices" hidden data-i18n="backupVoices"></p>
           </div>
-          <p class="muted small" data-i18n="obRetakeHint">Vuelve a sugerirte hábitos según tus respuestas.</p>
-          <div class="button-row">
-            <button type="button" class="btn" id="btnExport" data-i18n="exportData">Exportar JSON</button>
-            <button type="button" class="btn" id="btnImport" data-i18n="importData">Importar JSON</button>
-            <button type="button" class="btn btn-danger" id="btnReset" data-i18n="resetData">Borrar todo</button>
+          <div class="data-block">
+            <h4 data-i18n="tableTitle">Tabla para Excel</h4>
+            <p class="muted small" data-i18n="tableHint"></p>
+            <div class="button-row">
+              <button type="button" class="btn" id="btnTable" data-i18n="tableSave">Descargar tabla</button>
+            </div>
           </div>
-          <input type="file" id="importFile" accept="application/json,.json" hidden>
+          <div class="data-block">
+            <div class="button-row">
+              <button type="button" class="btn" id="btnRetakeTest" data-i18n="obRetake">Repetir el test inicial</button>
+            </div>
+            <p class="muted small" data-i18n="obRetakeHint">Vuelve a sugerirte hábitos según tus respuestas.</p>
+            <div class="button-row">
+              <button type="button" class="btn btn-danger" id="btnReset" data-i18n="resetData">Borrar todo</button>
+            </div>
+          </div>
+          <input type="file" id="importFile" accept="application/json,.json,text/plain" hidden>
           <p class="muted small" id="storageInfo"></p>
         </section>
 
@@ -791,10 +812,10 @@
     </symbol>
   </svg>
 
-  <script src="sounds.js?v=2.13"></script>
-  <script src="pico.js?v=2.13"></script>
-  <script src="charts.js?v=2.13"></script>
-  <script src="characters.js?v=2.13"></script>
-  <script src="app.js?v=2.13"></script>
+  <script src="sounds.js?v=2.14"></script>
+  <script src="pico.js?v=2.14"></script>
+  <script src="charts.js?v=2.14"></script>
+  <script src="characters.js?v=2.14"></script>
+  <script src="app.js?v=2.14"></script>
 </body>
 </html>

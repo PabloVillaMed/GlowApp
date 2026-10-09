@@ -6,8 +6,9 @@ truth — edit the app there, rebuild, and the APK picks the changes up.
 
 ## The built APK
 
-`GlowApp-2.13.apk` sits at the repository root, with the earlier releases
-`GlowApp-2.12.apk`, `GlowApp-2.11.apk` and `GlowApp-2.10.apk` kept next to it. All are signed with
+`GlowApp-2.14.apk` sits at the repository root, with the earlier releases
+`GlowApp-2.13.apk`, `GlowApp-2.12.apk`, `GlowApp-2.11.apk` and
+`GlowApp-2.10.apk` kept next to it. All are signed with
 the release key in `keystore/` (not committed), target API 36 (Android 16),
 and need Android 7.0 or newer. Installing a newer one over an older one keeps
 everything; going back means uninstalling first, since Android never installs
@@ -41,7 +42,7 @@ installs once they are answered. Some phones add their own layer on top:
   choose to install anyway.
 - **"App not installed as package conflicts with an existing package":** an
   older copy signed with a different key is installed. Uninstall it first
-  (export a JSON backup before, from Ajustes).
+  (save a backup before, from *Ajustes → Tus datos → Guardar copia*).
 - **"Developer not verified"** (Google's verification for sideloaded apps,
   rolling out by country from 2026): the publisher has to register the
   package and signing key in Google's Android Developer Console; until then
@@ -50,7 +51,7 @@ installs once they are answered. Some phones add their own layer on top:
 Over USB with developer options and USB debugging on:
 
 ```sh
-adb install GlowApp-2.13.apk
+adb install GlowApp-2.14.apk
 ```
 
 ## Native features
@@ -152,7 +153,7 @@ key **and** has a higher `versionCode`.
 gitignored, so neither the key nor its password is published here.
 Keep it: Android refuses to update an installed app with a differently-signed
 APK. Lose it and the only way forward is uninstalling first, which erases the
-habit history stored inside the app. Export a JSON backup before doing that.
+habit history stored inside the app. Save a backup (*Ajustes → Tus datos*) before doing that.
 
 To recreate one from scratch:
 
@@ -216,13 +217,27 @@ taps go to a separate receiver.
 In the WebView's local storage inside the app's private directory. It is not
 shared with the same app opened in Chrome — those are separate storage areas, so
 installing the APK does not import anything you already logged in the browser.
-Move history across with **Ajustes → Exportar JSON** and *Importar JSON*.
+Move history across with **Ajustes → Tus datos → Guardar copia** and
+*Restaurar una copia*.
 
 Uninstalling deletes it. Android's backup includes that storage
 (`res/xml/backup_rules.xml` and `data_extraction_rules.xml`; up to 2.7 the rules
-pointed at the wrong folder and carried nothing useful), but treat the JSON
-export as the real backup.
+pointed at the wrong folder and carried nothing useful), but treat the backup
+file as the real backup.
 
 Voice notes recorded in the app (2.10) and your bot's lines (2.11) are files
 in `files/notes`, outside the page's storage: Android's backup carries them,
-the JSON export does not.
+the backup file does not (Ajustes says so).
+
+### Saving and opening files
+
+A WebView neither downloads nor shows a file picker on its own, so until 2.13
+the backup button did nothing inside the app and the restore button opened
+nothing. Since 2.14 the shell does both with Android's own dialogs:
+`NativeShell.saveFile(name, mime, text)` opens the system's "save as"
+(`ACTION_CREATE_DOCUMENT`) with the name filled in — the phone, Downloads,
+Drive, whatever the user has — writes the file there and tells the page
+through `__glow.fileSaved('saved' | 'cancelled' | 'failed')`; and the page's
+file input opens the system picker (`onShowFileChooser`, any type, since a
+backup sent through WhatsApp or Drive does not always keep its JSON type —
+the page checks what is inside before trusting it).
