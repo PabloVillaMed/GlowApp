@@ -115,8 +115,16 @@
     talk: { lid: 0.02, gesture: 'talk' },
     think: { wingR: 128, lean: -3, lid: 0.28, tilt: -6, smile: 0.15, lookX: 0.5, lookY: -1, crest: 6 },
     happy: { lid: 0, tilt: 0, smile: 0.9, gladL: 1, gladR: 1, spark: 1, wingL: 18, wingR: 18, crest: -8 },
-    wink: { lid: 0, tilt: -2, smile: 0.8, gladL: 1, wingR: 104, lean: 6, spark: 1, crest: -6, lookX: 0.6 },
+    // The wink is a gesture (2.18): he arrives with both eyes open and the
+    // eye shuts and opens again where you can see it. Through 2.17 the pose
+    // simply had it shut, so he turned up already winking.
+    wink: { lid: 0, tilt: -2, smile: 0.7, wingR: 104, lean: 6, crest: -6, lookX: 0.6, gesture: 'wink' },
     cheer: { lid: 0, tilt: 0, smile: 0.95, gladL: 1, gladR: 1, spark: 1, wingL: 128, wingR: 128, crest: -10, gesture: 'cheer', then: 'happy' },
+    // Peeking over a ledge (2.18): his wings lie out on its edge like hands
+    // on a wall; he can wave from there, or be glad.
+    peek: { wingL: 68, wingR: 68, lid: 0, tilt: -2, smile: 0.7, crest: -4 },
+    peekWave: { wingL: 68, wingR: 122, lid: 0, tilt: -3, smile: 0.8, crest: -6, gesture: 'wave', then: 'peek' },
+    peekGlad: { wingL: 68, wingR: 68, lid: 0, tilt: 0, smile: 0.9, gladL: 1, gladR: 1, spark: 1, crest: -8 },
   };
   const POSE_NAMES = Object.keys(POSES);
 
@@ -177,8 +185,10 @@
 
     pose(name, quiet) {
       let spec = Object.assign({}, BASE, POSES[name] || {});
-      // Without motion a gesture has nothing to show: take the pose it ends in.
+      // Without motion a gesture has nothing to show: take the pose it ends in
+      // (a wink holds the eye shut, the still picture of one).
       if (reduce.matches && spec.then) spec = Object.assign({}, BASE, POSES[spec.then], { gesture: null, then: null });
+      if (reduce.matches && spec.gesture === 'wink') spec = Object.assign(spec, { gladL: 1, spark: 1, gesture: null });
       this.name = POSES[name] ? name : 'idle';
       this.svg.setAttribute('data-pose', this.name);
       ['lean', 'wingL', 'wingR', 'lid', 'tilt', 'smile', 'gladL', 'gladR', 'spark', 'crest'].forEach((k) => { this.goal[k] = spec[k]; });
@@ -196,7 +206,7 @@
       // from off screen it is old, and a gesture timed from it would be over
       // before its first frame (2.16: a wave or a cheer silently skipped).
       const t = this.now = Math.max(this.now, performance.now() / 1000);
-      const span = { wave: 2.3, cheer: 1.9, talk: seconds || 1.6, nod: 0.9, hop: 0.46, caw: 0.5 }[name] || 1;
+      const span = { wave: 2.3, cheer: 1.9, talk: seconds || 1.6, nod: 0.9, hop: 0.46, caw: 0.5, wink: 1.15 }[name] || 1;
       if (name === 'talk') this.talkUntil = t + span;
       if (name === 'cheer') [0, 0.5, 1.0].forEach((d) => this.gestures.push({ name: 'hop', start: t + d, end: t + d + 0.46 }));
       this.gestures.push({ name, start: t, end: t + span });
@@ -247,7 +257,7 @@
     step(dt, t) {
       this.now = t;
       const still = reduce.matches;
-      const off = { lean: 0, wingL: 0, wingR: 0, crest: 0, hop: 0, squash: 0, beak: 0, faceY: 0 };
+      const off = { lean: 0, wingL: 0, wingR: 0, crest: 0, hop: 0, squash: 0, beak: 0, faceY: 0, gladL: 0, smile: 0, spark: 0 };
       const goal = Object.assign({}, this.goal);
 
       // Gestures, each a curve over its own span. One that ends may hand
@@ -270,6 +280,18 @@
           off.wingR += beat;
         }
         if (g.name === 'nod') off.faceY += 1.8 * Math.sin(local * 2 * Math.PI * 2.2) * env;
+        if (g.name === 'wink') {
+          // A beat with both eyes open, then the left one shuts, holds and
+          // opens again; his smile, a tilt of the head, the crest and a
+          // spark go with it.
+          const shut = clamp((u - 0.18) / 0.12, 0, 1) * clamp((0.72 - u) / 0.12, 0, 1);
+          off.gladL += shut;
+          off.smile += 0.25 * shut;
+          off.spark += shut;
+          off.crest -= 8 * shut;
+          off.lean += 3 * shut;
+          off.faceY -= 0.8 * shut;
+        }
         if (g.name === 'caw') { off.beak = Math.max(off.beak, Math.sin(Math.PI * u)); off.crest -= 14 * Math.sin(Math.PI * u); }
         if (g.name === 'hop') {
           off.hop -= 9 * 4 * u * (1 - u);                                  // a parabola, up and down

@@ -568,6 +568,65 @@ select { appearance: none; padding-right: 32px;
   background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
 }
 
+/* ── Dropdowns (2.18) ──
+   select.js keeps each <select> for its value and events but hides it, and
+   draws a button like the app's fields; the list opens in the app's own
+   colours, anchored to the button, instead of Android's plain dialog. */
+.gs-native {
+  position: absolute !important; width: 1px !important; height: 1px !important; min-height: 0 !important;
+  padding: 0 !important; margin: 0 !important; border: 0 !important;
+  opacity: 0; pointer-events: none; clip-path: inset(50%); overflow: hidden;
+}
+.gs-trigger {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; min-height: var(--tap); padding: 10px 12px;
+  background: var(--surface-3); border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--ink); text-align: left; cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.gs-trigger:hover { border-color: var(--border-strong); }
+.gs-trigger[aria-expanded='true'] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.gs-trigger:disabled { opacity: 0.55; cursor: default; }
+.gs-value { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-chevron {
+  width: 18px; height: 18px; flex: none; fill: none; stroke: var(--ink-2);
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; transition: transform 0.2s ease;
+}
+.gs-trigger[aria-expanded='true'] .gs-chevron { transform: rotate(180deg); stroke: var(--accent); }
+.gs-popup {
+  position: fixed; inset: auto; margin: 0; z-index: 1000; box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 2px; padding: 6px;
+  overflow-y: auto; overscroll-behavior: contain;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  opacity: 0; transform: translateY(-6px) scale(0.97); transform-origin: 50% 0;
+  transition: opacity 0.14s ease, transform 0.22s var(--spring);
+}
+.gs-popup[data-side='up'] { transform: translateY(6px) scale(0.97); transform-origin: 50% 100%; }
+.gs-popup.is-open { opacity: 1; transform: none; }
+.gs-popup.is-closing { opacity: 0; transition: opacity 0.12s ease; }
+.gs-popup:focus { outline: none; }
+.gs-popup:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.gs-option {
+  display: flex; align-items: center; gap: 10px; min-height: var(--tap); padding: 8px 12px;
+  border-radius: calc(var(--radius) - 2px); cursor: pointer; font-size: 0.92rem;
+}
+.gs-option[data-active] { background: var(--surface-2); }
+.gs-option[aria-selected='true'] { background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+.gs-option[aria-disabled='true'] { opacity: 0.45; cursor: default; }
+.gs-check {
+  width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor;
+  stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; visibility: hidden;
+}
+.gs-option[aria-selected='true'] .gs-check { visibility: visible; }
+.gs-text { min-width: 0; overflow-wrap: anywhere; }
+.gs-measure .gs-text { white-space: nowrap; }
+.gs-group { padding: 8px 12px 4px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-3); }
+@media (prefers-reduced-motion: reduce) {
+  .gs-popup, .gs-chevron, .gs-trigger { transition: none; }
+}
+
 .switch-inline {
   display: inline-flex; align-items: center; gap: 7px;
   font-size: 0.8rem; color: var(--ink-2); cursor: pointer;
@@ -779,6 +838,8 @@ button.habit-main:hover .habit-name { color: var(--accent); }
 .chart-card figcaption { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .chart-card figcaption .field { flex: none; }
 .chart-card select { min-height: 36px; padding: 6px 30px 6px 10px; font-size: 0.82rem; background-position: calc(100% - 17px) 16px, calc(100% - 12px) 16px; }
+.chart-card .gs-trigger { min-height: 36px; padding: 6px 10px; gap: 6px; font-size: 0.82rem; }
+.chart-card .gs-chevron { width: 16px; height: 16px; }
 .chart-sub { font-size: 0.75rem; color: var(--ink-2); }
 .chart-empty { font-size: 0.85rem; color: var(--ink-2); padding: 18px 0; text-align: center; }
 .chart-host { position: relative; }
@@ -832,6 +893,7 @@ td { font-variant-numeric: tabular-nums; }
 .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .setting-row label { font-size: 0.88rem; }
 .setting-row select { width: auto; min-width: 140px; }
+.setting-row .gs-trigger { width: auto; min-width: 140px; }
 
 /* ── Dialogs ── */
 .sheet {
@@ -1671,23 +1733,30 @@ td { font-variant-numeric: tabular-nums; }
 .tour[data-mode='center'] .tour-pico { width: 7.5rem; height: 7.5rem; margin: -5rem auto 0; }
 .tour[data-mode='center'] .tour-text { align-items: center; }
 
-/* ── Pico peeking at a habit just done (2.15) ──
-   He leans in from the left edge, pivoting on the corner, so he looks in
-   rather than slides past. */
+/* ── Pico peeking over a ledge (2.15; over a ledge since 2.18) ──
+   The box is a window whose bottom edge is a ledge: the tab bar's top, or
+   the top of the card he came for when it sits right above the bar. He
+   rises inside it, so his lower body stays behind the ledge and only his
+   head, shoulders and wings come into view, wings resting on the edge,
+   and he ducks back down when he is done. Through 2.17 the whole bird slid
+   in from the side, stiff as a sticker. app.js places the window and sets
+   his tilt towards what he looks at. */
 .pico-peek {
-  position: fixed; left: 0; z-index: 94; width: 5.4rem; height: 5.4rem;
-  pointer-events: none; transform-origin: 0% 100%;
-  transform: translateX(-102%) rotate(-30deg);
+  position: fixed; left: 6px; bottom: 0; z-index: 59;
+  width: 6.4rem; height: 4.1rem; overflow: hidden; pointer-events: none;
+}
+.pico-peek[data-side='right'] { left: auto; right: 6px; }
+.pico-peek-art {
+  position: absolute; left: 0; top: 0; width: 6.4rem; height: 6.4rem;
+  transform: translateY(100%) rotate(var(--peek-tilt, 0deg));
+  transform-origin: 50% 80%;
   transition: transform 0.6s var(--spring);
 }
-.pico-peek.is-in { transform: translateX(-30%) rotate(24deg); }
-/* From the right edge (2.16: beside a chart), the same lean mirrored. */
-.pico-peek[data-side='right'] {
-  left: auto; right: 0; transform-origin: 100% 100%;
-  transform: translateX(102%) rotate(30deg);
+.pico-peek.is-in .pico-peek-art { transform: translateY(0) rotate(var(--peek-tilt, 0deg)); }
+.pico-peek.is-out .pico-peek-art {
+  transform: translateY(100%) rotate(var(--peek-tilt, 0deg));
+  transition: transform 0.34s cubic-bezier(0.55, 0, 0.8, 0.2);
 }
-.pico-peek[data-side='right'].is-in { transform: translateX(30%) rotate(-24deg); }
-.pico-peek-art { width: 100%; height: 100%; }
 
 /* ── Pico at 100 % ────────────────────────────────────────────────────
    When the day completes he hops up over the tab bar for a moment. Tapping

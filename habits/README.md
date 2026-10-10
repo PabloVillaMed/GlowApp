@@ -132,10 +132,16 @@ backing out all count as taken (`state.tourDone`).
 
 When a day completes, Pico hops up over the tab bar with one of his lines
 instead of the plain toast, and leaves by himself. When a habit is done and
-the day is not yet, he leans in from the left edge beside it, winks with a
-wing up and goes — never in the way of a touch, not again within a few
-seconds, and not under reduced motion. He also keeps an empty list company,
-and a tap makes him hop and caw.
+the day is not yet, he peeks: he rises from behind the tab bar like someone
+looking over a wall — only his head, shoulders and wings show, wings resting
+on its edge — looks at the habit, turns to you and winks, and ducks back
+down. The wink happens where you see it: both eyes open, one shuts with a
+spark and a tilt of the head, and opens again. When the habit sits right
+above the tab bar he rises over that habit's own card instead, so he never
+covers it. Never in the way of a touch, not again within a few seconds, and
+not under reduced motion. (Through 2.17 the whole bird slid in from the
+side and arrived with the eye already shut.) He also keeps an empty list
+company, and a tap makes him hop and caw.
 
 A counted habit (glasses of water, portions of fruit) is celebrated the
 same way when it reaches its target: sparks from the count, his wink, or
@@ -149,13 +155,15 @@ Since 2.16 he is around more, without becoming noise:
   at whatever has the focus; a quick idea makes him glad and nod, a form
   that cannot be saved yet makes him think. Editing a habit is quieter: no
   Pico. Once a new habit is saved — from the editor or a one-tap starter —
-  he leans in beside it on the list and waves.
+  he peeks up over the tab bar and waves.
 - **Progress and Ajustes, now and then.** Entering Progress or changing its
-  range, he may lean in from the right and point at the first chart in view
-  (or consider it, wing at his chin). Changing a setting or a palette, he
-  may lean in from the left, look at what changed, nod and smile. Either
-  way he takes the far end of the screen from it — under the app bar or
-  over the tab bar — so he never covers what he is looking at.
+  range, he may peek up at the right corner and point at the first chart in
+  view (or consider it, wing at his chin). Changing a setting or a palette,
+  he may peek up at the left corner, look at what changed, nod and smile.
+  He never covers what he is looking at: if his corner would, he takes the
+  other one, and if both would, he does not come. (In Progress the charts
+  fill the screen, so a corner of some other chart can be under him for
+  those two seconds.)
 - **Rarely.** Those two are chances, not rules: at most one visit a minute,
   and only on about half of the chances even then. Every visit is brief,
   never takes a touch, never shows over a sheet or the tour, and none
@@ -320,6 +328,27 @@ pinch-zoom, which is deliberately disabled: every text size is in `rem` and the
 layout paddings with them, so changing the root size rescales the interface in
 one step while tap targets stay pinned in pixels.
 
+## Dropdowns
+
+Since 2.18 the app draws its own dropdowns (`select.js`). Android's WebView
+opened every `<select>` as the system's plain list dialog, the one thing in
+GlowApp that did not look like GlowApp. Each `<select>` stays in the page —
+it keeps the value, the label, the change events and all the code that reads
+or sets it — but is hidden; a button drawn like the app's fields shows the
+choice, and a tap opens a list in the app's colours, anchored to it (below,
+or above when there is more room there), as wide as its longest option.
+Choosing fires the select's own `change`, so the app reacts as it always
+did. Inside a modal sheet the list lives in the sheet (the page outside a
+modal sheet is inert: a list there could be seen but not touched) and is
+shown in the top layer, above it. Escape, a tap outside, or Android's back
+closes the list before anything else; the arrows, Home, End, Enter and
+typing a letter work as on a native select, and a screen reader hears a
+button, named by the select's label, that opens a listbox. Values set from
+code (`select.value`, `selectedIndex`) and options relabelled by a language
+change update the button too. It covers the theme, language, week start and
+units in Ajustes, the calendar's habit in Progress, and the category in the
+habit editor.
+
 ## Language, theme and palette
 
 Both are switchable at runtime — the toggles in the app bar, or Ajustes. The
@@ -413,6 +442,7 @@ because every asset already comes from the APK.
 | `charts.js` | Hand-rolled SVG charts (line, bars, grouped bars, heatmap) |
 | `sounds.js` | The small synthesised interface sounds |
 | `pico.js` | Pico, the guide: his drawing and the calls that pose him |
+| `select.js` | The app's own dropdowns, in place of Android's plain list |
 | `i18n.js` | Spanish and English string tables |
 | `sw.js` | Service worker: precached shell, offline fallback |
 | `check.js` | The pre-ship checks above |

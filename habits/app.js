@@ -963,57 +963,96 @@
     }
   }
 
-  /* Pico peeks in from an edge beside something, does one thing, and goes
-     (2.15; any edge, pose and gesture since 2.16). By default he leans in
-     from the left beside the habit just done and winks with a wing up.
-     Brief, never in the way of a touch, not again while one is on screen or
-     within a few seconds of the last, not over a sheet or the tour, and not
-     at all under reduced motion. The day's last habit gets his cheer
-     instead. Returns whether he came. */
+  /* Pico peeks over a ledge, does one thing, and ducks back down (2.15;
+     over a ledge since 2.18 — through 2.17 the whole bird slid in from the
+     side, stiff, and arrived with his eye already shut). The ledge is the
+     tab bar's top edge, so only his head, shoulders and wings rise into
+     view, wings resting on it; or, when what he came for sits right above
+     the bar, its own top edge, so he does not cover it. He looks at it,
+     and then by act:
+       'wink'   turns to you and winks, where you see the eye shut (a habit done)
+       'wave'   waves (a habit just added)
+       'point'  points at it, or 'think' considers it (Progress)
+       'nod'    nods at it and is glad (a setting changed)
+     Brief, never in the way of a touch, not again while one is on screen
+     or within a few seconds of the last, not over a sheet or the tour, and
+     not at all under reduced motion. Visits (at 'away') never cover what he
+     looks at: the other corner, or no visit. The day's last habit gets his
+     cheer instead. Returns whether he came. */
   let peekBusy = false;
   let peekLast = 0;
   function picoPeek(near, opts) {
-    const o = Object.assign({ side: 'left', at: 'beside', pose: 'wink', aim: null, gesture: null, then: null, hold: 1700 }, opts);
+    const o = Object.assign({ side: 'left', at: 'beside', act: 'wink', hold: 2100 }, opts);
     if (reducedMotion.matches || peekBusy || Date.now() - peekLast < 4000) return false;
     if (!near || !near.isConnected || !$('#tour').hidden || $('dialog[open]')) return false;
     const box = $('#picoPeek');
     const art = $('#picoPeekArt');
     const r = near.getBoundingClientRect();
-    if (r.bottom < 56 || r.top > window.innerHeight - 80) return false;   // off screen: nothing to look at
-    const size = box.offsetHeight || 84;
-    const floor = window.innerHeight - 90 - size;
-    const middle = r.top + r.height / 2;
-    // Beside: level with it (a habit). Away: at the far end of the screen
-    // from it, under the app bar or over the tab bar, so he never covers
-    // the thing he is looking at (a setting just changed, a chart).
-    const top = o.at === 'away'
-      ? (middle > window.innerHeight / 2 ? 64 : floor)
-      : Math.max(64, Math.min(floor, middle - size * 0.7));
+    const barTop = $('#tabBar').getBoundingClientRect().top || window.innerHeight;
+    if (r.bottom < 56 || r.top > barTop - 16) return false;      // off screen: nothing to look at
+    // The window he rises in (styles.css: 6.4rem wide, 4.1rem of him shows),
+    // at the content column's corner, not the far edge of a wide screen.
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    const W = 6.4 * rem;
+    const H = 4.1 * rem;
+    const column = (document.querySelector('.view:not([hidden]) .view-inner') || document.body).getBoundingClientRect();
+    const xOf = (side) => side === 'left'
+      ? Math.max(6, column.left + 4)
+      : Math.min(window.innerWidth - 6 - W, column.right - 4 - W);
+    const covers = (side, ledge) => {
+      const x = xOf(side);
+      return x < r.right && x + W > r.left && ledge - H < r.bottom && ledge > r.top;
+    };
+    let side = o.side;
+    let ledge = barTop;
+    if (o.at === 'away') {
+      if (covers(side, ledge)) side = side === 'left' ? 'right' : 'left';
+      if (covers(side, ledge)) return false;
+    } else if (covers(side, ledge)) {
+      ledge = r.top;                                // over its own top edge
+      if (ledge - H < 56) return false;
+    }
     peekBusy = true;
     peekLast = Date.now();
-    box.dataset.side = o.side;
+    const x = xOf(side);
+    box.dataset.side = side;
+    box.style.left = Math.round(x) + 'px';
+    box.style.right = 'auto';
+    box.style.bottom = Math.round(window.innerHeight - ledge) + 'px';
+    box.classList.remove('is-in', 'is-out');
+    // Towards what he came for: his eyes (a third of the way down him), and
+    // a lean of a few degrees.
+    const dx = r.left + r.width / 2 - (x + W / 2);
+    const dy = r.top + r.height / 2 - (ledge - H + W * 0.37);
+    const length = Math.hypot(dx, dy) || 1;
+    const tilt = Math.max(-9, Math.min(9, (dx / length) * 9));
+    box.style.setProperty('--peek-tilt', tilt.toFixed(1) + 'deg');
+    Pico.mount(art, 'peek');
+    Pico.look(art, dx / length, dy / length);
     box.hidden = false;
-    box.style.top = Math.round(top) + 'px';
-    Pico.mount(art, o.pose);
-    if (o.aim) {
-      // Where his head is once he has leaned in (styles.css: 30 % past the
-      // edge, turned 24 degrees about the bottom corner), and which way the
-      // target lies from there, in his own turned frame.
-      const hx = o.side === 'left' ? size * 0.41 : window.innerWidth - size * 0.41;
-      const hy = top + size * 0.63;
-      const deg = Math.atan2(middle - hy, r.left + r.width / 2 - hx) * 180 / Math.PI + (o.side === 'left' ? -24 : 24);
-      if (o.aim === 'point') Pico.point(art, deg);
-      else Pico.look(art, Math.cos(deg * Math.PI / 180), Math.sin(deg * Math.PI / 180));
-    }
-    if (o.gesture) setTimeout(() => Pico.gesture(art, o.gesture), 420);
-    if (o.then) setTimeout(() => Pico.pose(art, o.then), 1000);
     requestAnimationFrame(() => requestAnimationFrame(() => box.classList.add('is-in')));
-    setTimeout(() => box.classList.remove('is-in'), o.hold);
+    // Once he is up:
+    if (o.act === 'wink') {
+      setTimeout(() => Pico.look(art, 0, 0.1), 460);             // from the habit to you
+      setTimeout(() => Pico.gesture(art, 'wink'), 540);
+    } else if (o.act === 'wave') {
+      setTimeout(() => Pico.pose(art, 'peekWave'), 440);
+    } else if (o.act === 'point' || o.act === 'think') {
+      setTimeout(() => {
+        Pico.pose(art, o.act);
+        Pico.point(art, Math.atan2(dy, dx) * 180 / Math.PI - tilt);   // in his own, tilted frame
+      }, 440);
+    } else if (o.act === 'nod') {
+      setTimeout(() => Pico.gesture(art, 'nod'), 440);
+      setTimeout(() => Pico.pose(art, 'peekGlad'), 1050);
+    }
+    setTimeout(() => { box.classList.remove('is-in'); box.classList.add('is-out'); }, o.hold);
     setTimeout(() => {
       box.hidden = true;
+      box.classList.remove('is-out');
       Pico.unmount(art);
       peekBusy = false;
-    }, o.hold + 700);
+    }, o.hold + 400);
     return true;
   }
 
@@ -1028,31 +1067,31 @@
     if (picoPeek(near, opts)) cameoLast = Date.now();
   }
 
-  /* On Progress he leans in from the right, away from the first chart in
-     view, and points at it (look at this) or considers it, wing at his chin. */
+  /* On Progress he peeks up at the right corner, away from the first chart
+     in view, and points at it (look at this) or considers it, wing at his chin. */
   function picoAtCharts() {
     if (view !== 'progress') return;
     const chart = $$('#view-progress .chart-card').find((fig) => {
       const r = fig.getBoundingClientRect();
       return !fig.hidden && r.height > 0 && r.top > 60 && r.top < window.innerHeight - 220;
     });
-    picoCameo(chart, { side: 'right', at: 'away', pose: Math.random() < 0.6 ? 'point' : 'think', aim: 'point', hold: 2200 });
+    picoCameo(chart, { side: 'right', at: 'away', act: Math.random() < 0.6 ? 'point' : 'think', hold: 2300 });
   }
 
-  /* In Ajustes, a change: he leans in from the left, away from the row,
-     looks at it, nods, and is glad. */
+  /* In Ajustes, a change: he peeks up at the left corner, away from the
+     row, looks at it, nods, and is glad. */
   function picoNoticeSetting(node) {
     if (view !== 'settings' || !node) return;
     const row = node.closest('.setting-row, .setting-row-stack, .palette-grid, .setting-group') || node;
     // After the change has painted (a theme or palette cross-fades first).
-    setTimeout(() => picoCameo(row, { side: 'left', at: 'away', pose: 'idle', aim: 'look', gesture: 'nod', then: 'happy', hold: 2100 }), 650);
+    setTimeout(() => picoCameo(row, { side: 'left', at: 'away', act: 'nod', hold: 2200 }), 650);
   }
 
-  /* A new habit: he leans in beside it on the list it landed in, and waves. */
+  /* A new habit: he peeks up beside the list it landed in, and waves. */
   function picoWelcome(habitId) {
     const list = view === 'habits' ? '#manageList .manage-row' : '#habitList .habit-row';
     const row = $$(list).find((node) => node.dataset.habitId === habitId);
-    setTimeout(() => picoPeek(row, { pose: 'wave' }), 380);
+    setTimeout(() => picoPeek(row, { act: 'wave' }), 380);
   }
 
   /* Sparks flung out from the middle of node: count of them, travelling
@@ -4387,6 +4426,10 @@
 
   /* Android's back button closes whatever is on top before leaving. */
   function handleBack() {
+    if (window.GlowSelect && GlowSelect.isOpen()) {       // an open dropdown goes first
+      GlowSelect.close();
+      return 'handled';
+    }
     if (tour.open) {
       endTour(false);
       return 'handled';
@@ -5758,6 +5801,9 @@
 
   /* ── Boot ──────────────────────────────────────────────────────────── */
   function init() {
+    // The app's own dropdowns in place of Android's plain list (2.18), before
+    // anything sets their values, so the buttons follow from the start.
+    if (window.GlowSelect) GlowSelect.enhanceAll(document);
     load();
     const migrated = normalizeState();
     wire();
