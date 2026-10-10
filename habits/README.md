@@ -79,9 +79,20 @@ nothing in the app shines like a streak. He has been drawn three times:
 2.13 as a cartoon (too childish), 2.14 as a minimal crow in profile (too
 serious), and 2.15 as he is now (`pico.js`) — facing us, minimal, one solid
 colour, the palette's ink (near black on light themes, soft slate on dark
-ones), with negative-space lines for the wings and a chest feather, a small
-crest, and an amber beak as the only accent. His expression lives in his
-eyelids: calm by default, between serious and expressive.
+ones), with a negative-space line for a chest feather, a small crest, and an
+amber beak as the only accent. His expression lives in his eyelids: calm by
+default, between serious and expressive.
+
+2.16 grew his wings into his body. In 2.15 each wing had an outline of its
+own and hung at his side like a sticker; now each shoulder lies well inside
+the silhouette, there is no outline, and the only line is a crease along a
+folded wing's inner edge, clipped to the body, which fades as the wing
+lifts. A raised wing reads as part of him coming out, not a piece beside
+him. His face is drawn over his wings, so a wing raised beside his head
+passes behind an eye and never bites into it (one colour with him, a wing
+drawn over an eye would cut it in half; the tests check every frame of every
+gesture for this). To point, a wing lifts at most 140°: any higher and it
+would swing in over his head and vanish into it.
 
 His wings are his hands. He points with the one on the target's side,
 gestures while he talks the way people do when they explain something,
@@ -114,6 +125,24 @@ the day is not yet, he leans in from the left edge beside it, winks with a
 wing up and goes — never in the way of a touch, not again within a few
 seconds, and not under reduced motion. He also keeps an empty list company,
 and a tap makes him hop and caw.
+
+Since 2.16 he is around more, without becoming noise:
+
+- **A new habit.** He stands beside *Nuevo hábito* in the editor and looks
+  at whatever has the focus; a quick idea makes him glad and nod, a form
+  that cannot be saved yet makes him think. Editing a habit is quieter: no
+  Pico. Once a new habit is saved — from the editor or a one-tap starter —
+  he leans in beside it on the list and waves.
+- **Progress and Ajustes, now and then.** Entering Progress or changing its
+  range, he may lean in from the right and point at the first chart in view
+  (or consider it, wing at his chin). Changing a setting or a palette, he
+  may lean in from the left, look at what changed, nod and smile. Either
+  way he takes the far end of the screen from it — under the app bar or
+  over the tab bar — so he never covers what he is looking at.
+- **Rarely.** Those two are chances, not rules: at most one visit a minute,
+  and only on about half of the chances even then. Every visit is brief,
+  never takes a touch, never shows over a sheet or the tour, and none
+  happens under reduced motion.
 
 In the tour his words appear one after another while his beak moves (the
 text is whole from the start, so a screen reader reads it at once), the

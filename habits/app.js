@@ -959,31 +959,96 @@
     }
   }
 
-  /* Pico peeks in from the left edge, beside the habit just done, winks
-     with a wing up, and goes (2.15). Brief, never in the way of a touch, not
-     again while one is on screen or within a few seconds of the last, and
-     not at all under reduced motion. The day's last habit gets his cheer
-     instead. */
+  /* Pico peeks in from an edge beside something, does one thing, and goes
+     (2.15; any edge, pose and gesture since 2.16). By default he leans in
+     from the left beside the habit just done and winks with a wing up.
+     Brief, never in the way of a touch, not again while one is on screen or
+     within a few seconds of the last, not over a sheet or the tour, and not
+     at all under reduced motion. The day's last habit gets his cheer
+     instead. Returns whether he came. */
   let peekBusy = false;
   let peekLast = 0;
-  function picoPeek(row) {
-    if (reducedMotion.matches || peekBusy || Date.now() - peekLast < 4000) return;
+  function picoPeek(near, opts) {
+    const o = Object.assign({ side: 'left', at: 'beside', pose: 'wink', aim: null, gesture: null, then: null, hold: 1700 }, opts);
+    if (reducedMotion.matches || peekBusy || Date.now() - peekLast < 4000) return false;
+    if (!near || !near.isConnected || !$('#tour').hidden || $('dialog[open]')) return false;
     const box = $('#picoPeek');
-    const r = row.getBoundingClientRect();
+    const art = $('#picoPeekArt');
+    const r = near.getBoundingClientRect();
+    if (r.bottom < 56 || r.top > window.innerHeight - 80) return false;   // off screen: nothing to look at
     const size = box.offsetHeight || 84;
     const floor = window.innerHeight - 90 - size;
+    const middle = r.top + r.height / 2;
+    // Beside: level with it (a habit). Away: at the far end of the screen
+    // from it, under the app bar or over the tab bar, so he never covers
+    // the thing he is looking at (a setting just changed, a chart).
+    const top = o.at === 'away'
+      ? (middle > window.innerHeight / 2 ? 64 : floor)
+      : Math.max(64, Math.min(floor, middle - size * 0.7));
     peekBusy = true;
     peekLast = Date.now();
+    box.dataset.side = o.side;
     box.hidden = false;
-    box.style.top = Math.round(Math.max(64, Math.min(floor, r.top + r.height / 2 - size * 0.7))) + 'px';
-    Pico.mount($('#picoPeekArt'), 'wink');
+    box.style.top = Math.round(top) + 'px';
+    Pico.mount(art, o.pose);
+    if (o.aim) {
+      // Where his head is once he has leaned in (styles.css: 30 % past the
+      // edge, turned 24 degrees about the bottom corner), and which way the
+      // target lies from there, in his own turned frame.
+      const hx = o.side === 'left' ? size * 0.41 : window.innerWidth - size * 0.41;
+      const hy = top + size * 0.63;
+      const deg = Math.atan2(middle - hy, r.left + r.width / 2 - hx) * 180 / Math.PI + (o.side === 'left' ? -24 : 24);
+      if (o.aim === 'point') Pico.point(art, deg);
+      else Pico.look(art, Math.cos(deg * Math.PI / 180), Math.sin(deg * Math.PI / 180));
+    }
+    if (o.gesture) setTimeout(() => Pico.gesture(art, o.gesture), 420);
+    if (o.then) setTimeout(() => Pico.pose(art, o.then), 1000);
     requestAnimationFrame(() => requestAnimationFrame(() => box.classList.add('is-in')));
-    setTimeout(() => box.classList.remove('is-in'), 1700);
+    setTimeout(() => box.classList.remove('is-in'), o.hold);
     setTimeout(() => {
       box.hidden = true;
-      Pico.unmount($('#picoPeekArt'));
+      Pico.unmount(art);
       peekBusy = false;
-    }, 2400);
+    }, o.hold + 700);
+    return true;
+  }
+
+  /* Now and then, not every time (2.16): Pico drops by while you look at
+     your charts or change a setting. At most one such visit a minute, and
+     only on about half of the chances even then, so he stays a surprise. */
+  const CAMEO_GAP = 60000;
+  const CAMEO_CHANCE = 0.5;
+  let cameoLast = -CAMEO_GAP;
+  function picoCameo(near, opts) {
+    if (Date.now() - cameoLast < CAMEO_GAP || Math.random() >= CAMEO_CHANCE) return;
+    if (picoPeek(near, opts)) cameoLast = Date.now();
+  }
+
+  /* On Progress he leans in from the right, away from the first chart in
+     view, and points at it (look at this) or considers it, wing at his chin. */
+  function picoAtCharts() {
+    if (view !== 'progress') return;
+    const chart = $$('#view-progress .chart-card').find((fig) => {
+      const r = fig.getBoundingClientRect();
+      return !fig.hidden && r.height > 0 && r.top > 60 && r.top < window.innerHeight - 220;
+    });
+    picoCameo(chart, { side: 'right', at: 'away', pose: Math.random() < 0.6 ? 'point' : 'think', aim: 'point', hold: 2200 });
+  }
+
+  /* In Ajustes, a change: he leans in from the left, away from the row,
+     looks at it, nods, and is glad. */
+  function picoNoticeSetting(node) {
+    if (view !== 'settings' || !node) return;
+    const row = node.closest('.setting-row, .setting-row-stack, .palette-grid, .setting-group') || node;
+    // After the change has painted (a theme or palette cross-fades first).
+    setTimeout(() => picoCameo(row, { side: 'left', at: 'away', pose: 'idle', aim: 'look', gesture: 'nod', then: 'happy', hold: 2100 }), 650);
+  }
+
+  /* A new habit: he leans in beside it on the list it landed in, and waves. */
+  function picoWelcome(habitId) {
+    const list = view === 'habits' ? '#manageList .manage-row' : '#habitList .habit-row';
+    const row = $$(list).find((node) => node.dataset.habitId === habitId);
+    setTimeout(() => picoPeek(row, { pose: 'wave' }), 380);
   }
 
   /* Sparks flung out from the middle of node: count of them, travelling
@@ -1325,8 +1390,9 @@
           chip.innerHTML = '<span aria-hidden="true">' + habit.emoji + '</span>';
           chip.appendChild(document.createTextNode(habitName(habit)));
           chip.addEventListener('click', () => {
+            const id = uid();
             state.habits.push(Object.assign({
-              id: uid(), reminders: [], schedule: { kind: 'daily' },
+              id, reminders: [], schedule: { kind: 'daily' },
               createdAt: todayKey(), archived: false,
             }, {
               name: habit.name, nameKey: habit.nameKey || '',
@@ -1340,6 +1406,7 @@
             renderHabitsView();
             renderToday();
             toast(t('habitSaved'));
+            picoWelcome(id);
           });
           grid.appendChild(chip);
         });
@@ -1352,8 +1419,9 @@
       chip.innerHTML = '<span aria-hidden="true">' + preset.emoji + '</span>';
       chip.appendChild(document.createTextNode(t(preset.key)));
       chip.addEventListener('click', () => {
+        const id = uid();
         state.habits.push({
-          id: uid(),
+          id,
           name: t(preset.key),
           nameKey: preset.key,
           description: preset.desc ? t(preset.desc) : '',
@@ -1372,6 +1440,7 @@
         renderHabitsView();
         renderToday();
         toast(t('habitSaved'));
+        picoWelcome(id);
       });
       grid.appendChild(chip);
     });
@@ -1699,6 +1768,10 @@
     buildColorRow();
     renderIdeas(!existing);
     syncDialogFields();
+    // A new habit gets Pico's company; editing one is quieter.
+    $('#sheetPico').hidden = !!existing;
+    if (existing) Pico.unmount($('#sheetPico'));
+    else Pico.mount($('#sheetPico'), 'wave');
     $('#habitDialog').showModal();
     setTimeout(() => $('#fName').focus(), 60);
   }
@@ -1755,6 +1828,31 @@
     syncDialogFields();
     $$('#ideaRow .idea-chip').forEach((chip) => chip.setAttribute('aria-pressed', String(chip.dataset.key === entry.key)));
     Sounds.play('tick');
+    sheetPicoPose('happy', 'nod');
+  }
+
+  /* The editor's Pico (2.16): glad and nodding at a quick idea, thoughtful
+     at a form that cannot be saved yet, and back to calm after a moment.
+     He looks at whatever has the focus. */
+  let sheetPicoTimer = 0;
+  function sheetPicoPose(pose, gesture) {
+    const host = $('#sheetPico');
+    if (host.hidden) return;
+    clearTimeout(sheetPicoTimer);
+    Pico.pose(host, pose);
+    if (gesture) Pico.gesture(host, gesture);
+    sheetPicoTimer = setTimeout(() => Pico.pose(host, 'idle'), 1800);
+  }
+
+  function sheetPicoLook(node) {
+    const host = $('#sheetPico');
+    if (host.hidden || !node || !node.getBoundingClientRect) return;
+    const p = host.getBoundingClientRect();
+    const r = node.getBoundingClientRect();
+    const dx = r.left + Math.min(r.width / 2, 120) - (p.left + p.width / 2);
+    const dy = r.top + r.height / 2 - (p.top + p.height / 2);
+    const length = Math.hypot(dx, dy) || 1;
+    Pico.look(host, dx / length, dy / length);
   }
 
   function readDialog() {
@@ -1829,6 +1927,7 @@
       const box = $('#formError');
       box.textContent = msg;
       box.hidden = false;
+      sheetPicoPose('think');
       return false;
     };
     if (!draft.name) return fail(t('errName'));
@@ -1871,11 +1970,13 @@
     if (voiceNote) payload.voiceNote = voiceNote;
     if (draft.botPick) payload.botPick = draft.botPick.slice();
 
+    let added = null;
     if (existing) {
       Object.assign(existing, payload);
       if (!voiceNote) delete existing.voiceNote;
     } else {
-      state.habits.push(Object.assign({ id: uid(), createdAt: todayKey(), archived: false }, payload));
+      added = uid();
+      state.habits.push(Object.assign({ id: added, createdAt: todayKey(), archived: false }, payload));
     }
     save();
     if (previousNote && (!voiceNote || voiceNote.id !== previousNote)) deleteNoteFile(previousNote);
@@ -1889,6 +1990,7 @@
     renderProgressIfVisible();
     renderCastSettings();             // the voice-note switch shows once any habit has a note
     toast(t(draft.reminders.length ? 'reminderSaved' : 'habitSaved'));
+    if (added) picoWelcome(added);
     return true;
   }
 
@@ -1923,6 +2025,7 @@
     ], range, (value) => {
       range = value;
       renderProgress();
+      setTimeout(picoAtCharts, 500);
     });
   }
 
@@ -2238,6 +2341,7 @@
       applyTheme();
       renderProgressIfVisible();
     });
+    picoNoticeSetting($('#paletteGrid'));
     Sounds.play('tick');
   }
 
@@ -2245,7 +2349,10 @@
      rather than snapping from one palette to the next. */
   function withFade(change) {
     if (document.startViewTransition && !reducedMotion.matches && !document.hidden) {
-      document.startViewTransition(change);
+      // A second change before the first has faded skips the first fade
+      // (the change itself still happens); its promise then rejects, which
+      // is expected, not an error to leave unhandled.
+      document.startViewTransition(change).ready.catch(() => {});
     } else {
       change();
     }
@@ -4325,10 +4432,12 @@
     if (!fromHash && location.hash.slice(1) !== name) {
       history.replaceState(null, '', '#' + name);
     }
+    let entered = false;
     VIEWS.forEach((id) => {
       const section = $('#view-' + id);
       const showing = !section.hidden;
       section.hidden = id !== name;
+      if (id === name && !showing) entered = true;
       if (id === name && !showing && !reducedMotion.matches) {
         section.classList.remove('view-enter');
         void section.offsetWidth;
@@ -4343,6 +4452,7 @@
     if (name === 'today') renderToday();
     if (name === 'habits') renderHabitsView();
     if (name === 'progress') renderProgress();
+    if (name === 'progress' && entered) setTimeout(picoAtCharts, 900);
     if (name === 'settings') {
       updateStorageInfo();
       renderBackupInfo();
@@ -4615,9 +4725,15 @@
     $('#studioBack').addEventListener('click', () => $('#studio').close());
     $('#studio').addEventListener('close', onStudioClosed);
     $('#btnBotStudio').addEventListener('click', () => openStudio({ habitId: editingId }));
+    $('#habitForm').addEventListener('focusin', (evt) => sheetPicoLook(evt.target));
+    // The browser stops an empty name before saveHabit sees it; Pico still notices.
+    $('#habitForm').addEventListener('invalid', () => sheetPicoPose('think'), true);
+    $('#sheetPico').addEventListener('click', () => Pico.react($('#sheetPico')));
     // However the editor closes, the microphone is released and an unsaved
     // recording is let go.
     $('#habitDialog').addEventListener('close', () => {
+      clearTimeout(sheetPicoTimer);
+      Pico.unmount($('#sheetPico'));
       stopRecording(true);
       stopVoice();
       if (draft && draft.newNote) URL.revokeObjectURL(draft.newNote.url);
@@ -4686,6 +4802,12 @@
       state.weekStart = Number(evt.target.value);
       save();
       renderAll();
+    });
+
+    // Any setting changed, now and then, gets a nod from Pico (2.16). The
+    // import picker is left out: it opens a file, it does not set anything.
+    $('#view-settings').addEventListener('change', (evt) => {
+      if (evt.target.id !== 'importFile') picoNoticeSetting(evt.target);
     });
 
     $('#btnRetakeTest').addEventListener('click', () => startOnboarding());

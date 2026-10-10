@@ -848,6 +848,9 @@ td { font-variant-numeric: tabular-nums; }
   padding: 16px; border-bottom: 1px solid var(--border);
 }
 .sheet-head h2 { font-size: 1.05rem; }
+.sheet-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
+/* Pico beside "Nuevo hábito" (2.16), standing on the header's lower edge. */
+.sheet-pico { width: 2.6rem; height: 2.6rem; flex: none; margin: -8px 0 -10px -4px; }
 .sheet-body { padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
 .sheet-foot {
   display: flex; align-items: center; gap: 8px;
@@ -1561,9 +1564,9 @@ td { font-variant-numeric: tabular-nums; }
 
 /* ── Pico, the guide ─────────────────────────────────────────────────
    2.14: one solid colour, the palette's own — near black on light themes,
-   soft slate on dark ones — with the eye and the negative-space lines (the
-   wing's edge, the mouth, a tail feather) in the surface he stands on.
-   pico.js moves him; nothing here animates. */
+   soft slate on dark ones — with the eye and the negative-space lines (a
+   folded wing's crease since 2.16, the chest feather) in the surface he
+   stands on. pico.js moves him; nothing here animates. */
 :root {
   --pico-body: var(--ink-2);
   --pico-eye: var(--ink);
@@ -1579,7 +1582,7 @@ td { font-variant-numeric: tabular-nums; }
 .pico .pk-fill { fill: currentColor; }
 .pico .pk-legs { stroke: currentColor; }
 .pico .pk-cut { fill: none; stroke: var(--pico-cut); stroke-width: 1.4; stroke-linecap: round; }
-.pico .pk-wing-shape { stroke: var(--pico-cut); stroke-width: 1.7; stroke-linejoin: round; }
+.pico .pk-crease { fill: none; stroke: var(--pico-cut); stroke-width: 1.4; stroke-linecap: round; }
 .pico .pk-white { fill: var(--pico-eye); }
 .pico .pk-pupil { fill: var(--pico-pupil); }
 .pico .pk-glad { fill: none; stroke: var(--pico-eye); stroke-width: 2; stroke-linecap: round; }
@@ -1673,6 +1676,12 @@ td { font-variant-numeric: tabular-nums; }
   transition: transform 0.6s var(--spring);
 }
 .pico-peek.is-in { transform: translateX(-30%) rotate(24deg); }
+/* From the right edge (2.16: beside a chart), the same lean mirrored. */
+.pico-peek[data-side='right'] {
+  left: auto; right: 0; transform-origin: 100% 100%;
+  transform: translateX(102%) rotate(30deg);
+}
+.pico-peek[data-side='right'].is-in { transform: translateX(30%) rotate(-24deg); }
 .pico-peek-art { width: 100%; height: 100%; }
 
 /* ── Pico at 100 % ────────────────────────────────────────────────────

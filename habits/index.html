@@ -16,7 +16,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="GlowApp">
-  <link rel="stylesheet" href="styles.css?v=2.15">
+  <link rel="stylesheet" href="styles.css?v=2.16">
   <script>
     /* The saved theme and palette, resolved as applyTheme() in app.js resolves
        them, before anything paints: until app.js ran, a light theme opened on
@@ -39,7 +39,7 @@
       }
     })();
   </script>
-  <script src="i18n.js?v=2.15"></script>
+  <script src="i18n.js?v=2.16"></script>
 </head>
 <body>
   <!-- Launch screen. The mark draws itself, then a phrase lands under it.
@@ -505,7 +505,11 @@
   <dialog class="sheet" id="habitDialog" aria-labelledby="habitDialogTitle">
     <form method="dialog" id="habitForm">
       <header class="sheet-head">
-        <h2 id="habitDialogTitle" data-i18n="addHabit">Nuevo hábito</h2>
+        <div class="sheet-title">
+          <!-- Pico keeps a new habit company (2.16): he looks at what you are filling in. -->
+          <div class="sheet-pico" id="sheetPico" aria-hidden="true" hidden></div>
+          <h2 id="habitDialogTitle" data-i18n="addHabit">Nuevo hábito</h2>
+        </div>
         <button type="button" class="icon-btn" data-close aria-label="Cerrar">
           <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20"><use href="#i-close"></use></svg>
         </button>
@@ -817,10 +821,10 @@
     </symbol>
   </svg>
 
-  <script src="sounds.js?v=2.15"></script>
-  <script src="pico.js?v=2.15"></script>
-  <script src="charts.js?v=2.15"></script>
-  <script src="characters.js?v=2.15"></script>
-  <script src="app.js?v=2.15"></script>
+  <script src="sounds.js?v=2.16"></script>
+  <script src="pico.js?v=2.16"></script>
+  <script src="charts.js?v=2.16"></script>
+  <script src="characters.js?v=2.16"></script>
+  <script src="app.js?v=2.16"></script>
 </body>
 </html>
