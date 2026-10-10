@@ -1,14 +1,15 @@
 /* Pico — GlowApp's guide. A crow, because crows collect shiny things and
    nothing in GlowApp shines like a streak.
 
-   2.15 drew him facing us again, but kept 2.14's restraint: one solid colour
-   (the palette's ink: near black in light themes, soft slate in dark ones),
+   2.15 drew him facing us again, but kept 2.14's restraint: one solid colour,
    a negative-space line for a chest feather, an amber beak as the only
-   accent, and eyes whose lids and tilt carry the expression — calm by
-   default, between serious and expressive. His wings are his hands: he
+   accent, and eyes that carry the expression. His wings are his hands: he
    points with the one on the target's side, gestures while he talks, lifts
    one to his chin to think, waves, cheers, and winks. 2.16 grew them into
-   his body (see WING_L below).
+   his body (see WING_L below). 2.17 cheered him up: his own purple instead
+   of the palette's grey ink (styles.css), open eyes with a glint of light,
+   and cheeks that rise into a quiet smile — through 2.16 his resting face,
+   heavy lids slanted towards the beak, read as cross or bored.
 
    He is rigged rather than keyframed: every part follows its target on a
    spring, so a change of pose is a movement and never a jump. Gestures
@@ -33,6 +34,11 @@
   const WING_R = 'M73 52 C82 53 91 62 94 78 C95.5 86 94.5 93 91.5 97 C87.5 97.5 83 93.5 80 87 C76 79 72.5 69 71.5 60 Z';
   const CREASE_L = 'M46.6 70 C45 77 43 82 40 87 C37 93.5 32.5 97.5 28.5 97';
   const CREASE_R = 'M73.4 70 C75 77 77 82 80 87 C83 93.5 87.5 97.5 91.5 97';
+  /* A smiling cheek under the eye centred at x (2.17): his own colour, its
+     top edge arched, so as it rises it turns the eye into a smiling one.
+     At rest it sits just below the eye, unseen against his body. */
+  const CHEEK = (x) => 'M' + (x - 8.5) + ' 47 Q' + x + ' 41 ' + (x + 8.5) + ' 47 L' + (x + 8.5) + ' 55 L' + (x - 8.5) + ' 55 Z';
+  const CHEEK_DROP = 9;                // how far below the eye a cheek rests
 
   let drawings = 0;                    // gives each drawing's clip path its own id
   const markup = (pose) => {
@@ -60,14 +66,20 @@
           '<g class="pk-crease-r"><path class="pk-crease" d="' + CREASE_R + '"/></g>' +
         '</g>' +
         '<g class="pk-face">' +
+          // Each eye: the white, the pupil with a glint of light in it, a cheek
+          // that rises from below when he smiles (2.17), and the lid.
           '<g class="pk-eye pk-eye-l">' +
             '<circle class="pk-white" cx="49" cy="45" r="7"/>' +
             '<circle class="pk-pupil" cx="49.6" cy="45.6" r="3.3"/>' +
+            '<circle class="pk-glint" cx="48.3" cy="44.2" r="1.15"/>' +
+            '<path class="pk-fill pk-cheek" d="' + CHEEK(49) + '"/>' +
             '<rect class="pk-fill pk-lid" x="40" y="37.6" width="18" height="3"/>' +
           '</g>' +
           '<g class="pk-eye pk-eye-r">' +
             '<circle class="pk-white" cx="71" cy="45" r="7"/>' +
             '<circle class="pk-pupil" cx="70.4" cy="45.6" r="3.3"/>' +
+            '<circle class="pk-glint" cx="69.1" cy="44.2" r="1.15"/>' +
+            '<path class="pk-fill pk-cheek" d="' + CHEEK(71) + '"/>' +
             '<rect class="pk-fill pk-lid" x="62" y="37.6" width="18" height="3"/>' +
           '</g>' +
           '<path class="pk-glad pk-glad-l" d="M43 46.5 Q49 40 55 46.5"/>' +
@@ -88,19 +100,23 @@
   const REST_R = 72;
   const MAX_LIFT = 140;
 
-  /* Each pose is a set of targets; anything left out keeps the calm default.
+  /* Each pose is a set of targets; anything left out keeps the default.
      Wings are in degrees of lift, outwards and up (negative: across the body).
-     tilt slants both lids towards the beak: a little focus, a little frown. */
-  const BASE = { lean: 0, wingL: 0, wingR: 0, lid: 0.2, tilt: 5, gladL: 0, gladR: 0, spark: 0, lookX: 0, lookY: 0.1, crest: 0 };
+     lid is how far each eyelid is down; tilt slants the lids (positive: the
+     inner corners down, a frown; negative: up, soft); smile raises the
+     cheeks under the eyes. Through 2.16 his rest was a little frown with
+     heavy lids, and read as cross or bored; since 2.17 it is open, eyes
+     bright and a quiet smile, and every pose leans glad rather than stern. */
+  const BASE = { lean: 0, wingL: 0, wingR: 0, lid: 0.04, tilt: -2, smile: 0.55, gladL: 0, gladR: 0, spark: 0, lookX: 0, lookY: 0.1, crest: 0 };
   const POSES = {
     idle: {},
-    point: { lid: 0.12, tilt: 4 },
-    wave: { wingR: 118, lid: 0.16, tilt: 2, crest: -6, gesture: 'wave', then: 'idle' },
-    talk: { lid: 0.18, tilt: 5, gesture: 'talk' },
-    think: { wingR: 128, lean: -3, lid: 0.36, tilt: -6, lookX: 0.5, lookY: -1, crest: 6 },
-    happy: { lid: 0, tilt: 0, gladL: 1, gladR: 1, spark: 1, wingL: 18, wingR: 18, crest: -8 },
-    wink: { lid: 0.08, tilt: 2, gladL: 1, wingR: 104, lean: 6, spark: 1, crest: -6, lookX: 0.6 },
-    cheer: { lid: 0, tilt: 0, gladL: 1, gladR: 1, spark: 1, wingL: 128, wingR: 128, crest: -10, gesture: 'cheer', then: 'happy' },
+    point: { lid: 0.02 },
+    wave: { wingR: 118, lid: 0, tilt: -3, smile: 0.75, crest: -6, gesture: 'wave', then: 'idle' },
+    talk: { lid: 0.02, gesture: 'talk' },
+    think: { wingR: 128, lean: -3, lid: 0.28, tilt: -6, smile: 0.15, lookX: 0.5, lookY: -1, crest: 6 },
+    happy: { lid: 0, tilt: 0, smile: 0.9, gladL: 1, gladR: 1, spark: 1, wingL: 18, wingR: 18, crest: -8 },
+    wink: { lid: 0, tilt: -2, smile: 0.8, gladL: 1, wingR: 104, lean: 6, spark: 1, crest: -6, lookX: 0.6 },
+    cheer: { lid: 0, tilt: 0, smile: 0.95, gladL: 1, gladR: 1, spark: 1, wingL: 128, wingR: 128, crest: -10, gesture: 'cheer', then: 'happy' },
   };
   const POSE_NAMES = Object.keys(POSES);
 
@@ -109,7 +125,7 @@
   const SPRING = {
     lean: [160, 18], wingL: [150, 13], wingR: [150, 13], lid: [1200, 64], tilt: [300, 30],
     gladL: [260, 30], gladR: [260, 30], spark: [170, 17], lookX: [260, 27], lookY: [260, 27],
-    crest: [200, 11], beak: [900, 48],
+    crest: [200, 11], beak: [900, 48], smile: [220, 24],
   };
 
   const reduce = global.matchMedia ? global.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
@@ -126,7 +142,9 @@
         all: q('.pk-all'), shadow: q('.pk-shadow'), crest: q('.pk-crest'), face: q('.pk-face'),
         wingL: q('.pk-wing-l'), wingR: q('.pk-wing-r'), creaseL: q('.pk-crease-l'), creaseR: q('.pk-crease-r'), beak: q('.pk-beak-low'),
         eyeL: q('.pk-eye-l'), eyeR: q('.pk-eye-r'), gladL: q('.pk-glad-l'), gladR: q('.pk-glad-r'),
-        pupils: svg.querySelectorAll('.pk-pupil'), lidL: q('.pk-eye-l .pk-lid'), lidR: q('.pk-eye-r .pk-lid'),
+        // The glints move with the pupils, as light caught in them would.
+        pupils: svg.querySelectorAll('.pk-pupil, .pk-glint'), lidL: q('.pk-eye-l .pk-lid'), lidR: q('.pk-eye-r .pk-lid'),
+        cheekL: q('.pk-eye-l .pk-cheek'), cheekR: q('.pk-eye-r .pk-cheek'),
         spark: q('.pk-spark'),
       };
       this.x = {};
@@ -163,7 +181,7 @@
       if (reduce.matches && spec.then) spec = Object.assign({}, BASE, POSES[spec.then], { gesture: null, then: null });
       this.name = POSES[name] ? name : 'idle';
       this.svg.setAttribute('data-pose', this.name);
-      ['lean', 'wingL', 'wingR', 'lid', 'tilt', 'gladL', 'gladR', 'spark', 'crest'].forEach((k) => { this.goal[k] = spec[k]; });
+      ['lean', 'wingL', 'wingR', 'lid', 'tilt', 'smile', 'gladL', 'gladR', 'spark', 'crest'].forEach((k) => { this.goal[k] = spec[k]; });
       this.baseLook = [spec.lookX, spec.lookY];
       this.after = spec.then || null;
       if (this.name !== 'point') this.pointing = null;
@@ -360,6 +378,12 @@
       // Lids come down from the top of each eye; tilt slants them towards the beak.
       set(this.part.lidL, 'height', fmt(0.6 + clamp(x.lidL, 0, 1) * 14.2));
       set(this.part.lidR, 'height', fmt(0.6 + clamp(x.lidR, 0, 1) * 14.2));
+      // The cheeks rise from below the eyes as he smiles, and give way when
+      // he looks down, the way a lower lid follows the eye: a broad smile
+      // aimed at something below him would otherwise swallow his pupils.
+      const cheek = 'translate(0 ' + fmt((1 - clamp(x.smile, 0, 1)) * CHEEK_DROP + Math.max(0, x.lookY) * 2.2) + ')';
+      set(this.part.cheekL, 'transform', cheek);
+      set(this.part.cheekR, 'transform', cheek);
       set(this.part.lidL, 'transform', 'rotate(' + fmt(x.tilt) + ' ' + PIVOT.eyeL.join(' ') + ')');
       set(this.part.lidR, 'transform', 'rotate(' + fmt(-x.tilt) + ' ' + PIVOT.eyeR.join(' ') + ')');
       const gl = clamp(x.gladL, 0, 1);

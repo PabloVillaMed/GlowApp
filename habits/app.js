@@ -925,18 +925,22 @@
     } catch (err) { /* not available; the animation still plays */ }
   }
 
-  function celebrate(habit, wasComplete) {
+  function celebrate(habit, wasComplete, opts) {
     const nowComplete = isComplete(habit, selectedDate);
     if (!nowComplete || wasComplete) return;   // only on the transition to done
 
-    buzz(15);
-    Sounds.play('complete');
+    // A press of + has already buzzed and sounded the moment it crossed.
+    if (!(opts && opts.sounded)) {
+      buzz(15);
+      Sounds.play('complete');
+    }
     const row = $$('#habitList .habit-row').find(
       (node) => node.dataset.habitId === habit.id
     );
     if (row && !reducedMotion.matches) {
       row.classList.add('just-done');
-      const check = $('.check-btn', row);
+      // A counted habit has no tick: its sparks come from the count.
+      const check = $('.check-btn', row) || $('.qty-value', row);
       if (check) {
         check.classList.add('just-done');
         sparkBurst(check, 8, 46, 24);
@@ -1143,10 +1147,14 @@
     clearTimeout(hold.timer);
     const { habit, wasComplete, repeats } = hold;
     hold = null;
-    if (repeats > 0) {
-      // Re-render once so streaks, ordering and the day strip catch up.
+    // A hold that repeated, or a single tap that reached the target: re-render
+    // once so streaks, ordering and the day strip catch up, and celebrate.
+    // Through 2.16 a plain tap that finished a counted habit only beeped: no
+    // sparks, no Pico, no cheer for the day's last habit.
+    const crossed = !wasComplete && isComplete(habit, selectedDate);
+    if (repeats > 0 || crossed) {
       renderToday();
-      celebrate(habit, wasComplete);
+      celebrate(habit, wasComplete, { sounded: crossed });   // holdStep already sounded the crossing
       renderProgressIfVisible();
     }
   }

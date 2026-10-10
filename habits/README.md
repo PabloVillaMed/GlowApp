@@ -78,10 +78,21 @@ Pico is GlowApp's guide: a crow, because crows collect shiny things and
 nothing in the app shines like a streak. He has been drawn three times:
 2.13 as a cartoon (too childish), 2.14 as a minimal crow in profile (too
 serious), and 2.15 as he is now (`pico.js`) — facing us, minimal, one solid
-colour, the palette's ink (near black on light themes, soft slate on dark
-ones), with a negative-space line for a chest feather, a small crest, and an
-amber beak as the only accent. His expression lives in his eyelids: calm by
-default, between serious and expressive.
+colour, with a negative-space line for a chest feather, a small crest, and an
+amber beak as the only accent.
+
+2.17 cheered him up. Through 2.16 he wore the palette's ink (near black on
+light themes, slate grey on dark ones) and rested with heavy lids slanted
+towards his beak, which read as cross or bored. Now he has a purple of his
+own, the same in every palette: deep (`#4C1D95`) on light themes, a brighter
+violet (`#8A55F0`) on dark ones so he does not sink into the background —
+measured against every palette's background and cards, 9.9:1 and up on light
+themes, 3.4:1 and up on dark ones, eye whites at least 4.1:1 on him. His eyes
+are open, with a glint of light that moves with each pupil, and cheeks rise
+under them into a quiet smile at rest and a broad one when he waves or
+cheers; no pose frowns (thinking is pensive, not cross). The cheeks give way
+as he looks down, the way a lower lid follows the eye, so a smile never
+swallows his pupils.
 
 2.16 grew his wings into his body. In 2.15 each wing had an outline of its
 own and hung at his side like a sticker; now each shoulder lies well inside
@@ -125,6 +136,12 @@ the day is not yet, he leans in from the left edge beside it, winks with a
 wing up and goes — never in the way of a touch, not again within a few
 seconds, and not under reduced motion. He also keeps an empty list company,
 and a tap makes him hop and caw.
+
+A counted habit (glasses of water, portions of fruit) is celebrated the
+same way when it reaches its target: sparks from the count, his wink, or
+his cheer when it was the day's last. Through 2.16 that only happened on a
+long press of + or from the keyboard; a plain tap only beeped. A tap still
+celebrates once, with one sound.
 
 Since 2.16 he is around more, without becoming noise:
 
