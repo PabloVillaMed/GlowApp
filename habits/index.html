@@ -16,7 +16,10 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="GlowApp">
-  <link rel="stylesheet" href="styles.css?v=2.18">
+  <!-- The typeface (2.19), asked for at once rather than when the stylesheet
+       first needs it, so the first screen is drawn in it. -->
+  <link rel="preload" href="fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css?v=2.19">
   <script>
     /* The saved theme and palette, resolved as applyTheme() in app.js resolves
        them, before anything paints: until app.js ran, a light theme opened on
@@ -39,7 +42,7 @@
       }
     })();
   </script>
-  <script src="i18n.js?v=2.18"></script>
+  <script src="i18n.js?v=2.19"></script>
 </head>
 <body>
   <!-- Launch screen. The mark draws itself, then a phrase lands under it.
@@ -262,6 +265,23 @@
       <div class="view-inner">
         <h2 id="progressHeading" data-i18n="navProgress">Progreso</h2>
 
+        <!-- Level and achievements (2.19): from everything ever done, so
+             above the range, which they do not follow. -->
+        <section class="card level-card" id="levelCard" aria-labelledby="levelTitle">
+          <div class="level-head">
+            <h3 id="levelTitle">Nivel 1</h3>
+            <span class="level-points" id="levelPoints"></span>
+          </div>
+          <div class="level-track" id="levelBar" role="progressbar" aria-labelledby="levelTitle" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="levelFill"></span></div>
+          <div class="level-foot">
+            <span class="level-next" id="levelNext"></span>
+            <button type="button" class="btn btn-sm btn-ghost level-badges" id="btnAchievements">
+              <span id="achievementsCount">Logros</span>
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><use href="#i-chevron"></use></svg>
+            </button>
+          </div>
+        </section>
+
         <div class="filter-row" role="group" aria-labelledby="rangeLabel">
           <span class="sr-only" id="rangeLabel" data-i18n="rangeLabel">Rango de fechas</span>
           <div class="segmented" id="rangeSelect"></div>
@@ -316,6 +336,40 @@
           <div class="chart-host" id="chartCorr"></div>
           <p class="chart-empty" id="chartCorrEmpty" hidden data-i18n="chartNoCorr">Hacen falta más días con ánimo y hábitos registrados.</p>
         </figure>
+
+        <!-- More charts (2.19), drawn only while open. -->
+        <button type="button" class="btn more-charts-btn" id="btnMoreCharts" aria-expanded="false" aria-controls="moreCharts">
+          <span id="moreChartsLabel">Ver más gráficos</span>
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><use href="#i-chevron"></use></svg>
+        </button>
+        <div class="more-charts" id="moreCharts" hidden>
+          <figure class="card chart-card" id="figWeekday">
+            <figcaption>
+              <h3 data-i18n="chartWeekdayTitle">Por día de la semana</h3>
+              <p class="chart-sub" id="chartWeekdaySub"></p>
+            </figcaption>
+            <div class="chart-host" id="chartWeekday"></div>
+            <p class="chart-empty" id="chartWeekdayEmpty" hidden data-i18n="chartNoData">Sin datos en este rango.</p>
+          </figure>
+
+          <figure class="card chart-card" id="figTrend">
+            <figcaption>
+              <h3 data-i18n="chartTrendTitle">Tendencia</h3>
+              <p class="chart-sub" data-i18n="chartTrendSub">Cumplimiento, media de los últimos 7 días.</p>
+            </figcaption>
+            <div class="chart-host" id="chartTrend"></div>
+            <p class="chart-empty" id="chartTrendEmpty" hidden data-i18n="chartNoData">Sin datos en este rango.</p>
+          </figure>
+
+          <figure class="card chart-card" id="figStreaks">
+            <figcaption>
+              <h3 data-i18n="chartStreaksTitle">Rachas</h3>
+              <p class="chart-sub" data-i18n="chartStreaksSub">La racha más larga de cada hábito en este periodo.</p>
+            </figcaption>
+            <div class="chart-host" id="chartStreaks"></div>
+            <p class="chart-empty" id="chartStreaksEmpty" hidden data-i18n="chartNoData">Sin datos en este rango.</p>
+          </figure>
+        </div>
 
         <details class="card table-card" id="tableCard">
           <summary data-i18n="viewTable">Ver como tabla</summary>
@@ -654,6 +708,20 @@
     </form>
   </dialog>
 
+  <!-- ── ACHIEVEMENTS (2.19) ─────────────────────────────────────────── -->
+  <dialog class="sheet" id="achievementsDialog" aria-labelledby="achievementsTitle">
+    <header class="sheet-head">
+      <h2 id="achievementsTitle" data-i18n="achievementsTitle">Logros</h2>
+      <button type="button" class="icon-btn" data-close data-i18n-label="close" aria-label="Cerrar">
+        <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20"><use href="#i-close"></use></svg>
+      </button>
+    </header>
+    <div class="sheet-body">
+      <p class="muted small" data-i18n="pointsHow">Ganas 10 puntos por cada hábito cumplido, 20 por cada día perfecto y 5 por cada día que registras tu ánimo.</p>
+      <ul class="achievement-list" id="achievementList"></ul>
+    </div>
+  </dialog>
+
   <dialog class="sheet confirm" id="confirmDialog" aria-labelledby="confirmTitle">
     <div class="sheet-body">
       <h2 id="confirmTitle"></h2>
@@ -821,11 +889,12 @@
     </symbol>
   </svg>
 
-  <script src="sounds.js?v=2.18"></script>
-  <script src="pico.js?v=2.18"></script>
-  <script src="select.js?v=2.18"></script>
-  <script src="charts.js?v=2.18"></script>
-  <script src="characters.js?v=2.18"></script>
-  <script src="app.js?v=2.18"></script>
+  <script src="sounds.js?v=2.19"></script>
+  <script src="pico-voice.js?v=2.19"></script>
+  <script src="pico.js?v=2.19"></script>
+  <script src="select.js?v=2.19"></script>
+  <script src="charts.js?v=2.19"></script>
+  <script src="characters.js?v=2.19"></script>
+  <script src="app.js?v=2.19"></script>
 </body>
 </html>

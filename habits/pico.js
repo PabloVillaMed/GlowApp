@@ -330,6 +330,13 @@
       goal.lookY = glance ? glance[1] : clamp(this.baseLook[1] + this.look[1] * 0.9, -1, 1);
       goal.beak = off.beak;
 
+      // The springs move in steps of at most 1/120 s, however long the frame.
+      // Taken in one step of 1/30 s (a slow phone, the emulator, or his
+      // fifteen frames a second at rest) the stiff ones — the eyelids and
+      // the beak — swung wider on every frame instead of settling, and his
+      // eyes flickered shut and open many times a second (found in 2.19).
+      const steps = Math.max(1, Math.ceil(dt * 120 - 1e-9));
+      const h = dt / steps;
       let moving = false;
       const channels = Object.keys(SPRING).concat(['lidL', 'lidR']);
       for (const k of channels) {
@@ -338,8 +345,10 @@
         if (this.x[k] === undefined) { this.x[k] = target; this.v[k] = 0; }
         if (still) { this.x[k] = target; this.v[k] = 0; continue; }
         const [stiff, damp] = SPRING[k] || SPRING.lid;
-        this.v[k] += (stiff * (target - this.x[k]) - damp * this.v[k]) * dt;
-        this.x[k] += this.v[k] * dt;
+        for (let i = 0; i < steps; i++) {
+          this.v[k] += (stiff * (target - this.x[k]) - damp * this.v[k]) * h;
+          this.x[k] += this.v[k] * h;
+        }
         if (Math.abs(this.v[k]) > 0.01 || Math.abs(target - this.x[k]) > 0.01) moving = true;
       }
       this.hop = off.hop;

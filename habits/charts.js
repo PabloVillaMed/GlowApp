@@ -125,19 +125,44 @@
        every few days), when the line runs from one to the next. */
     let d = '';
     let open = false;
+    const runs = [];                     // the unbroken stretches, for the area
     pts.forEach((p, i) => {
       if (p.value === null || p.value === undefined) { if (!opts.connect) open = false; return; }
       d += (open ? 'L' : 'M') + xAt(i).toFixed(1) + ' ' + yAt(p.value).toFixed(1) + ' ';
+      if (!open) runs.push([]);
+      runs[runs.length - 1].push(i);
       open = true;
     });
+    /* A single series may lie on a faint wash of its own colour (2.19). */
+    if (opts.area) {
+      const base = (M.t + innerH).toFixed(1);
+      runs.filter((run) => run.length > 1).forEach((run) => {
+        const top = run.map((i) => 'L' + xAt(i).toFixed(1) + ' ' + yAt(pts[i].value).toFixed(1)).join(' ');
+        el('path', {
+          class: 'viz-area', fill: opts.color || 'var(--s1)',
+          d: 'M' + xAt(run[0]).toFixed(1) + ' ' + base + ' ' + top + ' L' + xAt(run[run.length - 1]).toFixed(1) + ' ' + base + ' Z',
+        }, svg);
+      });
+    }
     if (d) el('path', { class: 'viz-line', d: d.trim(), stroke: opts.color || 'var(--s1)' }, svg);
 
     const filled = [];
     pts.forEach((p, i) => {
       if (p.value === null || p.value === undefined) return;
       filled.push(i);
+      if (opts.dots === false) return;   // a dense trend reads better as a plain line
       el('circle', { class: 'viz-dot', cx: xAt(i), cy: yAt(p.value), r: pts.length > 45 ? 2.6 : 4, fill: opts.color || 'var(--s1)' }, svg);
     });
+    if (opts.dots === false && filled.length) {
+      const i = filled[filled.length - 1];    // the end, where the value is read
+      el('circle', { class: 'viz-dot', cx: xAt(i), cy: yAt(pts[i].value), r: 4, fill: opts.color || 'var(--s1)' }, svg);
+    }
+
+    /* The value at the line's end, where a line is labelled (2.19). */
+    if (opts.endLabel && filled.length) {
+      const i = filled[filled.length - 1];
+      el('text', { class: 'viz-value', x: xAt(i), y: yAt(pts[i].value) - 10, 'text-anchor': 'end' }, svg).textContent = opts.endLabel;
+    }
 
     const cross = el('line', { class: 'viz-crosshair', y1: M.t, y2: M.t + innerH, opacity: 0 }, svg);
     const focus = el('circle', { r: 6, fill: opts.color || 'var(--s1)', stroke: 'var(--surface)', 'stroke-width': 2, opacity: 0 }, svg);
@@ -191,7 +216,7 @@
     const gap = 8;
     const labelW = Math.round(Math.min(190, Math.max(96, W * 0.42)));
     const H = items.length * (rowH + gap) + 18;
-    const innerW = W - labelW - 46;
+    const innerW = W - labelW - (opts.valueW || 46);   // room for the value at the end
 
     const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': opts.ariaLabel || '' }, host);
     const max = opts.max || 100;
@@ -220,6 +245,52 @@
       hit.addEventListener('pointerenter', () => {
         const s = pxScale(svg, host);
         showTip(host, tip, (labelW + w) * s, barY * s, item.tip || item.valueLabel);
+      });
+      hit.addEventListener('pointerleave', () => hideTip(tip));
+    });
+  }
+
+  /* ── Columns (2.19) ──────────────────────────────────────────────────
+     One series over a few ordered slots (the days of the week). Thin
+     columns, rounded only at the data end and square on the baseline, the
+     value on each cap; the whole slot answers the pointer. A slot without
+     a value keeps its place, marked by a dash. */
+  function columns(host, opts) {
+    const tip = reset(host);
+    const items = opts.items;
+    const W = widthOf(host);
+    const H = opts.height || 168;
+    const M = { t: 20, b: 24 };
+    const innerH = H - M.t - M.b;
+    const slot = W / items.length;
+    const barW = Math.min(24, slot * 0.56);
+    const max = opts.max || 100;
+    const base = M.t + innerH;
+
+    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': opts.ariaLabel || '' }, host);
+    el('line', { class: 'viz-axis', x1: 0, x2: W, y1: base, y2: base }, svg);
+
+    items.forEach((item, i) => {
+      const cx = slot * i + slot / 2;
+      el('text', { class: 'viz-tick', x: cx, y: H - 7, 'text-anchor': 'middle' }, svg).textContent = item.label;
+      const has = item.value !== null && item.value !== undefined;
+      const h = has ? Math.max(item.value > 0 ? 4 : 0, (item.value / max) * innerH) : 0;
+      if (h > 0) {
+        const x = cx - barW / 2;
+        const y = base - h;
+        const r = Math.min(4, h, barW / 2);
+        el('path', {
+          class: 'viz-col',
+          d: `M${x} ${base}V${y + r}Q${x} ${y} ${x + r} ${y}H${x + barW - r}Q${x + barW} ${y} ${x + barW} ${y + r}V${base}Z`,
+          fill: item.color || opts.color || 'var(--s1)',
+        }, svg);
+      }
+      el('text', { class: 'viz-value', x: cx, y: base - h - 6, 'text-anchor': 'middle' }, svg).textContent =
+        has ? item.valueLabel : '—';
+      const hit = el('rect', { x: slot * i, y: 0, width: slot, height: H, fill: 'transparent' }, svg);
+      hit.addEventListener('pointerenter', () => {
+        const s = pxScale(svg, host);
+        showTip(host, tip, cx * s, (base - h - 14) * s, item.tip || item.valueLabel);
       });
       hit.addEventListener('pointerleave', () => hideTip(tip));
     });
@@ -350,5 +421,5 @@
     host.appendChild(scale);
   }
 
-  global.Charts = { line, bars, groupedBars, heatmap };
+  global.Charts = { line, bars, columns, groupedBars, heatmap };
 })(window);

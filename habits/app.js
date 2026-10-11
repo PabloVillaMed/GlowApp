@@ -123,6 +123,11 @@
        Today was put off for good. */
     tourDone: false,
     tourPromoDismissed: false,
+    /* Whether Progress shows its extra charts (2.19). */
+    moreCharts: false,
+    /* The level and the achievements already announced (2.19); null until
+       the app first looks, so whoever had it before starts quietly. */
+    achievements: null,
     habits: [],
     entries: {},
     moods: {},
@@ -184,6 +189,10 @@
     state.tourDone = state.tourDone === true;
     if (typeof state.lastBackup !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(state.lastBackup)) state.lastBackup = null;
     state.tourPromoDismissed = state.tourPromoDismissed === true;
+    state.moreCharts = state.moreCharts === true;
+    const known = state.achievements;
+    if (!(known && Array.isArray(known.seen) && Number.isInteger(known.level))) state.achievements = null;
+    else known.seen = known.seen.filter((id) => typeof id === 'string');
     if (state.character && !castById(state.character)) state.character = null;
     state.habits.forEach((habit) => {
       // One reminder time per habit until 2.8; now a short list of them.
@@ -260,6 +269,7 @@
         toast(t('saveFailed'));
       }
       syncToShell();
+      noticeProgressSoon();
     }, 120);
   }
 
@@ -1035,15 +1045,19 @@
     if (o.act === 'wink') {
       setTimeout(() => Pico.look(art, 0, 0.1), 460);             // from the habit to you
       setTimeout(() => Pico.gesture(art, 'wink'), 540);
+      picoVoice('wink', 740);                                   // as the eye shuts
     } else if (o.act === 'wave') {
       setTimeout(() => Pico.pose(art, 'peekWave'), 440);
+      picoVoice('hello', 480);
     } else if (o.act === 'point' || o.act === 'think') {
       setTimeout(() => {
         Pico.pose(art, o.act);
         Pico.point(art, Math.atan2(dy, dx) * 180 / Math.PI - tilt);   // in his own, tilted frame
       }, 440);
+      picoVoice(o.act === 'point' ? 'curious' : 'think', 520);
     } else if (o.act === 'nod') {
       setTimeout(() => Pico.gesture(art, 'nod'), 440);
+      picoVoice('nod', 460);
       setTimeout(() => Pico.pose(art, 'peekGlad'), 1050);
     }
     setTimeout(() => { box.classList.remove('is-in'); box.classList.add('is-out'); }, o.hold);
@@ -1053,6 +1067,17 @@
       Pico.unmount(art);
       peekBusy = false;
     }, o.hold + 400);
+    return true;
+  }
+
+  /* Pico's voice (2.19): a sound when he does something — a chirp, a caw,
+     a trill, never a word (pico-voice.js). Only where he is seen, after delay
+     milliseconds to meet his gesture, and silent with the app's sounds off.
+     Returns whether he spoke (always true for a delayed one). */
+  function picoVoice(kind, delay) {
+    if (!window.PicoVoice) return false;
+    if (!delay) return PicoVoice.say(kind);
+    setTimeout(() => PicoVoice.say(kind), delay);
     return true;
   }
 
@@ -1876,6 +1901,7 @@
     $$('#ideaRow .idea-chip').forEach((chip) => chip.setAttribute('aria-pressed', String(chip.dataset.key === entry.key)));
     Sounds.play('tick');
     sheetPicoPose('happy', 'nod');
+    picoVoice('nod', 140);
   }
 
   /* The editor's Pico (2.16): glad and nodding at a quick idea, thoughtful
@@ -2244,6 +2270,384 @@
     });
   }
 
+  /* ── More charts (2.19) ──────────────────────────────────────────────
+     Behind "Ver más gráficos", and drawn only while open: how the days of
+     the week compare, where completion is heading, and each habit's longest
+     streak in the range. An unfinished today counts in none of them until
+     it is done, as with streaks: the day is not over yet. */
+  function settledStats(key) {
+    const stats = dayStats(key);
+    return key === todayKey() && stats.done < stats.due ? { due: 0, done: 0 } : stats;
+  }
+
+  function renderMoreCharts(days) {
+    const open = state.moreCharts === true;
+    $('#btnMoreCharts').setAttribute('aria-expanded', String(open));
+    $('#moreChartsLabel').textContent = t(open ? 'lessCharts' : 'moreCharts');
+    $('#moreCharts').hidden = !open;
+    if (!open) return;
+    // Each day's numbers once per drawing, however many charts ask.
+    const memo = new Map();
+    const stat = (key) => {
+      if (!memo.has(key)) memo.set(key, settledStats(key));
+      return memo.get(key);
+    };
+    renderWeekdayChart(days, stat);
+    renderTrendChart(days, stat);
+    renderStreakChart(days);
+  }
+
+  const weekdayLong = (dow) => new Date(2024, 0, 7 + dow).toLocaleDateString(I18N.locale(), { weekday: 'long' });
+  // "lunes y miércoles", "Monday and Wednesday".
+  function listOf(words) {
+    try {
+      return new Intl.ListFormat(I18N.locale(), { type: 'conjunction' }).format(words);
+    } catch (err) {
+      return words.join(', ');
+    }
+  }
+
+  function renderWeekdayChart(days, stat) {
+    const sums = {};
+    days.forEach((key) => {
+      const s = stat(key);
+      const dow = parseKey(key).getDay();
+      const sum = sums[dow] || (sums[dow] = { due: 0, done: 0 });
+      sum.due += s.due;
+      sum.done += s.done;
+    });
+    const items = dowNames(false).map(({ dow, label }) => {
+      const sum = sums[dow] || { due: 0, done: 0 };
+      const pct = sum.due ? Math.round((sum.done / sum.due) * 100) : null;
+      const name = sentenceCase(weekdayLong(dow));
+      return {
+        dow: dow,
+        label: sentenceCase(label.replace(/\.$/, '')),
+        value: pct,
+        valueLabel: pct === null ? '' : pct + '%',
+        tip: '<b>' + escapeHtml(name) + '</b><br>' +
+          (pct === null ? t('noneYet') : sum.done + ' ' + t('of') + ' ' + sum.due + ' · ' + pct + '%'),
+      };
+    });
+    const known = items.filter((item) => item.value !== null);
+    $('#chartWeekdayEmpty').hidden = known.length > 0;
+    const host = $('#chartWeekday');
+    host.hidden = known.length === 0;
+    // The best day (or days, when they tie), when some day did better than another.
+    const top = Math.max(...known.map((item) => item.value));
+    const best = known.filter((item) => item.value === top);
+    const named = known.length > 1 && best.length < known.length && best.length <= 3;
+    $('#chartWeekdaySub').textContent = named
+      ? t('chartWeekdayBestFmt', { list: listOf(best.map((item) => weekdayLong(item.dow))), n: best.length })
+      : t('chartWeekdaySub');
+    if (!known.length) { host.innerHTML = ''; return; }
+    Charts.columns(host, { items: items, max: 100, color: 'var(--s1)', ariaLabel: t('chartWeekdayTitle') });
+  }
+
+  function renderTrendChart(days, stat) {
+    const points = days.map((key) => {
+      let due = 0;
+      let done = 0;
+      const end = parseKey(key);
+      for (let i = 0; i < 7; i++) {
+        const s = stat(keyOf(addDays(end, -i)));
+        due += s.due;
+        done += s.done;
+      }
+      const value = due ? Math.round((done / due) * 100) : null;
+      const label = fmtDate(key, { day: 'numeric', month: 'short' });
+      return {
+        label: label,
+        value: value,
+        tip: '<b>' + label + '</b><br>' + (value === null ? t('noneYet') : value + '% · ' + done + ' ' + t('of') + ' ' + due),
+      };
+    });
+    const filled = points.filter((p) => p.value !== null);
+    $('#chartTrendEmpty').hidden = filled.length > 0;
+    const host = $('#chartTrend');
+    host.hidden = filled.length === 0;
+    if (!filled.length) { host.innerHTML = ''; return; }
+    Charts.line(host, {
+      points: points,
+      min: 0,
+      max: 100,
+      yTicks: [0, 50, 100],
+      tickFormat: (v) => v + '%',
+      color: 'var(--s1)',
+      dots: false,
+      area: true,
+      endLabel: filled[filled.length - 1].value + '%',
+      ariaLabel: t('chartTrendTitle'),
+    });
+  }
+
+  /* A habit's longest run in the range, in its own unit: days for most,
+     whole weeks for a weekly quota. Days off do not break it, an unfinished
+     today does not either, and a week cut by the range or by the habit's
+     start, or still under way, only counts once its quota is met. "of" is
+     how long the run could have been, so a full bar means never a miss. */
+  function bestStreakIn(habit, days) {
+    const today = todayKey();
+    const sched = habit.schedule || { kind: 'daily' };
+    let run = 0;
+    let best = 0;
+    let of = 0;
+    if (sched.kind === 'times') {
+      const quota = Math.max(1, Math.min(7, sched.times || 3));
+      const weeks = [];
+      days.forEach((key) => {
+        const week = weekKey(parseKey(key));
+        let w = weeks[weeks.length - 1];
+        if (!w || w.key !== week) {
+          w = { key: week, done: 0, cut: week < days[0], open: false };
+          weeks.push(w);
+        }
+        if (habit.createdAt && key < habit.createdAt) { w.cut = true; return; }
+        if (key === today) w.open = true;
+        if (isComplete(habit, key)) w.done++;
+      });
+      weeks.forEach((w) => {
+        if (w.done >= quota) { run++; of++; best = Math.max(best, run); }
+        else if (!w.cut && !w.open) { run = 0; of++; }
+      });
+      return { best: best, of: of, unit: 'weeks' };
+    }
+    days.forEach((key) => {
+      if (habit.createdAt && key < habit.createdAt) return;
+      if (!isScheduled(habit, key)) return;
+      if (isComplete(habit, key)) { run++; of++; best = Math.max(best, run); }
+      else if (key !== today) { run = 0; of++; }
+    });
+    return { best: best, of: of, unit: 'days' };
+  }
+
+  function renderStreakChart(days) {
+    const rows = activeHabits()
+      .map((habit) => ({ habit: habit, streak: bestStreakIn(habit, days) }))
+      .filter((row) => row.streak.of > 0)
+      .sort((a, b) => b.streak.best / b.streak.of - a.streak.best / a.streak.of || b.streak.best - a.streak.best);
+    $('#chartStreaksEmpty').hidden = rows.length > 0;
+    const host = $('#chartStreaks');
+    host.hidden = rows.length === 0;
+    if (!rows.length) { host.innerHTML = ''; return; }
+    Charts.bars(host, {
+      max: 1,
+      valueW: 74,
+      ariaLabel: t('chartStreaksTitle'),
+      items: rows.map((row) => {
+        const label = streakLabel({ count: row.streak.best, unit: row.streak.unit });
+        return {
+          label: row.habit.emoji + ' ' + habitName(row.habit),
+          value: row.streak.best / row.streak.of,
+          valueLabel: label,
+          color: colorVar(row.habit),
+          tip: '<b>' + escapeHtml(habitName(row.habit)) + '</b><br>' + label,
+        };
+      }),
+    });
+  }
+
+  /* ── Levels and achievements (2.19) ───────────────────────────────────
+     Worked out from what is already recorded, so an import, an undo or an
+     edit can never leave them wrong. Points: 10 for each habit done on a
+     day, 20 for each perfect day, 5 for each day with a mood. Each level
+     asks 50 more than the one before: 100 points to reach level 2, 150 more
+     for level 3, and so on. All that is kept is what was already announced
+     (state.achievements: the achievements and the highest level already
+     announced), so each is announced once; and whoever had the
+     app before 2.19 starts with what they had earned, quietly, instead of a
+     flood of them. An achievement once earned stays earned. */
+  const POINTS = { done: 10, perfect: 20, mood: 5 };
+  const ACHIEVEMENTS = [
+    { id: 'first', icon: '🌱', goal: 1, of: (p) => p.done },
+    { id: 'perfectDay', icon: '✨', goal: 1, of: (p) => p.perfect },
+    { id: 'streak3', icon: '🔥', goal: 3, of: (p) => p.streak },
+    { id: 'streak7', icon: '📅', goal: 7, of: (p) => p.streak },
+    { id: 'streak30', icon: '🏔️', goal: 30, of: (p) => p.streak },
+    { id: 'perfectWeek', icon: '🏆', goal: 7, of: (p) => p.perfectRun },
+    { id: 'done100', icon: '💯', goal: 100, of: (p) => p.done },
+    { id: 'done500', icon: '🌟', goal: 500, of: (p) => p.done },
+    { id: 'active30', icon: '📆', goal: 30, of: (p) => p.activeDays },
+    { id: 'mood7', icon: '😊', goal: 7, of: (p) => p.moods },
+    { id: 'habits5', icon: '🧩', goal: 5, of: (p) => p.habits },
+    { id: 'backup', icon: '💾', goal: 1, of: (p) => p.backups },
+  ];
+  const HISTORY_DAYS = 1100;           // three years back is plenty for a streak
+
+  function levelOf(points) {
+    let level = 1;
+    let floor = 0;                     // where this level starts
+    let need = 100;                    // and how many points it takes to leave it
+    while (points >= floor + need) {
+      floor += need;
+      level++;
+      need += 50;
+    }
+    return { level: level, floor: floor, next: floor + need, points: points };
+  }
+
+  const achievementKey = (id) => 'ach' + id.charAt(0).toUpperCase() + id.slice(1);
+
+  function progressOf() {
+    const today = todayKey();
+    const oldest = keyOf(addDays(parseKey(today), -(HISTORY_DAYS - 1)));
+    let done = 0;
+    let streak = 0;
+    let first = today;
+    const active = new Set();
+    state.habits.forEach((habit) => {
+      const log = state.entries[habit.id] || {};
+      const keys = Object.keys(log).filter((key) => key <= today && isComplete(habit, key));
+      done += keys.length;
+      keys.forEach((key) => { active.add(key); if (key < first) first = key; });
+      if (!keys.length) return;
+      // The longest run, in days: a weekly quota's weeks count seven each.
+      const start = keys.reduce((a, b) => (a < b ? a : b));
+      const from = start < oldest ? oldest : start;
+      const run = bestStreakIn(habit, lastNDays(dayDiff(today, from) + 1));
+      streak = Math.max(streak, run.unit === 'weeks' ? run.best * 7 : run.best);
+    });
+    // Perfect days, and the longest run of them: a day with nothing due
+    // neither counts nor breaks it, nor does an unfinished today.
+    let perfect = 0;
+    let perfectRun = 0;
+    let run = 0;
+    if (active.size) {
+      lastNDays(dayDiff(today, first < oldest ? oldest : first) + 1).forEach((key) => {
+        const s = dayStats(key);
+        if (!s.due) return;
+        if (s.done === s.due) {
+          perfect++;
+          run++;
+          perfectRun = Math.max(perfectRun, run);
+        } else if (key !== today) {
+          run = 0;
+        }
+      });
+    }
+    const moods = Object.keys(state.moods).filter((key) => key <= today && state.moods[key] && state.moods[key].score).length;
+    const points = done * POINTS.done + perfect * POINTS.perfect + moods * POINTS.mood;
+    return {
+      done: done, perfect: perfect, perfectRun: perfectRun, streak: streak, activeDays: active.size,
+      moods: moods, habits: activeHabits().length, backups: state.lastBackup ? 1 : 0,
+      points: points, level: levelOf(points),
+    };
+  }
+
+  // Earned now, or announced before (an achievement once earned stays earned).
+  function earnedOf(p) {
+    const seen = (state.achievements && state.achievements.seen) || [];
+    return new Set(ACHIEVEMENTS.filter((a) => a.of(p) >= a.goal || seen.includes(a.id)).map((a) => a.id));
+  }
+
+  let progressTimer = 0;
+  function noticeProgressSoon() {
+    clearTimeout(progressTimer);
+    progressTimer = setTimeout(noticeProgress, 400);
+  }
+
+  function noticeProgress() {
+    const p = progressOf();
+    const now = ACHIEVEMENTS.filter((a) => a.of(p) >= a.goal).map((a) => a.id);
+    const known = state.achievements;
+    if (!known) {                       // the first look: what is there, quietly
+      state.achievements = { seen: now, level: p.level.level };
+      save();
+      return;
+    }
+    const fresh = now.filter((id) => !known.seen.includes(id));
+    const up = p.level.level > known.level;
+    if (!fresh.length && !up) return;
+    known.seen = known.seen.concat(fresh);
+    // The highest level announced: a level lost to an undo and won back is
+    // not news twice.
+    if (up) known.level = p.level.level;
+    save();
+    if (up) announce({ text: t('levelUpFmt', p.level.level) });
+    if (fresh.length > 2) announce({ text: t('achievementsNewFmt', fresh.length) });
+    else fresh.forEach((id) => {
+      const a = ACHIEVEMENTS.find((x) => x.id === id);
+      announce({ text: t('achievementNewFmt', a.icon + ' ' + t(achievementKey(id))) });
+    });
+    if (view === 'progress') renderLevelCard(p);
+  }
+
+  /* One at a time, each as a toast with Pico's little fanfare; never over
+     his cheer for the day, nor while he peeks (the toast would cover him),
+     nor over a message already showing. */
+  const announcements = [];
+  let announcing = false;
+  function announce(item) {
+    announcements.push(item);
+    if (!announcing) nextAnnouncement();
+  }
+  function nextAnnouncement() {
+    const item = announcements.shift();
+    if (!item) { announcing = false; return; }
+    announcing = true;
+    const occupied = () => !$('#picoCheer').hidden || !$('#picoPeek').hidden || !$('#toast').hidden;
+    const busy = occupied();
+    setTimeout(() => {
+      if (occupied()) {                                       // still busy: wait a little more
+        announcements.unshift(item);
+        setTimeout(nextAnnouncement, 600);
+        return;
+      }
+      toast(item.text);
+      picoVoice('achieve');
+      setTimeout(nextAnnouncement, 2600);
+    }, busy ? 900 : 0);
+  }
+
+  function renderLevelCard(progress) {
+    const p = progress || progressOf();
+    const L = p.level;
+    const pct = Math.round(((L.points - L.floor) / (L.next - L.floor)) * 100);
+    $('#levelTitle').textContent = t('levelFmt', L.level);
+    $('#levelPoints').textContent = t('pointsFmt', L.points);
+    $('#levelFill').style.width = pct + '%';
+    $('#levelBar').setAttribute('aria-valuenow', String(pct));
+    $('#levelNext').textContent = t('levelNextFmt', { left: L.next - L.points, level: L.level + 1 });
+    $('#achievementsCount').textContent = t('achievementsCountFmt', { n: earnedOf(p).size, of: ACHIEVEMENTS.length });
+  }
+
+  function openAchievements() {
+    const p = progressOf();
+    const earned = earnedOf(p);
+    const list = $('#achievementList');
+    list.innerHTML = '';
+    ACHIEVEMENTS.forEach((a) => {
+      const got = earned.has(a.id);
+      const item = document.createElement('li');
+      item.className = 'achievement' + (got ? ' is-got' : '');
+      const icon = document.createElement('span');
+      icon.className = 'achievement-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = a.icon;
+      const text = document.createElement('div');
+      text.className = 'achievement-text';
+      const name = document.createElement('strong');
+      name.textContent = t(achievementKey(a.id));
+      const desc = document.createElement('span');
+      desc.textContent = t(achievementKey(a.id) + 'Desc');
+      text.append(name, desc);
+      const mark = document.createElement('span');
+      mark.className = 'achievement-state';
+      if (got) {
+        mark.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        const said = document.createElement('span');
+        said.className = 'sr-only';
+        said.textContent = t('achievementGot');
+        mark.appendChild(said);
+      } else {
+        mark.textContent = Math.min(a.of(p), a.goal) + '/' + a.goal;
+      }
+      item.append(icon, text, mark);
+      list.appendChild(item);
+    });
+    $('#achievementsDialog').showModal();
+  }
+
   function renderTable(days) {
     const head = $('#dataTableHead');
     const body = $('#dataTableBody');
@@ -2273,6 +2677,7 @@
 
   function renderProgress() {
     const days = lastNDays(range);
+    renderLevelCard();
     renderRangeSelect();
     renderProgressStats(days);
     renderMoodChart(days);
@@ -2281,6 +2686,7 @@
     renderHeatSelect();
     renderHeatmap(days);
     renderCorrelation(days);
+    renderMoreCharts(days);
     renderTable(days);
   }
 
@@ -4477,6 +4883,14 @@
   /* ── Navigation ────────────────────────────────────────────────────── */
   const VIEWS = ['today', 'habits', 'progress', 'settings'];
 
+  /* The app bar draws its rule, and a view's own title joins it, once the
+     page has scrolled past the view's big heading (2.19). */
+  let scrollMarkQueued = false;
+  function markScrolled() {
+    scrollMarkQueued = false;
+    document.body.classList.toggle('is-scrolled', window.scrollY > 44);
+  }
+
   function setView(name, fromHash) {
     view = VIEWS.includes(name) ? name : 'today';
     name = view;
@@ -4500,6 +4914,7 @@
       else tab.removeAttribute('aria-current');
     });
     updateViewTitle();
+    document.body.dataset.view = name;
     if (name === 'today') renderToday();
     if (name === 'habits') renderHabitsView();
     if (name === 'progress') renderProgress();
@@ -4510,6 +4925,7 @@
       renderBodySettings();
     }
     window.scrollTo({ top: 0, behavior: 'instant' in window ? 'instant' : 'auto' });
+    markScrolled();
   }
 
   function renderAll() {
@@ -4724,6 +5140,22 @@
       heatHabitId = evt.target.value;
       renderHeatmap(lastNDays(range));
     });
+    // Level and achievements (2.19).
+    $('#btnAchievements').addEventListener('click', openAchievements);
+    $$('#achievementsDialog [data-close]').forEach((btn) => {
+      btn.addEventListener('click', () => $('#achievementsDialog').close());
+    });
+    // More charts (2.19): remembered, so they stay open for whoever wants them.
+    $('#btnMoreCharts').addEventListener('click', () => {
+      state.moreCharts = state.moreCharts !== true;
+      save();
+      Sounds.play('tick');
+      renderMoreCharts(lastNDays(range));
+      if (state.moreCharts) {
+        $('#figWeekday').scrollIntoView({ block: 'nearest', behavior: reducedMotion.matches ? 'auto' : 'smooth' });
+        setTimeout(picoAtCharts, 700);
+      }
+    });
 
     /* Habit dialog */
     /* Weight and BMI */
@@ -4778,8 +5210,14 @@
     $('#btnBotStudio').addEventListener('click', () => openStudio({ habitId: editingId }));
     $('#habitForm').addEventListener('focusin', (evt) => sheetPicoLook(evt.target));
     // The browser stops an empty name before saveHabit sees it; Pico still notices.
-    $('#habitForm').addEventListener('invalid', () => sheetPicoPose('think'), true);
-    $('#sheetPico').addEventListener('click', () => Pico.react($('#sheetPico')));
+    $('#habitForm').addEventListener('invalid', () => {
+      sheetPicoPose('think');
+      picoVoice('think');
+    }, true);
+    $('#sheetPico').addEventListener('click', () => {
+      Pico.react($('#sheetPico'));
+      picoVoice('caw');
+    });
     // However the editor closes, the microphone is released and an unsaved
     // recording is let go.
     $('#habitDialog').addEventListener('close', () => {
@@ -4908,7 +5346,7 @@
       $(sel).addEventListener('click', (evt) => {
         evt.stopPropagation();
         Pico.react($(sel));
-        Sounds.play('tick');
+        if (!picoVoice('caw')) Sounds.play('tick');
       });
     });
 
@@ -5633,6 +6071,8 @@
     });
     Pico.pose($('#tourPico'), step.pose);
     Pico.say($('#tourPico'), speech);
+    // He says it in his own sounds, a sentence's worth, while the words come.
+    if (window.PicoVoice && speech) PicoVoice.babble(Math.min(speech, 1300));
     const coach = $('#tourCoach');
     coach.classList.remove('is-entering');
     void coach.offsetWidth;            // restart the entrance for each stop
@@ -5759,6 +6199,7 @@
     cancelAnimationFrame(tour.frame);
     $('#tour').hidden = true;
     Pico.unmount($('#tourPico'));
+    if (window.PicoVoice) PicoVoice.hush();
     setBackgroundInert(false);
     state.tourDone = true;
     save();
@@ -5780,6 +6221,7 @@
     const box = $('#picoCheer');
     const lines = t('picoCheers');
     Pico.mount($('#picoCheerArt'), 'cheer');
+    picoVoice('cheer', 520);                       // after the day's arpeggio
     $('#picoCheerText').textContent = Array.isArray(lines) && lines.length
       ? lines[Math.floor(Math.random() * lines.length)] : t('allDoneTitle');
     box.classList.remove('is-leaving');
@@ -5826,6 +6268,13 @@
     document.addEventListener('pointerdown', () => Sounds.unlock(), { once: true });
 
     window.addEventListener('hashchange', () => setView(location.hash.slice(1) || 'today', true));
+    // What was earned before this version, taken in quietly (2.19).
+    noticeProgressSoon();
+    window.addEventListener('scroll', () => {
+      if (scrollMarkQueued) return;
+      scrollMarkQueued = true;
+      requestAnimationFrame(markScrolled);
+    }, { passive: true });
 
     if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
 

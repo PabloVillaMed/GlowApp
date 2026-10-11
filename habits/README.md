@@ -116,7 +116,13 @@ hops and wing beats, a nod, talking, a caw when tapped — and while nothing
 is asked of him he breathes, blinks, glances about and ruffles his crest.
 One animation loop serves every Pico on the
 page: full rate while something plays, about fifteen frames a second while
-he only breathes, and asleep while none is on screen. Under reduced motion
+he only breathes, and asleep while none is on screen. The springs move in
+steps of at most 1/120 s however long a frame is: until 2.19 each frame was
+one step, and at twenty frames a second (a slow phone, the emulator, or
+his own fifteen at rest) the stiffest springs — the eyelids and the beak —
+swung wider on every frame instead of settling, so his eyes flickered shut
+and open many times a second. He blinks every 2.4 to 5.8 seconds, at any
+frame rate. Under reduced motion
 he takes each pose at once and holds it, and the loop does not run.
 
 The tour runs once, right after the starting test (finished or skipped), and
@@ -179,6 +185,29 @@ circle throws a few sparks (a day completed, a ring of them), a tab eases in
 instead of snapping, and a palette or theme change cross-fades through the
 View Transitions API where the browser has it. All of it is off under
 reduced motion.
+
+### His voice (2.19)
+
+Pico makes sounds, never words (`pico-voice.js`). Everything is
+synthesised with Web Audio like the app's other sounds, nothing is recorded
+or loaded: a crow's caw (a buzzy tone shaped by three resonances, with a
+wobble and a little rasp), chirps that sweep up or down, the clicks crows
+make, a low hum and a small bright ping. Inspired by real crows and by the
+cheerful chirps of cartoon mascots, copied from neither. What he says with
+them follows what he does: a quick "bwip" as his eye shuts in a wink, two
+rising chirps when he waves at a new habit, a curious chirp and two clicks
+when he points at a chart, a "hmm?" when he thinks (an empty name in the
+editor), an "mm-hm" when he nods, a trill and a happy caw for the day done
+(after the app's own arpeggio), a caw when tapped, a little fanfare for a
+level or an achievement, and syllables without words while he talks in the
+tour.
+
+Each call varies its pitch and timing a little, so no two are alike. They
+are dry — no echo, no reverb — short (under a second and a quarter), about
+as loud as the app's chime and never louder than its loudest sound, and
+silent whenever the app's sounds are off or the page is hidden. Before the
+first touch a phone keeps the audio suspended; he waits rather than queue a
+sound that would burst out later.
 
 ## Reminders from a character (Android app)
 
@@ -328,6 +357,51 @@ pinch-zoom, which is deliberately disabled: every text size is in `rem` and the
 layout paddings with them, so changing the root size rescales the interface in
 one step while tap targets stay pinned in pixels.
 
+## The look (2.19)
+
+2.19 freshened the interface without changing what it is. The typeface is
+**Figtree**, a friendly geometric sans by Erik Kennedy, under the SIL Open
+Font License (`fonts/OFL.txt`): one variable file for every weight, only
+the Latin range the app writes in (20 KB), self-hosted and precached so it
+works offline and in the APK, preloaded so the first screen is drawn in it.
+Cards lost their outline on light themes and sit on a soft, low shadow
+instead (`--edge` and `--lift` in `styles.css`); dark themes keep a hairline
+edge, and Alto contraste keeps its strong edges in both. Buttons are pills
+that give a little under the finger, the current tab sits in a soft pill
+that springs open, the chosen day in the week strip is a filled pill, the
+on/off settings are switches, and the app bar shows a view's title only
+once its big heading has scrolled away. Tap targets stay at 44 px or more;
+the press feedback is off under reduced motion. The approach — a few
+tokens for radii, edges, shadows and easing rather than a framework — was
+taken from design-token projects such as Open Props; nothing was added as
+a dependency.
+
+## Progress: more charts, levels and achievements (2.19)
+
+**Ver más gráficos**, under the charts in Progress, opens three more, drawn
+only while open and remembered open (`state.moreCharts`): what you complete
+on each day of the week (thin columns, the best day named), the trend
+(completion averaged over the last seven days, a plain line on a faint wash
+with its last value written at its end), and each habit's longest streak in
+the range (days, or whole weeks for a weekly quota; a full bar means never a
+miss). Like the rest of Progress they follow the range above them, and an
+unfinished today counts in none of them until it is done.
+
+**Levels and achievements** are worked out from what is already recorded,
+so an import, an undo or an edit can never leave them wrong. Points: 10 for
+each habit done on a day, 20 for each perfect day, 5 for each day with a
+mood. Level 2 takes 100 points and each level after it 50 more than the one
+before. A card at the top of Progress (above the range, which it does not
+follow) shows the level, the points, a thin meter to the next level and how
+many of the twelve achievements are earned; a tap opens them all, earned
+ones marked, the rest with how far along they are. A new level or
+achievement is announced once, as a short message with Pico's little
+fanfare, after his cheer for the day rather than over it; several at once
+make one message. All that is stored is what was already announced
+(`state.achievements`: the achievements and the highest level), so a level
+lost to an undo and won back is not news twice — and whoever had the app
+before 2.19 starts with what they had already earned, quietly.
+
 ## Dropdowns
 
 Since 2.18 the app draws its own dropdowns (`select.js`). Android's WebView
@@ -411,9 +485,10 @@ written for that habit.
 actually made: `$(…)` used where `$$(…)` was meant (which silently broke the
 completion animation for four releases), `innerHTML` built by concatenation
 without escaping in sight, a stray `console.log`, the two language tables
-drifting apart, the asset `?v=` in `index.html` disagreeing with `sw.js`, and —
-since 2.8 — a character line without its recording, or a catalogue habit with
-no line.
+drifting apart, the asset `?v=` in `index.html` disagreeing with `sw.js`, a
+file the page or — since 2.19 — the stylesheet loads (the typeface) missing
+from the precache, and — since 2.8 — a character line without its
+recording, or a catalogue habit with no line.
 
 ## A note on updating
 
@@ -439,8 +514,9 @@ because every asset already comes from the APK.
 | `styles.css` | Design tokens for both themes, layout, components |
 | `app.js` | State, storage, scheduling and streak logic, rendering, wiring, the bridge to Android |
 | `characters.js` | The five characters and every line they say, in both languages |
-| `charts.js` | Hand-rolled SVG charts (line, bars, grouped bars, heatmap) |
+| `charts.js` | Hand-rolled SVG charts (line, bars, columns, grouped bars, heatmap) |
 | `sounds.js` | The small synthesised interface sounds |
+| `pico-voice.js` | Pico's voice: synthesised caws, chirps, clicks and trills, no words |
 | `pico.js` | Pico, the guide: his drawing and the calls that pose him |
 | `select.js` | The app's own dropdowns, in place of Android's plain list |
 | `i18n.js` | Spanish and English string tables |
@@ -449,6 +525,7 @@ because every asset already comes from the APK.
 | `avatars/` | The characters' portraits (SVG, drawn for GlowApp) |
 | `voices/` | The recorded voice notes and their index |
 | `icons/` | Generated PNG app icons, including a maskable one |
+| `fonts/` | Figtree (Latin, variable) and its license, `OFL.txt` |
 
 There are no dependencies and nothing is loaded from a CDN, which is what lets
 the whole thing run from the cache with the network off.

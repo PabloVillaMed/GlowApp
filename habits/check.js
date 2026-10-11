@@ -8,7 +8,7 @@
    - a character line without its recording would play silence */
 const fs = require('fs');
 
-const FILES = ['app.js', 'characters.js', 'charts.js', 'i18n.js', 'pico.js', 'select.js', 'sounds.js', 'sw.js'];
+const FILES = ['app.js', 'characters.js', 'charts.js', 'i18n.js', 'pico-voice.js', 'pico.js', 'select.js', 'sounds.js', 'sw.js'];
 let failures = 0;
 
 function fail(file, line, message) {
@@ -71,6 +71,13 @@ if (htmlVersions.length !== 1 || swVersions.length !== 1 || htmlVersions[0] !== 
 const loaded = [...html.matchAll(/(?:src|href)="([\w.-]+\.(?:js|css))\?/g)].map((x) => x[1]);
 loaded.forEach((asset) => {
   if (!sw.includes("'./" + asset)) fail('sw.js', 0, asset + ' no está en el precache');
+});
+
+// So does whatever the stylesheet loads itself (the typeface since 2.19).
+const css = fs.readFileSync('styles.css', 'utf8');
+[...css.matchAll(/url\('?([\w./-]+\.(?:woff2|png|svg|webp))'?\)/g)].forEach(([, asset]) => {
+  if (!fs.existsSync(asset)) fail('styles.css', 0, asset + ' no existe');
+  if (!sw.includes("'./" + asset + "'")) fail('sw.js', 0, asset + ' (de styles.css) no está en el precache');
 });
 
 // The cast: every character speaks both languages with the same lines, every
