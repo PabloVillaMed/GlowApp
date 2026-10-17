@@ -8,8 +8,9 @@ get https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-l
 [ -d piper ] || unzip -q piper.zip -d .
 [ -d ffmpeg ] || { unzip -q ffmpeg.zip -d ffx && mv ffx/* ffmpeg && rmdir ffx; }
 mkdir -p models
-for v in es_MX-ald-medium es_ES-davefx-medium es_AR-daniela-high es_MX-claude-high es_ES-sharvard-medium \
-         en_US-bryce-medium en_US-norman-medium en_GB-cori-high en_US-sam-medium en_US-joe-medium; do
+# The three characters' voices (El Crack's and Abuela Rosa's left with them in 2.20).
+for v in es_ES-davefx-medium es_MX-claude-high es_ES-sharvard-medium \
+         en_US-norman-medium en_US-sam-medium en_US-joe-medium; do
   lang=${v%%_*}; rest=${v#*-}; region=${v%%-*}; name=${rest%-*}; q=${rest##*-}
   base="https://huggingface.co/rhasspy/piper-voices/resolve/main/$lang/$region/$name/$q/$v"
   get "$base.onnx" "models/$v.onnx"

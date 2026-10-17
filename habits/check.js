@@ -8,7 +8,7 @@
    - a character line without its recording would play silence */
 const fs = require('fs');
 
-const FILES = ['app.js', 'characters.js', 'charts.js', 'i18n.js', 'pico-voice.js', 'pico.js', 'select.js', 'sounds.js', 'sw.js'];
+const FILES = ['app.js', 'characters.js', 'charts.js', 'emoji-picker.js', 'i18n.js', 'pico-voice.js', 'pico.js', 'select.js', 'sounds.js', 'sw.js'];
 let failures = 0;
 
 function fail(file, line, message) {
@@ -71,6 +71,12 @@ if (htmlVersions.length !== 1 || swVersions.length !== 1 || htmlVersions[0] !== 
 const loaded = [...html.matchAll(/(?:src|href)="([\w.-]+\.(?:js|css))\?/g)].map((x) => x[1]);
 loaded.forEach((asset) => {
   if (!sw.includes("'./" + asset)) fail('sw.js', 0, asset + ' no está en el precache');
+});
+
+// And what a script fetches later: the emoji list the picker loads (2.20).
+['emoji-data.js'].forEach((asset) => {
+  if (!fs.existsSync(asset)) fail(asset, 0, 'no existe (node ../tools/emoji/make-emoji-data.js <fuentes>)');
+  if (!sw.includes("'./" + asset + "'")) fail('sw.js', 0, asset + ' no está en el precache');
 });
 
 // So does whatever the stylesheet loads itself (the typeface since 2.19).

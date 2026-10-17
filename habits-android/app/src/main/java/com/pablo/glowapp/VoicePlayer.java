@@ -70,7 +70,7 @@ final class VoicePlayer {
     return true;
   }
 
-  /** Plays `voicePath` (e.g. "voices/crack/es/h-water-1.webm") at once, as media. */
+  /** Plays `voicePath` (e.g. "voices/narrator/es/h-water-1.webm") at once, as media. */
   static void play(Context context, String voicePath, BroadcastReceiver.PendingResult result) {
     play(context, voicePath, result, 0, false);
   }

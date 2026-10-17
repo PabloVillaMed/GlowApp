@@ -31,8 +31,11 @@ Screen*.
 - **Flexible schedules** — every day, specific weekdays, or *X times per week*.
   Streaks respect the schedule: a day the habit was not due never breaks one,
   and weekly-quota habits are counted in whole weeks.
-- **Mood** — a 1–5 daily rating with optional energy level and a note, charted
-  over time and cross-referenced against habit completion.
+- **Mood** — a 1–5 daily rating with its energy and a note, charted over time
+  and cross-referenced against habit completion. Energy is a percentage since
+  2.20 (see *Energy* below).
+- **Excellence** (2.20) — the one habit nobody ticks: it forms from the
+  constancy of all the others (see *Excellence* below).
 - **Weight and BMI** (2.12) — a weigh-in a day at most, from the card on
   Today: the latest weight, its BMI with its WHO band for adults, the change
   since the previous weigh-in and what is left to an optional goal. Progress
@@ -71,6 +74,101 @@ catalogue habits the list does not have yet (the newest first) that fills the
 form, keys included. It is also `discreet`: a character's reminder for it uses
 only its own three lines, which never say what it is about, and none of the
 generic ones, which name the habit — a reminder shows on the lock screen.
+
+## Excellence (2.20)
+
+Aristotle held that we become just by doing just acts: excellence is not an
+act but what repeated acts make of us. So GlowApp's one habit that cannot be
+ticked is **Excelencia**. It is never created or marked; it forms.
+
+- **A day is excellent** when at least 80% of that day's habits were done
+  *and* the seven days up to it were as constant (80% of everything due in
+  them). Not perfection, nor neglect: the steady mean, sustained. The first
+  can only come after a week of practice (seven days from the oldest habit).
+- **Fair to every schedule.** Days with nothing due neither count nor break
+  its streak, and an unfinished today does not either. A weekly quota counts
+  on the days it was done, and as missing only on days when the week had no
+  slack left to meet it.
+- **Its streak gives it light**: *Chispa* from the first day, *Llama* from 7,
+  *Luz* from 21 and *Resplandor* from 66 (the median time a new habit took to
+  become automatic in Lally and colleagues' 2010 study).
+- **Where it shows.** A row of its own above Today's habits, with what is
+  left for today; the tick that makes today excellent lights it up and Pico
+  cheers with lines of his own. A tap opens its sheet: grade, streak, the
+  last seven days against the 80% line, best streak, total, how it forms,
+  and a maxim. Progress gives it a line with its grade and streak, puts it
+  first among the longest streaks and offers it in the calendar; Hábitos
+  explains it in a note; *Ajustes* can hide it (`state.showExcellence`).
+- **Levels and achievements**: 25 points for each excellent day, and four
+  achievements (the first excellent day, then 7, 21 and 66 in a row). A
+  record from before 2.20 takes the new points quietly, without a burst of
+  "new level" (`ACHIEVEMENT_FORMULA`).
+- **The table** (CSV) has an *Excelencia* column: Sí on excellent days.
+
+Like the levels, it is worked out from what is recorded, so an undo, an
+import or an edit can never leave it wrong; nothing about it is stored but
+whether it is shown and whether its sheet has been seen. The reckoning is
+memoised until the next change (`save()` bumps `dataRev`), so Today, the
+levels and Progress share one pass over the history.
+
+## Energy (2.20)
+
+Under the mood, energy is a slider from 0 to 100%, a point at a time, with
+its value written beside it (*48% · Media*) and a − and + on either side for
+exact steps (held, they repeat faster; they stop by themselves at either
+end). The arrows, Home and End work from the keyboard, and a screen reader
+hears the same text as the readout. Until 2.20 it was a step from 1 to 5.
+
+A finger moves it from the first millimetre. The browser's own slider lets a
+finger travel a few points before following it (to tell a drag from a
+scroll), then jumps; so the page follows a finger or a pen itself
+(`pointermove` on the slider) and leaves the mouse and the keys to the
+browser, which are already exact. Up and down still scroll the page
+(`touch-action: pan-y`), and a scroll that starts on the slider leaves the
+energy as it was.
+
+The day stores `energyPct` (0–100) and, kept in step, the old `energy`
+(1 + round(pct / 25)), so an older version reading the record — or a backup
+restored into one — still shows something sensible. A day saved before 2.20
+reads as 0, 25, 50, 75 or 100% and is not rewritten until its energy is
+moved. The table's column is *Energía (%)*.
+
+## The emoji picker (2.20)
+
+The habit editor offers every standard emoji the phone can draw instead of
+32 fixed ones (`emoji-picker.js`): the suggestions (recent choices first,
+then the 32 of before), GlowApp's own, and Unicode's nine groups as tabs; a
+search in Spanish and English at once, without accents, names that start
+with the words first; and the five skin tones. The tabs fit in one row
+where there is room and in two rows of six on a phone.
+
+- **Nothing is an image.** The standard emojis are text, drawn by the phone's
+  own emoji font. Their list, `emoji-data.js` (194 KB, 1,923 emojis with
+  their Spanish and English names and keywords and their toned forms), is
+  loaded the first time the editor opens, and precached for offline use. It
+  is generated from Unicode's `emoji-test.txt` and the CLDR annotations by
+  `tools/emoji/make-emoji-data.js` (see the comment at its top).
+- **Only what the phone can draw.** On opening, a few emojis of each Unicode
+  version are drawn on a canvas; versions the font lacks (they would show as
+  empty boxes, or a sequence as several emojis side by side) are left out.
+  Android's emoji font is updated with the system, so an older phone simply
+  offers fewer of the newest.
+- **GlowApp's own**: thirteen drawn in the app's style from the SVG sprite in
+  `index.html` — Pico in his own purple, the rest in the habit's colour
+  (laurel, spark, flame, drop, book, dumbbell, sprout, moon, heart, lotus,
+  target, sun). They are saved as `glow:<id>`; wherever only text can go (the
+  widget, a notification, a chart label, a menu) a similar standard emoji
+  stands in (`GlowEmoji.text`), and an id the app does not know (a damaged
+  backup) becomes ✅ on load.
+- **Quick on a phone.** An emoji costs most the first time the phone draws
+  it, so a long group goes in a few rows a frame: the tap shows the first
+  rows at once and the rest follow within a fraction of a second.
+- The grid is one tab stop: arrows move within it, Home and End go to its
+  ends, Enter or Space chooses; Enter in the search chooses the first match.
+  Opening a habit opens its emoji's tab, scrolled to it.
+- Recent choices and the chosen tone are remembered per device
+  (`glow.emojiRecent`, `glow.emojiTone` in `localStorage`, outside the
+  backup).
 
 ## Pico and the tour (2.13)
 
@@ -128,8 +226,9 @@ he takes each pose at once and holds it, and the loop does not run.
 The tour runs once, right after the starting test (finished or skipped), and
 waits on Today as an invitation for anyone who had the app before it existed;
 **Ajustes → Repetir el tour con Pico** replays it. Each stop dims the screen
-around one thing — the week, the ring, today's habits, mood, the Habits and
-Progress tabs, the palettes and, in the Android app, the reminder characters —
+around one thing — the week, the ring, today's habits, excellence (2.20),
+mood, the Habits and Progress tabs, the palettes and, in the Android app, the
+reminder characters —
 and the coach sits below or above it, wherever it fits. On a small screen a
 tall target is lifted under the app bar and framed as far as it fits. The
 overlay takes every touch and the app behind is inert; Next, Back, Skip, the
@@ -211,12 +310,19 @@ sound that would burst out later.
 
 ## Reminders from a character (Android app)
 
-Inside the Android app, reminders can come from one of five original
-characters instead of a plain notification: **El Crack** (a football champion
-who talks like a teammate before a final), **El Narrador** (who turns each
-reminder into a small spooky story), **Abuela Rosa**, **Bip** (a robot with dry
-humour) and **Maestro Zen**. They are invented for GlowApp — no real person's
-name, voice, likeness or catchphrase is used.
+Inside the Android app, reminders can come from one of three original
+characters instead of a plain notification: **El Narrador** (who turns each
+reminder into a small spooky story), **Bip** (a robot with dry humour) and
+**Maestro Zen**. They are invented for GlowApp — no real person's name,
+voice, likeness or catchphrase is used.
+
+Until 2.20 there were five: **El Crack** and **Abuela Rosa** were retired,
+with their lines, portraits and voice notes. Someone who had chosen one of
+them gets plain reminders from then on and Today invites them to pick again;
+their messages leave the in-app conversation (the others' stay), a message
+from them still queued on the phone is let go, and the Android shell treats
+their ids as no character at all, so a snapshot from an older version cannot
+bring them back.
 
 Each reminder arrives as a chat message: the character's face and name, a line
 written for that habit, and a **voice note** that plays by itself as the
@@ -262,7 +368,7 @@ no character chosen gets it too.
 
 ### Your own bot (2.11)
 
-The character picker has a sixth option, **Tu voz**: a reminder bot that
+After the characters, the picker offers **Tu voz**: a reminder bot that
 speaks with the user's own voice. *Crear mi bot* opens the studio, which
 writes a script from the user's habits (a greeting, two lines per habit that
 name it, three answers to "done", two lines for any habit). Every line can be
@@ -314,38 +420,38 @@ its recorded answers, and writes in the in-app chat like the characters.
 
 The voice notes are generated here, once, by
 [`tools/voices/make-voices.js`](../tools/voices/make-voices.js), and shipped
-as Opus audio in `voices/` (about 16 MB for 790 clips). They are spoken by
+as Opus audio in `voices/` (about 12 MB for 528 clips). They are spoken by
 [Piper](https://github.com/rhasspy/piper), an open-source text-to-speech
 engine, using stock voices from its catalogue — none of them cloned from a
-person — and then given each character's sound with ffmpeg: a compressor and
-a referee's whistle for El Crack, a lower, slower pitch for El Narrador, a
-faint waver for Abuela Rosa, a robot filter and two beeps for Bip, a singing
-bowl for Maestro Zen. Since 2.14 all of them but Bip speak dry: the echoes
-they had until then (a cellar for the narrator, a hall for the rest) sounded
-like reverb and blurred the words. Bip keeps his short metallic comb, which
-is part of being a robot.
+person — and then given each character's sound with ffmpeg: a lower, slower
+pitch for El Narrador, a robot filter and two beeps for Bip, a singing bowl
+for Maestro Zen. Since 2.14 all of them but Bip speak dry: the echoes they
+had until then (a cellar for the narrator, a hall for the rest) sounded like
+reverb and blurred the words. Bip keeps his short metallic comb, which is
+part of being a robot.
 `voices/index.json` holds each clip's length and waveform for the chat bubbles.
 
 | Character | Spanish voice | English voice |
 |-----------|---------------|---------------|
-| El Crack | `es_MX-ald` (Unlicense) | `en_US-bryce` (public domain) |
 | El Narrador | `es_ES-davefx` (CC0) | `en_US-norman` (public domain) |
-| Abuela Rosa | `es_AR-daniela` (CC BY-SA 4.0, Google / OpenSLR 61) | `en_GB-cori` (public domain) |
 | Bip | `es_MX-claude` (Apache 2.0) | `en_US-sam` (Apache 2.0) |
 | Maestro Zen | `es_ES-sharvard` (CC BY 3.0, University of Edinburgh) | `en_US-joe` (CC0) |
 
-Abuela Rosa's Spanish recordings derive from a CC BY-SA 4.0 dataset and are
-shared under the same licence. The credits are also shown in Ajustes.
+The credits and licences ship with the app in `credits.txt` (the CC BY
+voice asks for its attribution to travel with it). Until 2.20 they were
+also printed at the foot of Ajustes; they left the screen to keep Ajustes
+for settings.
 
 To change a line, edit `characters.js` and run `node tools/voices/make-voices.js`
 from the repository root: only clips whose text or sound changed are recorded
 again. The first run needs `bash tools/voices/fetch.sh`, which downloads Piper,
-ffmpeg and the ten voice models (about 900 MB) into an ignored cache folder.
+ffmpeg and the six voice models (about 500 MB) into an ignored cache folder.
 
 Every clip is measured again after it is encoded, as it will be heard, and one
 that misses the target loudness (−16 LUFS) fails the run and is deleted, so
 `check.js` stops the release. Before that check existed, 2.8 shipped twelve of
-Abuela Rosa's notes at anything from −44 to −6 LUFS: ffmpeg's `vibrato` filter
+Abuela Rosa's notes (a character retired in 2.20) at anything from −44 to −6
+LUFS: ffmpeg's `vibrato` filter
 sometimes starts with a few milliseconds of leftover memory, and the loudness
 pass set the whole clip by that click.
 
@@ -387,13 +493,27 @@ the range (days, or whole weeks for a weekly quota; a full bar means never a
 miss). Like the rest of Progress they follow the range above them, and an
 unfinished today counts in none of them until it is done.
 
+**Smooth lines** (2.20). The line charts — mood, weight, the trend — are
+curves rather than straight segments: a monotone cubic (Fritsch–Carlson,
+`curvePath()` in `charts.js`), which passes through every point and never
+swings past two neighbouring ones, so a 1–5 scale stays within 1–5 and a
+percentage within 0–100, and no wiggle is invented between days. Over 30
+and 90 days a day-by-day mood zigzags, so there the line is its rolling
+mean (5 days over a month, 7 over a quarter, centred, drawn where at least
+half its window has a mood) and each day is a small faint dot under it; a
+key names the two marks, and the tooltip gives the day and its mean. Over
+a week the line still joins the days themselves. A stretch with no mood
+still breaks the line; the weight line still runs from one weigh-in to the
+next.
+
 **Levels and achievements** are worked out from what is already recorded,
 so an import, an undo or an edit can never leave them wrong. Points: 10 for
 each habit done on a day, 20 for each perfect day, 5 for each day with a
-mood. Level 2 takes 100 points and each level after it 50 more than the one
-before. A card at the top of Progress (above the range, which it does not
-follow) shows the level, the points, a thin meter to the next level and how
-many of the twelve achievements are earned; a tap opens them all, earned
+mood, and since 2.20 25 for each day of excellence. Level 2 takes 100
+points and each level after it 50 more than the one before. A card at the
+top of Progress (above the range, which it does not follow) shows the
+level, the points, a thin meter to the next level and how many of the
+sixteen achievements are earned; a tap opens them all, earned
 ones marked, the rest with how far along they are. A new level or
 achievement is announced once, as a short message with Pico's little
 fanfare, after his cheer for the day rather than over it; several at once
@@ -461,7 +581,8 @@ what they are rather than for their format (until 2.13 the buttons said
 - **Descargar tabla** writes the history as a spreadsheet,
   `GlowApp-tabla-<date>.csv`: one row a day from the first record to
   today, one column a habit (Sí / No, or the amount for a counted one), then
-  mood, energy, the mood note, weight and BMI. In Spanish it uses semicolons
+  excellence (2.20), mood, energy (as a percentage since 2.20), the mood
+  note, weight and BMI. In Spanish it uses semicolons
   and a decimal comma, in English commas and a point, which is what Excel
   expects in each; a byte-order mark tells Excel it is UTF-8.
 
@@ -488,7 +609,11 @@ without escaping in sight, a stray `console.log`, the two language tables
 drifting apart, the asset `?v=` in `index.html` disagreeing with `sw.js`, a
 file the page or — since 2.19 — the stylesheet loads (the typeface) missing
 from the precache, and — since 2.8 — a character line without its
-recording, or a catalogue habit with no line.
+recording, or a catalogue habit with no line. Since 2.20 it also checks that
+the emoji list the picker loads exists and is precached.
+
+`check.js` looks at the code; the behaviour is covered by browser tests
+driven over the DevTools protocol, which are kept outside the repository.
 
 ## A note on updating
 
@@ -513,8 +638,10 @@ because every asset already comes from the APK.
 | `index.html` | Markup for all four views, the dialogs, the chat, icon sprite |
 | `styles.css` | Design tokens for both themes, layout, components |
 | `app.js` | State, storage, scheduling and streak logic, rendering, wiring, the bridge to Android |
-| `characters.js` | The five characters and every line they say, in both languages |
-| `charts.js` | Hand-rolled SVG charts (line, bars, columns, grouped bars, heatmap) |
+| `characters.js` | The three characters and every line they say, in both languages |
+| `charts.js` | Hand-rolled SVG charts (line, bars, columns, grouped bars, heatmap); smooth curves |
+| `emoji-picker.js` | The habit editor's emoji picker (2.20) |
+| `emoji-data.js` | Every standard emoji, its group, names and tones — generated, loaded on demand |
 | `sounds.js` | The small synthesised interface sounds |
 | `pico-voice.js` | Pico's voice: synthesised caws, chirps, clicks and trills, no words |
 | `pico.js` | Pico, the guide: his drawing and the calls that pose him |
@@ -526,6 +653,10 @@ because every asset already comes from the APK.
 | `voices/` | The recorded voice notes and their index |
 | `icons/` | Generated PNG app icons, including a maskable one |
 | `fonts/` | Figtree (Latin, variable) and its license, `OFL.txt` |
+| `credits.txt` | Credits and licences of the voices and the typeface |
+
+Outside this folder, `tools/voices/` makes the voice notes and
+`tools/emoji/make-emoji-data.js` makes `emoji-data.js`.
 
 There are no dependencies and nothing is loaded from a CDN, which is what lets
 the whole thing run from the cache with the network off.

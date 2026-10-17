@@ -21,6 +21,7 @@
      think      "hmm?"                                (thinking)
      nod        two soft notes, "mm-hm"               (a nod)
      achieve    a bright arpeggio and a caw           (a level, a badge)
+     excellence a rising fifth and octave, a shimmer  (excellence lit, 2.20)
    and babble(ms): syllables without words, while his beak moves.
 
    Dry on purpose — no echo or reverb, like the characters' voices — short,
@@ -250,6 +251,17 @@
     nod: (ctx, out, t, r) => {
       hum(ctx, out, t, { from: r(430, 0.03), to: r(420, 0.03), dur: 0.09, gain: 0.068 });
       return hum(ctx, out, t + 0.12, { from: r(520, 0.03), to: r(560, 0.03), dur: 0.12, gain: 0.068 });
+    },
+    excellence: (ctx, out, t, r) => {
+      // A small fanfare of excellence (2.20): a rising fifth and octave,
+      // warm and unhurried, the last note held with a slow vibrato, then a
+      // shimmer. No caw: this one is solemn.
+      const g = r(392, 0.02);
+      chirp(ctx, out, t, { from: g, to: g * 1.004, dur: 0.14, gain: 0.07, type: 'triangle', harm: 0.15 });
+      chirp(ctx, out, t + 0.13, { from: g * 1.5, to: g * 1.506, dur: 0.14, gain: 0.07, type: 'triangle', harm: 0.15 });
+      chirp(ctx, out, t + 0.26, { from: g * 2, to: g * 2.006, dur: 0.38, gain: 0.075, type: 'triangle', vib: 0.008, vibRate: 5.5, harm: 0.18 });
+      ping(ctx, out, t + 0.52, { f: g * 4, gain: 0.028, dur: 0.2 });
+      return ping(ctx, out, t + 0.6, { f: g * 5.04, gain: 0.022, dur: 0.24 });
     },
     achieve: (ctx, out, t, r, rnd) => {
       [1046.5, 1318.5, 1568, 2093].forEach((hz, i) => ping(ctx, out, t + i * 0.07, { f: hz, gain: 0.06, dur: 0.14 }));

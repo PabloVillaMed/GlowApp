@@ -79,6 +79,60 @@
     host.appendChild(box);
   }
 
+  /* A smooth path through points ([x, y], in order): a monotone cubic
+     (Fritsch–Carlson), so the curve never swings past the data between two
+     points — a 1–5 scale stays within 1–5, a percentage within 0–100 — and
+     never invents a wiggle the data does not have. Two points are a line;
+     one is just a move (its dot shows it). */
+  function curvePath(P) {
+    const f = (n) => n.toFixed(1);
+    if (!P.length) return '';
+    let d = 'M' + f(P[0][0]) + ' ' + f(P[0][1]);
+    if (P.length === 1) return d;
+    if (P.length === 2) return d + 'L' + f(P[1][0]) + ' ' + f(P[1][1]);
+    const n = P.length;
+    const m = [];
+    for (let i = 0; i < n - 1; i++) m.push((P[i + 1][1] - P[i][1]) / ((P[i + 1][0] - P[i][0]) || 1));
+    const t = new Array(n);
+    t[0] = m[0];
+    t[n - 1] = m[n - 2];
+    for (let i = 1; i < n - 1; i++) t[i] = m[i - 1] * m[i] <= 0 ? 0 : (m[i - 1] + m[i]) / 2;
+    for (let i = 0; i < n - 1; i++) {
+      if (m[i] === 0) { t[i] = 0; t[i + 1] = 0; continue; }
+      const a = t[i] / m[i];
+      const b = t[i + 1] / m[i];
+      const h = a * a + b * b;
+      if (h > 9) {
+        const k = 3 / Math.sqrt(h);
+        t[i] = k * a * m[i];
+        t[i + 1] = k * b * m[i];
+      }
+    }
+    for (let i = 0; i < n - 1; i++) {
+      const dx = (P[i + 1][0] - P[i][0]) / 3;
+      d += 'C' + f(P[i][0] + dx) + ' ' + f(P[i][1] + t[i] * dx) + ' ' + f(P[i + 1][0] - dx) + ' ' +
+        f(P[i + 1][1] - t[i + 1] * dx) + ' ' + f(P[i + 1][0]) + ' ' + f(P[i + 1][1]);
+    }
+    return d;
+  }
+
+  /* A centred rolling mean over `span` points (odd), where at least half of
+     its window has a value; null elsewhere. */
+  function rollingMean(values, span) {
+    const half = Math.floor(span / 2);
+    const need = Math.ceil(span / 2);
+    return values.map((_, i) => {
+      let sum = 0;
+      let count = 0;
+      for (let j = Math.max(0, i - half); j <= Math.min(values.length - 1, i + half); j++) {
+        if (values[j] === null || values[j] === undefined) continue;
+        sum += values[j];
+        count++;
+      }
+      return count >= need ? sum / count : null;
+    });
+  }
+
   /* ── Line chart with a crosshair + tooltip ───────────────────────────
      One series (mood over time). A single series needs no legend box —
      the figure caption names it. */
@@ -120,48 +174,66 @@
       el('text', { class: 'viz-tick', x: xAt(i), y: H - 8, 'text-anchor': anchor }, svg).textContent = pts[i].label;
     });
 
-    /* Gaps (days with no entry) break the path rather than interpolating —
+    /* What the line follows: the values, or (opts.smooth, 2.20) their
+       rolling mean, the daily values then shown as faint dots under it. */
+    const raw = pts.map((p) => (p.value === null || p.value === undefined ? null : p.value));
+    const line = opts.smooth ? rollingMean(raw, opts.smooth) : raw;
+    const color = opts.color || 'var(--s1)';
+
+    /* Gaps (days with no entry) break the line rather than bridging them —
        unless `connect` says the readings are sparse by nature (a weigh-in
-       every few days), when the line runs from one to the next. */
-    let d = '';
+       every few days), when it runs from one to the next. Each stretch is a
+       smooth curve (2.20; straight segments until then). */
+    const runs = [];
     let open = false;
-    const runs = [];                     // the unbroken stretches, for the area
-    pts.forEach((p, i) => {
-      if (p.value === null || p.value === undefined) { if (!opts.connect) open = false; return; }
-      d += (open ? 'L' : 'M') + xAt(i).toFixed(1) + ' ' + yAt(p.value).toFixed(1) + ' ';
+    line.forEach((v, i) => {
+      if (v === null) { if (!opts.connect) open = false; return; }
       if (!open) runs.push([]);
       runs[runs.length - 1].push(i);
       open = true;
     });
+    const pointsOf = (run) => run.map((i) => [xAt(i), yAt(line[i])]);
     /* A single series may lie on a faint wash of its own colour (2.19). */
     if (opts.area) {
       const base = (M.t + innerH).toFixed(1);
       runs.filter((run) => run.length > 1).forEach((run) => {
-        const top = run.map((i) => 'L' + xAt(i).toFixed(1) + ' ' + yAt(pts[i].value).toFixed(1)).join(' ');
+        const curve = curvePath(pointsOf(run));
         el('path', {
-          class: 'viz-area', fill: opts.color || 'var(--s1)',
-          d: 'M' + xAt(run[0]).toFixed(1) + ' ' + base + ' ' + top + ' L' + xAt(run[run.length - 1]).toFixed(1) + ' ' + base + ' Z',
+          class: 'viz-area', fill: color,
+          d: 'M' + xAt(run[0]).toFixed(1) + ' ' + base + 'L' + curve.slice(1) + 'L' + xAt(run[run.length - 1]).toFixed(1) + ' ' + base + 'Z',
         }, svg);
       });
     }
-    if (d) el('path', { class: 'viz-line', d: d.trim(), stroke: opts.color || 'var(--s1)' }, svg);
+    // The daily values under a smoothed line: small and faint.
+    if (opts.smooth) {
+      raw.forEach((v, i) => {
+        if (v !== null) el('circle', { class: 'viz-dot is-raw', cx: xAt(i), cy: yAt(v), r: 2.4, fill: color }, svg);
+      });
+    }
+    runs.forEach((run) => el('path', { class: 'viz-line', d: curvePath(pointsOf(run)), stroke: color }, svg));
 
     const filled = [];
-    pts.forEach((p, i) => {
-      if (p.value === null || p.value === undefined) return;
-      filled.push(i);
-      if (opts.dots === false) return;   // a dense trend reads better as a plain line
-      el('circle', { class: 'viz-dot', cx: xAt(i), cy: yAt(p.value), r: pts.length > 45 ? 2.6 : 4, fill: opts.color || 'var(--s1)' }, svg);
-    });
-    if (opts.dots === false && filled.length) {
-      const i = filled[filled.length - 1];    // the end, where the value is read
-      el('circle', { class: 'viz-dot', cx: xAt(i), cy: yAt(pts[i].value), r: 4, fill: opts.color || 'var(--s1)' }, svg);
+    raw.forEach((v, i) => { if (v !== null) filled.push(i); });
+    const ends = runs.filter((run) => run.length).map((run) => run[run.length - 1]);
+    const lastIdx = ends.length ? ends[ends.length - 1] : null;
+    if (!opts.smooth) {
+      // Fewer, smaller dots the denser the days, so a month or a quarter
+      // reads as a line; a lone day between gaps keeps its dot, or it would
+      // not show at all.
+      const lone = new Set(runs.filter((run) => run.length === 1).map((run) => run[0]));
+      raw.forEach((v, i) => {
+        if (v === null || opts.dots === false && i !== lastIdx && !lone.has(i)) return;
+        if (pts.length > 45 && !lone.has(i) && i !== lastIdx) return;
+        const r = i === lastIdx && (opts.dots === false || pts.length > 45) ? 4 : pts.length > 14 ? 3 : 4;
+        el('circle', { class: 'viz-dot', cx: xAt(i), cy: yAt(v), r: r, fill: color }, svg);
+      });
+    } else if (lastIdx !== null) {
+      el('circle', { class: 'viz-dot', cx: xAt(lastIdx), cy: yAt(line[lastIdx]), r: 4, fill: color }, svg);
     }
 
     /* The value at the line's end, where a line is labelled (2.19). */
-    if (opts.endLabel && filled.length) {
-      const i = filled[filled.length - 1];
-      el('text', { class: 'viz-value', x: xAt(i), y: yAt(pts[i].value) - 10, 'text-anchor': 'end' }, svg).textContent = opts.endLabel;
+    if (opts.endLabel && lastIdx !== null) {
+      el('text', { class: 'viz-value', x: xAt(lastIdx), y: yAt(line[lastIdx]) - 10, 'text-anchor': 'end' }, svg).textContent = opts.endLabel;
     }
 
     const cross = el('line', { class: 'viz-crosshair', y1: M.t, y2: M.t + innerH, opacity: 0 }, svg);
@@ -193,7 +265,9 @@
       focus.setAttribute('cx', xAt(i));
       focus.setAttribute('cy', yAt(p.value));
       focus.setAttribute('opacity', 1);
-      showTip(host, tip, xAt(i) * s, yAt(p.value) * s, p.tip || `<b>${p.value}</b>`);
+      const mean = opts.smooth && line[i] !== null && opts.meanLabel
+        ? '<br><span class="tip-sub">' + opts.meanLabel(line[i]) + '</span>' : '';
+      showTip(host, tip, xAt(i) * s, yAt(p.value) * s, (p.tip || `<b>${p.value}</b>`) + mean);
     }
     function leave() {
       cross.setAttribute('opacity', 0);
@@ -203,6 +277,22 @@
     hit.addEventListener('pointermove', move);
     hit.addEventListener('pointerdown', move);
     hit.addEventListener('pointerleave', leave);
+
+    /* Two marks need a key: the faint dots are each day, the line their
+       average (2.20). Each swatch mirrors its mark. */
+    if (opts.smooth && opts.legend) {
+      const box = document.createElement('div');
+      box.className = 'viz-legend';
+      opts.legend.forEach((item) => {
+        const entry = document.createElement('span');
+        const swatch = document.createElement('i');
+        swatch.className = item.mark === 'dot' ? 'is-dot' : 'is-line';
+        swatch.style.background = color;
+        entry.append(swatch, document.createTextNode(item.name));
+        box.appendChild(entry);
+      });
+      host.appendChild(box);
+    }
   }
 
   /* ── Horizontal bars ─────────────────────────────────────────────────
@@ -269,6 +359,12 @@
 
     const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': opts.ariaLabel || '' }, host);
     el('line', { class: 'viz-axis', x1: 0, x2: W, y1: base, y2: base }, svg);
+    /* A goal across the columns (2.20: excellence's 80 %), under them; the
+       caption says what it is, so it needs no label of its own. */
+    if (opts.ref) {
+      const y = base - (opts.ref.value / max) * innerH;
+      el('line', { class: 'viz-goal', x1: 0, x2: W, y1: y, y2: y }, svg);
+    }
 
     items.forEach((item, i) => {
       const cx = slot * i + slot / 2;

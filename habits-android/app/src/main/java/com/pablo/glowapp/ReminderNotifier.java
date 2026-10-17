@@ -364,7 +364,12 @@ final class ReminderNotifier {
 
   static JSONObject character(JSONObject snapshot) {
     final JSONObject cast = snapshot == null ? null : snapshot.optJSONObject("character");
-    return cast == null || cast.optString("id").isEmpty() ? null : cast;
+    if (cast == null || cast.optString("id").isEmpty()) return null;
+    // Retired in 2.20: a snapshot saved before the update may still name
+    // one; its reminders go out plain until the app sends a new snapshot.
+    final String id = cast.optString("id");
+    if (id.equals("crack") || id.equals("grandma")) return null;
+    return cast;
   }
 
   private static JSONObject ui(JSONObject snapshot) {
@@ -413,9 +418,7 @@ final class ReminderNotifier {
 
   private static int avatarRes(String id) {
     switch (id) {
-      case "crack": return R.drawable.avatar_crack;
       case "narrator": return R.drawable.avatar_narrator;
-      case "grandma": return R.drawable.avatar_grandma;
       case "bip": return R.drawable.avatar_bip;
       case "zen": return R.drawable.avatar_zen;
       case "mine": return R.drawable.avatar_mine;     // the user's own bot (2.11)
@@ -426,9 +429,7 @@ final class ReminderNotifier {
   /** The same accents as characters.js, and app.js for the user's own bot. */
   private static int accent(String id) {
     switch (id) {
-      case "crack": return Color.parseColor("#1F9D57");
       case "narrator": return Color.parseColor("#7B5CE0");
-      case "grandma": return Color.parseColor("#D8507F");
       case "bip": return Color.parseColor("#1597B8");
       case "zen": return Color.parseColor("#C98A1E");
       case "mine": return Color.parseColor("#E0663A");

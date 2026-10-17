@@ -16,7 +16,7 @@
 
    A clip is only re-recorded when its text or its sound changes, so editing
    one line costs one recording. Pass --force to redo everything, or
-   --only=crack/es,zen/en/intro to limit a run to those prefixes.
+   --only=narrator/es,zen/en/intro to limit a run to those prefixes.
 
    Every clip is measured again after encoding. One that misses the target
    loudness is reported as failed and deleted, so check.js holds the
@@ -54,17 +54,9 @@ const { LINES } = globalThis.GLOW_CAST;
    (above 1 is slower), `noise` its expressiveness, `gap` the pause between
    sentences in seconds. */
 const PROFILES = {
-  crack: {
-    es: { model: 'es_MX-ald-medium', length: 0.9, noise: 0.75, noiseW: 0.9, gap: 0.22 },
-    en: { model: 'en_US-bryce-medium', length: 0.88, noise: 0.75, noiseW: 0.9, gap: 0.22 },
-  },
   narrator: {
     es: { model: 'es_ES-davefx-medium', length: 1.1, noise: 0.6, noiseW: 0.7, gap: 0.45 },
     en: { model: 'en_US-norman-medium', length: 1.08, noise: 0.6, noiseW: 0.7, gap: 0.45 },
-  },
-  grandma: {
-    es: { model: 'es_AR-daniela-high', length: 1.08, noise: 0.7, noiseW: 0.8, gap: 0.3 },
-    en: { model: 'en_GB-cori-high', length: 1.06, noise: 0.7, noiseW: 0.8, gap: 0.3 },
   },
   bip: {
     es: { model: 'es_MX-claude-high', length: 0.98, noise: 0.35, noiseW: 0.4, gap: 0.3 },
@@ -82,20 +74,6 @@ const PROFILES = {
    and arrive as [s0], [s1]... */
 const SR = 22050;
 const FX = {
-  /* Close, punchy and bright, like a voice over a stadium's PA, but dry: the
-     slapback echo it had until 2.13 is gone. The intro opens with a
-     referee's whistle. */
-  crack(clip) {
-    const voice = '[v]acompressor=threshold=-22dB:ratio=3.5:attack=4:release=90:makeup=2,' +
-      'equalizer=f=3200:t=q:w=1.2:g=3';
-    if (clip !== 'intro') return { graph: voice + '[fx]', sources: [] };
-    return {
-      sources: ['sine=f=2950:d=0.55:sample_rate=' + SR],
-      graph: '[s0]vibrato=f=26:d=0.6,afade=t=in:d=0.02,afade=t=out:st=0.4:d=0.15,volume=0.32[w];' +
-        voice + '[vv];[w][vv]concat=n=2:v=0:a=1[fx]',
-    };
-  },
-
   /* Lower and slower, a storyteller close to the microphone: two and a half
      semitones down, a little warmth at the bottom, the top softened. Until
      2.13 he told his stories from a cellar, with a long echo and a rumble
@@ -106,25 +84,6 @@ const FX = {
       sources: [],
       graph: '[v]asetrate=' + Math.round(SR * k) + ',aresample=' + SR + ',atempo=' + (1 / k).toFixed(4) + ',' +
         'equalizer=f=180:t=q:w=1:g=2,lowpass=f=6200[fx]',
-    };
-  },
-
-  /* A touch lower and warmer, with the faint waver of an older voice, and
-     dry since 2.14 (it had a small room's echo).
-     ffmpeg's vibrato reads its delay line before it has written it, so its
-     first few milliseconds are whatever was left in memory: usually
-     silence, sometimes a full-scale click or Infinity, and the loudness
-     pass then set the whole clip by that click. It now runs over 40 ms of
-     added silence, cut away again before any other filter hears it. */
-  grandma() {
-    const k = 0.95;
-    const lead = Math.round(SR * 0.04);
-    return {
-      sources: [],
-      graph: '[v]asetrate=' + Math.round(SR * k) + ',aresample=' + SR + ',atempo=' + (1 / k).toFixed(4) + ',' +
-        'asetpts=N/SR/TB,adelay=' + lead + 'S:all=1,vibrato=f=5.2:d=0.035,' +
-        'atrim=start_sample=' + lead + ',asetpts=PTS-STARTPTS,' +
-        'equalizer=f=260:t=q:w=1:g=2.5,lowpass=f=7800[fx]',
     };
   },
 

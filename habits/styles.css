@@ -605,13 +605,51 @@ body[data-view]:not([data-view='today']):not(.is-scrolled) #viewTitle { opacity:
 .field-hint { font-size: 0.75rem; color: var(--ink-3); }
 .field-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
-input[type='text'], input[type='number'], input[type='time'], select, textarea {
+input[type='text'], input[type='search'], input[type='number'], input[type='time'], select, textarea {
   width: 100%; min-height: 44px; padding: 10px 12px;
   background: var(--surface-3); border: 1px solid var(--border);
   border-radius: var(--radius); color: var(--ink);
 }
 textarea { min-height: 62px; resize: vertical; line-height: 1.45; }
 input[type='range'] { accent-color: var(--accent); width: 100%; min-height: 34px; }
+
+/* Energy (2.20): a slider a point at a time, its track filled up to the
+   value, a thumb big enough for a thumb, and a button each side for one
+   point more or less. */
+.energy-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.energy-out { font-size: 0.82rem; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; }
+.energy-control { display: flex; align-items: center; gap: 8px; }
+.energy-step {
+  flex: none; width: 36px; height: 36px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 1.15rem; font-weight: 650; line-height: 1;
+  color: var(--ink-2); background: var(--surface-3); border: 1px solid var(--edge);
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.energy-step:disabled { opacity: 0.35; }
+.energy-range {
+  --pct: 50%;
+  --thumb: 26px;                       /* app.js reads it to follow a finger */
+  -webkit-appearance: none; appearance: none; flex: 1; min-width: 0;
+  height: var(--tap); min-height: var(--tap); background: transparent; cursor: pointer;
+  touch-action: pan-y;
+}
+.energy-range::-webkit-slider-runnable-track {
+  height: 8px; border-radius: var(--radius-pill);
+  background: linear-gradient(to right, var(--accent) var(--pct), var(--surface-3) var(--pct));
+}
+.energy-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; width: var(--thumb); height: var(--thumb); margin-top: calc((8px - var(--thumb)) / 2);
+  border-radius: 50%; background: var(--surface); border: 3px solid var(--accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.energy-range::-moz-range-track { height: 8px; border-radius: var(--radius-pill); background: var(--surface-3); }
+.energy-range::-moz-range-progress { height: 8px; border-radius: var(--radius-pill); background: var(--accent); }
+.energy-range::-moz-range-thumb {
+  width: 20px; height: 20px; border-radius: 50%; background: var(--surface); border: 3px solid var(--accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.energy-range:focus-visible { outline: none; }
+.energy-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--accent-soft), 0 1px 4px rgba(0, 0, 0, 0.25); }
 select { appearance: none; padding-right: 32px;
   background-image: linear-gradient(45deg, transparent 50%, var(--ink-2) 50%),
                     linear-gradient(135deg, var(--ink-2) 50%, transparent 50%);
@@ -714,12 +752,57 @@ select { appearance: none; padding-right: 32px;
   background: var(--accent); color: var(--accent-ink);
 }
 
-.emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); gap: 6px; }
-.emoji-btn {
-  aspect-ratio: 1; display: grid; place-items: center; font-size: 1.2rem;
-  border-radius: 10px; border: 1px solid var(--border); background: var(--surface-3);
+/* The emoji picker (2.20): what is chosen, a search and the skin tone; the
+   groups as tabs; a grid that scrolls on its own. GlowApp's own emojis are
+   drawings in the accent here, in the habit's colour on its badge. */
+.ep { display: flex; flex-direction: column; gap: 8px; }
+.ep-top { display: flex; align-items: center; gap: 8px; }
+.ep-current {
+  flex: none; width: var(--tap); height: var(--tap); display: grid; place-items: center;
+  font-size: 1.55rem; border-radius: var(--radius); background: var(--accent-soft); color: var(--accent);
 }
-.emoji-btn[aria-checked='true'] { border-color: var(--accent); background: var(--accent-soft); }
+.ep-current .glyph { width: 1.7rem; height: 1.7rem; }
+.ep-search { flex: 1; min-width: 0; min-height: var(--tap); }
+.ep-tone {
+  flex: none; width: var(--tap); height: var(--tap); border-radius: var(--radius);
+  font-size: 1.3rem; background: var(--surface-3); border: 1px solid var(--edge);
+}
+.ep-tone[aria-expanded='true'] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.ep-tones { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; padding: 4px; border-radius: var(--radius); background: var(--surface-3); }
+.ep-tone-option { min-height: 40px; font-size: 1.3rem; border-radius: 10px; }
+.ep-tone-option[aria-checked='true'] { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+/* All eleven always in view: in one row where they fit, in two rows of six on
+   a phone (one row there left the last ones off the edge, or too narrow for
+   a thumb). */
+.ep-tabs {
+  display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 2px;
+  border-bottom: 1px solid var(--border); padding-bottom: 2px;
+}
+@media (max-width: 460px) {
+  .ep-tabs { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+.ep-tab {
+  min-width: 0; height: 38px; display: grid; place-items: center; font-size: 1.2rem;
+  border-radius: 10px; color: var(--accent); opacity: 0.55; transition: opacity 0.15s, background 0.15s;
+}
+.ep-tab .glyph { width: 1.25rem; height: 1.25rem; }
+.ep-tab[aria-selected='true'] { opacity: 1; background: var(--accent-soft); }
+.ep-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)); gap: 2px;
+  height: 236px; overflow-y: auto; overscroll-behavior: contain; align-content: start;
+  padding: 2px; border-radius: var(--radius); background: var(--surface-3);
+}
+.ep-cell {
+  aspect-ratio: 1; min-height: 42px; display: grid; place-items: center;
+  font-size: 1.45rem; line-height: 1; border-radius: 10px; color: var(--accent);
+}
+.ep-cell .glyph { width: 1.5rem; height: 1.5rem; }
+.ep-cell:hover { background: var(--surface); }
+.ep-cell[aria-checked='true'] { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.ep-note { font-size: 0.82rem; color: var(--ink-2); text-align: center; padding: 6px 0; }
+/* A GlowApp emoji on a habit's badge: drawn in the habit's colour. */
+.habit-badge.is-glyph { color: var(--habit-color); }
+.habit-badge .glyph { width: 1.45rem; height: 1.45rem; }
 
 .swatch-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .swatch {
@@ -935,6 +1018,9 @@ button.habit-main:hover .habit-name { color: var(--accent); }
 }
 .viz-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .viz-legend i { width: 10px; height: 10px; border-radius: 3px; display: block; }
+.viz-legend i.is-dot { width: 7px; height: 7px; border-radius: 50%; opacity: 0.45; }
+.viz-legend i.is-line { width: 16px; height: 3px; border-radius: 2px; }
+.viz-dot.is-raw { opacity: 0.38; stroke: none; }
 .viz-scale { display: flex; align-items: center; gap: 4px; font-size: 0.7rem; color: var(--ink-3); }
 .viz-scale i { width: 12px; height: 12px; border-radius: 3px; display: block; }
 
@@ -949,6 +1035,145 @@ button.habit-main:hover .habit-name { color: var(--accent); }
 .viz-tip.is-on { opacity: 1; }
 .viz-tip b { font-weight: 650; }
 .viz-tip .tip-sub { color: var(--ink-2); }
+
+/* ══ Excellence (2.20) ══════════════════════════════════════════════
+   The habit nobody ticks. Its colour is each palette's amber (s4, already
+   validated against every palette's surfaces), its emblem a laurel around
+   a spark; lit, it glows, and more as its light (its grade) grows. Text
+   never wears the amber: the laurel and the marks carry it. */
+:root {
+  --virtue: var(--s4);
+  --virtue-soft: color-mix(in srgb, var(--s4) 26%, var(--surface-3));
+  --virtue-glow: color-mix(in srgb, var(--s4) 45%, transparent);
+  --virtue-ink: color-mix(in srgb, var(--s4) 22%, #000000);
+}
+
+.excellence-row {
+  display: flex; align-items: center; gap: 0.75rem; width: 100%;
+  margin-bottom: 8px; padding: 0.75rem 0.875rem 0.75rem 1.05rem;
+  background: var(--surface); color: var(--ink); text-align: left;
+  border: 1px solid var(--edge); border-radius: var(--radius-lg); box-shadow: var(--lift);
+  transition: border-color 0.3s, box-shadow 0.3s, background 0.3s;
+}
+.excellence-emblem {
+  width: 2.5rem; height: 2.5rem; flex: none; display: grid; place-items: center;
+  border-radius: var(--radius); color: var(--ink-3); background: var(--surface-3);
+  transition: color 0.3s, background 0.3s;
+}
+.excellence-emblem svg { width: 1.65rem; height: 1.65rem; }
+.excellence-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.excellence-name { display: flex; align-items: center; gap: 7px; font-size: 0.94rem; font-weight: 700; }
+.excellence-status { font-size: 0.75rem; color: var(--ink-2); }
+.excellence-new {
+  font-size: 0.62rem; font-weight: 750; letter-spacing: 0.02em; text-transform: uppercase;
+  padding: 2px 7px; border-radius: var(--radius-pill); background: var(--virtue-soft); color: var(--ink);
+}
+.excellence-medal { flex: none; width: var(--tap); height: var(--tap); display: grid; place-items: center; }
+.excellence-medal svg { width: 40px; height: 40px; overflow: visible; }
+.vm-track { fill: none; stroke: var(--surface-3); stroke-width: 3.5; }
+.vm-fill { fill: none; stroke: var(--virtue); stroke-width: 3.5; stroke-linecap: round; transition: stroke-dashoffset 0.5s ease; }
+.vm-lit { fill: var(--virtue); }
+.vm-laurel { color: var(--virtue-ink); }
+
+.excellence-row.is-lit {
+  border-color: color-mix(in srgb, var(--virtue) 55%, transparent);
+  background: linear-gradient(105deg, color-mix(in srgb, var(--virtue) 11%, var(--surface)), var(--surface) 62%);
+  box-shadow: var(--lift), 0 8px 24px -12px var(--virtue-glow);
+}
+.excellence-row.is-lit .excellence-emblem,
+.virtue-note .excellence-emblem,
+.excellence-sheet .sheet-title .excellence-emblem {
+  color: var(--virtue); background: color-mix(in srgb, var(--virtue) 15%, transparent);
+}
+.excellence-row.is-lit .excellence-medal svg { filter: drop-shadow(0 0 6px var(--virtue-glow)); }
+
+/* The app's own mark glows on a day of excellence: GlowApp, living up to its name. */
+body.is-excellent .app-mark {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--virtue) 70%, transparent), 0 0 14px var(--virtue-glow);
+}
+/* And a day of excellence wears a golden dot in the week strip. */
+.day-chip .ddot.virtue,
+.day-chip[aria-selected='true'] .ddot.virtue { background: var(--virtue); box-shadow: 0 0 5px var(--virtue-glow); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .excellence-row.is-lit .excellence-emblem svg { animation: virtue-breathe 3.4s ease-in-out infinite; }
+  .excellence-row.just-lit { animation: virtue-lit 1.3s ease-out; }
+  body.is-excellent .app-mark { animation: virtue-mark 3.4s ease-in-out infinite; }
+}
+@keyframes virtue-breathe { 50% { transform: scale(1.06); filter: drop-shadow(0 0 4px var(--virtue-glow)); } }
+@keyframes virtue-lit {
+  0% { box-shadow: var(--lift), 0 0 0 0 var(--virtue-glow); transform: scale(1); }
+  30% { box-shadow: var(--lift), 0 0 0 8px transparent; transform: scale(1.015); }
+  100% { box-shadow: var(--lift), 0 8px 24px -12px var(--virtue-glow); transform: scale(1); }
+}
+@keyframes virtue-mark { 50% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--virtue) 70%, transparent), 0 0 20px var(--virtue-glow); } }
+
+/* Hábitos: the note that says it is not one to edit. */
+.virtue-note {
+  display: flex; align-items: center; gap: 0.75rem; width: 100%;
+  padding: 0.75rem 0.875rem; margin-bottom: 8px; text-align: left; color: var(--ink);
+  border: 1px dashed color-mix(in srgb, var(--virtue) 55%, var(--border)); border-radius: var(--radius-lg);
+}
+.virtue-note-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.virtue-note-text strong { font-size: 0.92rem; font-weight: 700; }
+.virtue-note-text span { font-size: 0.75rem; color: var(--ink-2); }
+.virtue-note-go, .virtue-line-go { flex: none; transform: rotate(-90deg); color: var(--ink-3); }
+
+/* Progress: its line on the level card. */
+.virtue-line {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: var(--tap);
+  margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--border);
+  font-size: 0.84rem; font-weight: 650; color: var(--ink); text-align: left;
+}
+.virtue-line .excellence-emblem { width: 1.9rem; height: 1.9rem; }
+.virtue-line .excellence-emblem svg { width: 1.25rem; height: 1.25rem; }
+.virtue-line:not([data-grade='none']) .excellence-emblem { color: var(--virtue); background: color-mix(in srgb, var(--virtue) 15%, transparent); }
+.virtue-line > span:nth-child(2) { flex: 1; min-width: 0; }
+
+/* The sheet: the medal, more light as the grade rises. */
+.virtue-hero { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 3px; padding: 4px 0 2px; }
+.virtue-medal {
+  width: 5.6rem; height: 5.6rem; margin-bottom: 8px; display: grid; place-items: center;
+  border-radius: 50%; color: var(--ink-3); background: var(--surface-3);
+  transition: box-shadow 0.4s, background 0.4s;
+}
+.virtue-medal svg { width: 3.4rem; height: 3.4rem; }
+.excellence-sheet:not([data-grade='none']) .virtue-medal {
+  color: var(--virtue);
+  background: radial-gradient(circle, color-mix(in srgb, var(--virtue) 20%, var(--surface)) 0%, var(--surface-3) 72%);
+}
+.excellence-sheet[data-grade='spark'] .virtue-medal svg { filter: drop-shadow(0 0 2px var(--virtue-glow)); }
+.excellence-sheet[data-grade='flame'] .virtue-medal svg { filter: drop-shadow(0 0 5px var(--virtue-glow)); }
+.excellence-sheet[data-grade='light'] .virtue-medal { box-shadow: 0 0 22px -4px var(--virtue-glow); }
+.excellence-sheet[data-grade='light'] .virtue-medal svg { filter: drop-shadow(0 0 8px var(--virtue-glow)); }
+.excellence-sheet[data-grade='radiance'] .virtue-medal { box-shadow: 0 0 0 2px color-mix(in srgb, var(--virtue) 55%, transparent), 0 0 34px var(--virtue-glow); }
+.excellence-sheet[data-grade='radiance'] .virtue-medal svg { filter: drop-shadow(0 0 12px var(--virtue-glow)); }
+.virtue-grade { font-size: 1.4rem; font-weight: 800; letter-spacing: -0.015em; }
+.virtue-streak { font-size: 0.86rem; color: var(--ink-2); }
+.virtue-today {
+  margin-top: 8px; padding: 6px 14px; border-radius: var(--radius-pill);
+  background: var(--surface-3); font-size: 0.82rem; font-weight: 600;
+}
+.virtue-week { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+.virtue-stats { grid-template-columns: repeat(3, 1fr); }
+.virtue-maxim {
+  margin: 0; padding: 12px 14px; border-left: 3px solid var(--virtue);
+  background: color-mix(in srgb, var(--virtue) 7%, transparent); border-radius: 0 var(--radius) var(--radius) 0;
+}
+.virtue-maxim p { font-size: 0.92rem; font-style: italic; line-height: 1.45; }
+.virtue-maxim cite { display: block; margin-top: 6px; font-size: 0.75rem; font-style: normal; color: var(--ink-2); }
+.virtue-rule { display: flex; flex-direction: column; gap: 6px; }
+.virtue-rule p { font-size: 0.82rem; line-height: 1.5; color: var(--ink-2); }
+.virtue-grades { list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 8px 0 6px; }
+.virtue-step {
+  display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px;
+  border-radius: var(--radius); background: var(--surface-3); text-align: center; opacity: 0.62;
+}
+.virtue-step strong { font-size: 0.8rem; font-weight: 700; }
+.virtue-step span { font-size: 0.66rem; color: var(--ink-2); }
+.virtue-step.is-reached { opacity: 1; }
+.virtue-step.is-now { opacity: 1; background: var(--virtue-soft); box-shadow: inset 0 0 0 1.5px var(--virtue); }
+.viz-goal { stroke: var(--ink-3); stroke-width: 1.2; stroke-dasharray: 4 4; }
 
 /* Level and achievements (2.19): a number, a thin meter, and the badges a
    tap away. The meter's track is a lighter step of its own fill. */
@@ -1022,6 +1247,8 @@ td { font-variant-numeric: tabular-nums; }
   padding: 16px; border-bottom: 1px solid var(--border);
 }
 .sheet-head h2 { font-size: 1.05rem; }
+/* A sheet without a form scrolls as a whole: its head stays put (2.20). */
+dialog.sheet > .sheet-head { position: sticky; top: 0; z-index: 2; background: var(--surface); }
 .sheet-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
 /* Pico beside "Nuevo hábito" (2.16), standing on the header's lower edge. */
 .sheet-pico { width: 2.6rem; height: 2.6rem; flex: none; margin: -8px 0 -10px -4px; }
@@ -1503,7 +1730,6 @@ td { font-variant-numeric: tabular-nums; }
   font-size: 0.82rem; line-height: 1.4;
 }
 .setting-warning .btn { flex: none; }
-.credits { line-height: 1.5; }
 
 /* ── Weight and BMI ── */
 .body-card { display: flex; flex-direction: column; gap: 10px; }

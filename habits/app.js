@@ -67,10 +67,21 @@
   function weekKey(date) {
     return keyOf(weekStartOf(date));
   }
+  /* The same list is asked for many times over (2.20: excellence and the
+     levels walk years of days), so each is made once and kept, frozen so
+     no caller can change it under another. */
+  const dayLists = new Map();
   function lastNDays(n, endKey) {
-    const end = parseKey(endKey || todayKey());
-    const out = [];
-    for (let i = n - 1; i >= 0; i--) out.push(keyOf(addDays(end, -i)));
+    const end = endKey || todayKey();
+    const id = end + '|' + n;
+    let out = dayLists.get(id);
+    if (out) return out;
+    if (dayLists.size > 48) dayLists.clear();
+    const last = parseKey(end);
+    out = [];
+    for (let i = n - 1; i >= 0; i--) out.push(keyOf(addDays(last, -i)));
+    Object.freeze(out);
+    dayLists.set(id, out);
     return out;
   }
   const sentenceCase = (str) => (str ? str.charAt(0).toUpperCase() + str.slice(1) : str);
@@ -125,6 +136,10 @@
     tourPromoDismissed: false,
     /* Whether Progress shows its extra charts (2.19). */
     moreCharts: false,
+    /* The habit of excellence (2.20): shown in Today, and whether its sheet
+       has been opened yet (until then it wears a "Nuevo"). */
+    showExcellence: true,
+    excellenceSeen: false,
     /* The level and the achievements already announced (2.19); null until
        the app first looks, so whoever had it before starts quietly. */
     achievements: null,
@@ -190,11 +205,28 @@
     if (typeof state.lastBackup !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(state.lastBackup)) state.lastBackup = null;
     state.tourPromoDismissed = state.tourPromoDismissed === true;
     state.moreCharts = state.moreCharts === true;
+    state.showExcellence = state.showExcellence !== false;
+    state.excellenceSeen = state.excellenceSeen === true;
     const known = state.achievements;
     if (!(known && Array.isArray(known.seen) && Number.isInteger(known.level))) state.achievements = null;
-    else known.seen = known.seen.filter((id) => typeof id === 'string');
+    else {
+      known.seen = known.seen.filter((id) => typeof id === 'string');
+      if (known.formula !== undefined && !Number.isInteger(known.formula)) delete known.formula;
+    }
+    // El Crack and Abuela Rosa were retired in 2.20. Whoever had one of them
+    // gets plain reminders, the invitation to pick someone again, and a chat
+    // without their messages (which could no longer be opened anyway).
+    const retired = (id) => RETIRED_CAST.includes(id);
+    if (retired(state.character)) {
+      state.character = null;
+      state.castPromoDismissed = false;
+      state.chatUnread = 0;
+    }
+    if (state.chat.some((m) => m && retired(m.char))) state.chat = state.chat.filter((m) => !(m && retired(m.char)));
     if (state.character && !castById(state.character)) state.character = null;
     state.habits.forEach((habit) => {
+      // One of GlowApp's own emojis this version does not know (2.20).
+      if (typeof habit.emoji === 'string' && habit.emoji.indexOf('glow:') === 0 && !GlowEmoji.glyphOf(habit.emoji)) habit.emoji = '✅';
       // One reminder time per habit until 2.8; now a short list of them.
       if (!Array.isArray(habit.reminders)) habit.reminders = habit.reminder ? [habit.reminder] : [];
       delete habit.reminder;
@@ -259,18 +291,30 @@
   }
 
   let saveTimer = null;
+  let dataRev = 0;                   // bumped by every change, for what is worked out from the data
+  function writeState() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (err) {
+      console.warn('Could not save', err);
+      toast(t('saveFailed'));
+    }
+  }
   function save() {
+    dataRev++;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      } catch (err) {
-        console.warn('Could not save', err);
-        toast(t('saveFailed'));
-      }
+      saveTimer = null;
+      writeState();
       syncToShell();
       noticeProgressSoon();
     }, 120);
+  }
+  // Leaving the page (2.20): a change still waiting for its 120 ms is written
+  // at once, so a slider let go just before closing the app is not lost. The
+  // timer still runs for the rest, if the page lives on.
+  function writePendingSave() {
+    if (saveTimer) writeState();
   }
 
   function uid() {
@@ -493,7 +537,11 @@
     const chip = $('#dayStrip .day-chip[data-date="' + key + '"]');
     if (!chip) return;
     const dot = $('.ddot', chip);
-    if (dot) dot.classList.toggle('filled', dayChipDot(key));
+    if (!dot) return;
+    dot.classList.toggle('filled', dayChipDot(key));
+    // A day of excellence wears a golden dot (2.20).
+    const day = virtue && state.showExcellence ? virtue.byKey.get(key) : null;
+    dot.classList.toggle('virtue', !!(day && day.excellent));
   }
 
   function renderDayStrip() {
@@ -512,8 +560,9 @@
           0, selected.offsetLeft - (strip.clientWidth - selected.clientWidth) / 2);
       }
     } else {
-      // A tap can only have changed the day being looked at.
-      refreshDayDot(selectedDate);
+      // A tap changes the day being looked at, and — since excellence weighs
+      // a week (2.20) — the golden dots of the days after it too.
+      lastNDays(DAY_STRIP_DAYS).forEach(refreshDayDot);
     }
 
     $$('#dayStrip .day-chip').forEach((chip) => {
@@ -539,7 +588,41 @@
     $('#statWeek').textContent = rangeStats(lastNDays(7)).completion + '%';
   }
 
-  const energyLabel = (v) => t(v <= 2 ? 'energyLow' : v >= 4 ? 'energyHigh' : 'energyMid');
+  /* Energy is a percentage since 2.20 (energyPct, 0 to 100, a point at a
+     time). Until then it was a step from 1 to 5 (energy), which is still kept
+     in step, so a record read by an older version means the same: a day
+     saved before reads as 0, 25, 50, 75 or 100 % until it is moved. */
+  const ENERGY_DEFAULT = 50;
+  function energyPctOf(entry) {
+    if (!entry) return ENERGY_DEFAULT;
+    if (Number.isFinite(entry.energyPct)) return Math.max(0, Math.min(100, Math.round(entry.energyPct)));
+    if (Number.isFinite(entry.energy)) return (Math.max(1, Math.min(5, Math.round(entry.energy))) - 1) * 25;
+    return ENERGY_DEFAULT;
+  }
+  const energyLabel = (pct) => t(pct < 34 ? 'energyLow' : pct >= 67 ? 'energyHigh' : 'energyMid');
+  const energyText = (pct) => pct + '% · ' + energyLabel(pct);
+
+  // The slider, its readout and the fill of its track, all from one value.
+  function showEnergy(pct) {
+    const range = $('#moodEnergy');
+    range.value = String(pct);
+    range.style.setProperty('--pct', pct + '%');
+    range.setAttribute('aria-valuetext', energyText(pct));
+    $('#moodEnergyOut').textContent = energyText(pct);
+    $('#energyDown').disabled = pct <= 0;
+    $('#energyUp').disabled = pct >= 100;
+  }
+
+  function setEnergy(pct) {
+    const entry = state.moods[selectedDate];
+    if (!entry) return;
+    const value = Math.max(0, Math.min(100, Math.round(Number(pct) || 0)));
+    showEnergy(value);
+    if (entry.energyPct === value) return;
+    entry.energyPct = value;
+    entry.energy = 1 + Math.round(value / 25);
+    save();
+  }
 
   function renderMood() {
     const scale = $('#moodScale');
@@ -571,8 +654,7 @@
     extra.hidden = !entry;
     $('#moodHint').textContent = entry ? t('moodSaved') : '';
     if (entry) {
-      $('#moodEnergy').value = entry.energy || 3;
-      $('#moodEnergyOut').textContent = energyLabel(entry.energy || 3);
+      showEnergy(energyPctOf(entry));
       $('#moodNote').value = entry.note || '';
     }
   }
@@ -958,7 +1040,8 @@
     }
 
     const stats = dayStats(selectedDate);
-    if (stats.due > 0 && stats.done === stats.due) {
+    const dayDone = stats.due > 0 && stats.done === stats.due;
+    if (dayDone) {
       buzz([0, 18, 60, 28]);
       Sounds.play('celebrate');
       const ring = $('.summary-ring');
@@ -967,6 +1050,13 @@
         setTimeout(() => ring.classList.remove('celebrate'), 800);
         sparkBurst(ring, 14, 82, 56);
       }
+    }
+    // The tick that made today excellent gets the cheer of excellence
+    // instead of the wink or the day's cheer (2.20).
+    if (virtueJustLit && Date.now() - virtueJustLit < 400) {
+      virtueJustLit = 0;
+      celebrateVirtue(dayDone);
+    } else if (dayDone) {
       picoCheer();
     } else if (row) {
       picoPeek(row);
@@ -1096,7 +1186,9 @@
      in view, and points at it (look at this) or considers it, wing at his chin. */
   function picoAtCharts() {
     if (view !== 'progress') return;
-    const chart = $$('#view-progress .chart-card').find((fig) => {
+    // The level card counts too (2.20): it carries excellence, and on a short
+    // screen it can be all that is in view.
+    const chart = $$('#view-progress .level-card, #view-progress .chart-card').find((fig) => {
       const r = fig.getBoundingClientRect();
       return !fig.hidden && r.height > 0 && r.top > 60 && r.top < window.innerHeight - 220;
     });
@@ -1145,7 +1237,7 @@
      Matching the sound to the habit is the whole charm of this. */
   const WATERY = /agua|water|hidrat|drink|bebe|vaso|glass/i;
   const soundForIncrement = (habit) =>
-    WATERY.test(habitName(habit) + ' ' + (habit.unit || '')) || habit.emoji === '💧' ? 'drop' : 'tick';
+    WATERY.test(habitName(habit) + ' ' + (habit.unit || '')) || GlowEmoji.text(habit.emoji) === '💧' ? 'drop' : 'tick';
 
   /* ── Press and hold on + / − ──────────────────────────────────────────
      A tap still moves one unit. Holding starts slow and speeds up, so ten
@@ -1346,7 +1438,7 @@
       const badge = document.createElement('span');
       badge.className = 'habit-badge';
       badge.setAttribute('aria-hidden', 'true');
-      badge.textContent = habit.emoji || '✅';
+      GlowEmoji.draw(badge, habit.emoji);
 
       /* With a description the body of the row becomes a button that expands
          it. A real button, not a click handler on the <li>, so it is reachable
@@ -1422,6 +1514,7 @@
   }
 
   function renderToday() {
+    virtue = excellenceOf();           // the strip's golden dots and the row read it
     renderTourPromo();
     renderCastPromo();
     renderDayStrip();
@@ -1429,6 +1522,7 @@
     renderMood();
     renderBody();
     renderHabitList();
+    renderExcellence();
   }
 
   /* ── Habits view ───────────────────────────────────────────────────── */
@@ -1537,7 +1631,7 @@
     const badge = document.createElement('span');
     badge.className = 'habit-badge';
     badge.setAttribute('aria-hidden', 'true');
-    badge.textContent = habit.emoji || '✅';
+    GlowEmoji.draw(badge, habit.emoji);
 
     const open = button('habit-main', null, { 'aria-label': t('editHabit') + ': ' + habitName(habit) });
     open.style.textAlign = 'left';
@@ -1681,6 +1775,7 @@
     const list = $('#manageList');
     list.innerHTML = '';
     active.forEach((h) => list.appendChild(manageRow(h, false)));
+    $('#btnVirtueNote').hidden = !active.length || !state.showExcellence;
     $('#habitsEmpty').hidden = active.length > 0;
     perchPico('#habitsEmptyPico', !active.length);
     if (active.length === 0) renderPresets();
@@ -1712,17 +1807,18 @@
     };
   }
 
+  /* The icon (2.20): every standard emoji the phone draws, searchable, with
+     skin tones, and GlowApp's own (emoji-picker.js); the 32 of before are its
+     suggestions. Built once, set for each habit opened. */
+  let emojiPicker = null;
   function buildEmojiGrid() {
-    const grid = $('#emojiGrid');
-    grid.innerHTML = '';
-    EMOJIS.forEach((emoji) => {
-      const btn = button('emoji-btn', emoji, { role: 'radio', 'aria-checked': String(draft.emoji === emoji), 'aria-label': emoji });
-      btn.addEventListener('click', () => {
-        draft.emoji = emoji;
-        buildEmojiGrid();
+    if (!emojiPicker) {
+      emojiPicker = GlowEmoji.mount($('#emojiPicker'), {
+        value: draft.emoji, suggested: EMOJIS, t: t, lang: () => I18N.getLang(),
+        onPick: (emoji) => { draft.emoji = emoji; },
       });
-      grid.appendChild(btn);
-    });
+    }
+    emojiPicker.set(draft.emoji);
   }
 
   function buildColorRow() {
@@ -2133,12 +2229,19 @@
       return { label: dateLabel, value: score, tip: tip };
     });
 
+    // A month or a quarter of days zigzags: there the line is their rolling
+    // average (5 days over a month, 7 over a quarter) and each day a faint
+    // dot under it (2.20).
+    const span = days.length >= 90 ? 7 : days.length >= 30 ? 5 : 0;
     Charts.line(host, {
       points: points,
       min: 1,
       max: 5,
       yTicks: [1, 2, 3, 4, 5],
       color: 'var(--s1)',
+      smooth: span || undefined,
+      meanLabel: (v) => t('chartAvgFmt', span) + ': ' + v.toFixed(1),
+      legend: [{ mark: 'dot', name: t('chartDaily') }, { mark: 'line', name: t('chartAvgFmt', span) }],
       ariaLabel: t('chartMoodTitle'),
     });
   }
@@ -2162,7 +2265,7 @@
       max: 100,
       ariaLabel: t('chartRatesTitle'),
       items: items.map((row) => ({
-        label: row.habit.emoji + ' ' + habitName(row.habit),
+        label: GlowEmoji.text(row.habit.emoji) + ' ' + habitName(row.habit),
         value: row.rate.pct,
         valueLabel: row.rate.pct + '%',
         color: colorVar(row.habit),
@@ -2180,26 +2283,44 @@
     all.value = 'all';
     all.textContent = t('allHabits');
     select.appendChild(all);
+    // Excellence first after "all" (2.20): its days, lit or not.
+    if (activeHabits().length) {
+      const opt = document.createElement('option');
+      opt.value = VIRTUE_ID;
+      opt.textContent = '🌿 ' + t('virtueName');
+      select.appendChild(opt);
+    }
     activeHabits().forEach((habit) => {
       const opt = document.createElement('option');
       opt.value = habit.id;
-      opt.textContent = habit.emoji + ' ' + habitName(habit);
+      opt.textContent = GlowEmoji.text(habit.emoji) + ' ' + habitName(habit);
       select.appendChild(opt);
     });
-    heatHabitId = habitById(previous) && !habitById(previous).archived ? previous : 'all';
+    heatHabitId = previous === VIRTUE_ID && activeHabits().length ? previous
+      : habitById(previous) && !habitById(previous).archived ? previous : 'all';
     select.value = heatHabitId;
   }
 
+  const VIRTUE_ID = '__excellence';
+
   function renderHeatmap(days) {
     const host = $('#chartHeat');
-    const habit = heatHabitId === 'all' ? null : habitById(heatHabitId);
+    const ex = heatHabitId === VIRTUE_ID ? excellenceOf() : null;
+    const habit = heatHabitId === 'all' || ex ? null : habitById(heatHabitId);
 
     const cells = days.map((key) => {
       const dateLabel = fmtDate(key, { weekday: 'short', day: 'numeric', month: 'short' });
       let level = 0;
       let scheduled = true;
       let detail;
-      if (habit) {
+      if (ex) {
+        // Excellence: a lit day at the top of the ramp, a day that fell
+        // short at its foot, a day with nothing due (or still forming) blank.
+        const d = ex.byKey.get(key);
+        scheduled = !!(d && d.formed && d.due > 0 && !(key === todayKey() && !d.excellent));
+        level = d && d.excellent ? 5 : 1;
+        detail = d ? virtueStatus(ex, key).text : t('virtueBefore');
+      } else if (habit) {
         scheduled = isScheduled(habit, key);
         const ratio = valueOf(habit, key) / targetOf(habit);
         level = levelFor(ratio);
@@ -2246,7 +2367,7 @@
       });
       if (doneN < 2 || missN < 2) return;
       groups.push({
-        label: habit.emoji + ' ' + habitName(habit),
+        label: GlowEmoji.text(habit.emoji) + ' ' + habitName(habit),
         values: [
           { value: doneSum / doneN, valueLabel: (doneSum / doneN).toFixed(1), tip: '<b>' + t('legendDone') + '</b><br>' + doneN + ' ' + (I18N.getLang() === 'es' ? 'días' : 'days') },
           { value: missSum / missN, valueLabel: (missSum / missN).toFixed(1), tip: '<b>' + t('legendMissed') + '</b><br>' + missN + ' ' + (I18N.getLang() === 'es' ? 'días' : 'days') },
@@ -2421,11 +2542,30 @@
     return { best: best, of: of, unit: 'days' };
   }
 
+  // Excellence's own longest run in the range, as bestStreakIn() counts a habit's.
+  function virtueStreakIn(days) {
+    const ex = excellenceOf();
+    if (!ex) return null;
+    const today = todayKey();
+    let run = 0;
+    let best = 0;
+    let of = 0;
+    days.forEach((key) => {
+      const d = ex.byKey.get(key);
+      if (!d || !d.formed || d.due === 0) return;
+      if (d.excellent) { run++; of++; best = Math.max(best, run); }
+      else if (key !== today) { run = 0; of++; }
+    });
+    return of ? { best: best, of: of, unit: 'days' } : null;
+  }
+
   function renderStreakChart(days) {
     const rows = activeHabits()
       .map((habit) => ({ habit: habit, streak: bestStreakIn(habit, days) }))
       .filter((row) => row.streak.of > 0)
       .sort((a, b) => b.streak.best / b.streak.of - a.streak.best / a.streak.of || b.streak.best - a.streak.best);
+    const virtueRun = state.showExcellence ? virtueStreakIn(days) : null;
+    if (virtueRun) rows.unshift({ habit: { emoji: '🌿', virtue: true }, streak: virtueRun });
     $('#chartStreaksEmpty').hidden = rows.length > 0;
     const host = $('#chartStreaks');
     host.hidden = rows.length === 0;
@@ -2436,15 +2576,304 @@
       ariaLabel: t('chartStreaksTitle'),
       items: rows.map((row) => {
         const label = streakLabel({ count: row.streak.best, unit: row.streak.unit });
+        const name = row.habit.virtue ? t('virtueName') : habitName(row.habit);
         return {
-          label: row.habit.emoji + ' ' + habitName(row.habit),
+          label: GlowEmoji.text(row.habit.emoji) + ' ' + name,
           value: row.streak.best / row.streak.of,
           valueLabel: label,
-          color: colorVar(row.habit),
-          tip: '<b>' + escapeHtml(habitName(row.habit)) + '</b><br>' + label,
+          color: row.habit.virtue ? 'var(--virtue)' : colorVar(row.habit),
+          tip: '<b>' + escapeHtml(name) + '</b><br>' + label,
         };
       }),
     });
+  }
+
+  /* ── Excellence (2.20) ────────────────────────────────────────────────
+     The one habit nobody ticks. Aristotle held that we become just by
+     doing just acts and brave by doing brave ones: excellence is not an act
+     but what repeated acts make of us — "not an act, but a habit", as Will
+     Durant summed him up. So here it is never marked; it forms.
+
+     A day is excellent when at least 80 % of that day's habits were done
+     and the seven days up to it were as constant (80 % of all that was due
+     in them). Not perfection, the excess, nor neglect, the deficiency: the
+     steady mean between them. The first can only come once there has been
+     a week to practise in — one swallow does not make a summer, nor does
+     one day. Days with nothing due neither count nor break its streak, and
+     an unfinished today does not either. A weekly quota counts on the days
+     it was done, and as missing only on the days the week had no slack left
+     to meet it, so a flexible habit never drags a day down for nothing.
+
+     Its streak sets its grade, in light, as the app's name asks: a spark
+     from the first day, a flame from 7, light from 21, and radiance from 66
+     (the median time a new habit took to become automatic in Lally and
+     colleagues' 2010 study). Everything is worked out from what is
+     recorded; nothing about it is stored but whether it is shown. */
+  const VIRTUE = { day: 0.8, week: 0.8, window: 7 };
+  const GRADES = [
+    { id: 'spark', from: 1 },
+    { id: 'flame', from: 7 },
+    { id: 'light', from: 21 },
+    { id: 'radiance', from: 66 },
+  ];
+  const gradeOf = (streak) => GRADES.slice().reverse().find((g) => streak >= g.from) || null;
+  const gradeKey = (grade) => 'virtue' + grade.id.charAt(0).toUpperCase() + grade.id.slice(1);
+  const atLeast = (ratio, goal) => ratio !== null && ratio >= goal - 1e-9;
+  let virtue = null;                   // the last reckoning, for the strip and the row
+  let virtueLit = null;                // whether today was excellent at the last drawing
+  let virtueJustLit = 0;               // when today became excellent (a tick's own render)
+
+  // Worked out once for as long as nothing changes (every change goes
+  // through save(), which bumps dataRev), whoever asks: Today, the levels,
+  // Progress.
+  let virtueMemo = null;
+  function excellenceOf() {
+    const today = todayKey();
+    const m = virtueMemo;
+    if (m && m.rev === dataRev && m.today === today && m.ws === state.weekStart && m.habits === state.habits && m.entries === state.entries) return m.value;
+    const value = reckonExcellence(today);
+    virtueMemo = { rev: dataRev, today: today, ws: state.weekStart, habits: state.habits, entries: state.entries, value: value };
+    return value;
+  }
+
+  function reckonExcellence(today) {
+    const habits = activeHabits();
+    if (!habits.length) return null;
+    let start = habits.map((h) => h.createdAt || today).sort()[0];
+    if (start > today) start = today;
+    const oldest = keyOf(addDays(parseKey(today), -(HISTORY_DAYS - 1)));
+    const from = start < oldest ? oldest : start;
+    // Each day's due and done by the rules above, oldest first. The weekday
+    // is counted along rather than read from a date for every day.
+    const plans = habits.map((h) => {
+      const s = h.schedule || { kind: 'daily' };
+      return { habit: h, kind: s.kind, days: s.days || [], quota: Math.max(1, Math.min(7, s.times || 3)),
+        log: state.entries[h.id] || {}, target: targetOf(h), since: h.createdAt || '' };
+    });
+    const quotaDone = new Map();
+    const firstDow = parseKey(from).getDay();
+    const days = lastNDays(dayDiff(today, from) + 1).map((key, i) => {
+      const dow = (firstDow + i) % 7;
+      const idx = (dow - state.weekStart + 7) % 7;                    // day of the week, from its start
+      if (idx === 0) quotaDone.clear();
+      const left = 7 - idx;                                           // this day to the week's end
+      let due = 0;
+      let done = 0;
+      for (const p of plans) {
+        if (key < p.since) continue;
+        const complete = (p.log[key] || 0) >= p.target;
+        if (p.kind === 'times') {
+          const before = quotaDone.get(p.habit.id) || 0;
+          if (complete) { due++; done++; quotaDone.set(p.habit.id, before + 1); }
+          else if (p.quota - before > 0 && p.quota - before >= left) due++;
+          continue;
+        }
+        if (p.kind === 'days' && !p.days.includes(dow)) continue;
+        due++;
+        if (complete) done++;
+      }
+      return { key: key, due: due, done: done };
+    });
+    // The rolling week, and each day's verdict.
+    let sumDue = 0;
+    let sumDone = 0;
+    days.forEach((d, i) => {
+      sumDue += d.due;
+      sumDone += d.done;
+      if (i >= VIRTUE.window) {
+        sumDue -= days[i - VIRTUE.window].due;
+        sumDone -= days[i - VIRTUE.window].done;
+      }
+      d.weekDue = sumDue;
+      d.weekDone = sumDone;
+      d.week = sumDue ? sumDone / sumDue : null;
+      d.ratio = d.due ? d.done / d.due : null;
+      d.formed = dayDiff(d.key, start) >= VIRTUE.window - 1;
+      d.excellent = d.formed && d.due > 0 && atLeast(d.ratio, VIRTUE.day) && atLeast(d.week, VIRTUE.week);
+    });
+    let total = 0;
+    let run = 0;
+    let best = 0;
+    days.forEach((d) => {
+      if (d.excellent) { total++; run++; best = Math.max(best, run); }
+      else if (d.due > 0 && d.key !== today) run = 0;   // a day that fell short
+    });
+    let streak = 0;
+    for (let i = days.length - 1; i >= 0; i--) {
+      const d = days[i];
+      if (d.excellent) streak++;
+      else if (d.due === 0 || d.key === today) continue;
+      else break;
+    }
+    const byKey = new Map(days.map((d) => [d.key, d]));
+    const now = days[days.length - 1];
+    // What today still needs: enough of its own habits, and enough for the week.
+    const remaining = now.due - now.done;
+    const needDay = Math.max(0, Math.ceil(VIRTUE.day * now.due - 1e-9) - now.done);
+    const needWeek = Math.max(0, Math.ceil(VIRTUE.week * now.weekDue - 1e-9) - now.weekDone);
+    return {
+      start: start, days: days, byKey: byKey, total: total, best: best, streak: streak,
+      grade: gradeOf(streak), today: now, need: Math.max(needDay, needWeek), remaining: remaining,
+      practised: dayDiff(today, start) + 1,
+    };
+  }
+
+  // What to say about one day: today live, or a past day as it ended.
+  function virtueStatus(v, key) {
+    const d = v.byKey.get(key);
+    const isToday = key === todayKey();
+    if (!d) return { kind: 'before', text: t('virtueBefore') };
+    if (isToday) {
+      if (!d.formed) return { kind: 'forming', text: t('virtueForming', { day: v.practised, of: VIRTUE.window }) };
+      if (d.due === 0) return { kind: 'rest', text: t('virtueRest') };
+      if (d.excellent) return { kind: 'lit', text: v.streak > 1 ? t('virtueLitStreak', v.streak) : t('virtueLit') };
+      if (v.need <= v.remaining) return { kind: 'near', text: t('virtueNeed', v.need) };
+      return { kind: 'week', text: t('virtueWeekLow', Math.round(d.week * 100)) };
+    }
+    if (!d.formed) return { kind: 'forming', text: t('virtueWasForming') };
+    if (d.due === 0) return { kind: 'rest', text: t('virtueWasRest') };
+    if (d.excellent) return { kind: 'lit', text: t('virtueWasLit') };
+    return { kind: 'short', text: t('virtueWasShort', Math.round(d.ratio * 100)) };
+  }
+
+  // The medal at the end of the row: a ring filling towards the day's goal,
+  // or, once reached, a lit laurel.
+  function virtueMedal(v, key, kind) {
+    const d = v.byKey.get(key);
+    const r = 15;
+    const c = 2 * Math.PI * r;
+    let fill = 0;
+    if (kind === 'forming') fill = Math.min(1, v.practised / VIRTUE.window);
+    else if (d && d.due > 0 && kind !== 'lit') {
+      const goal = Math.max(1, Math.ceil(VIRTUE.day * d.due - 1e-9));
+      fill = Math.min(1, d.done / goal);
+    }
+    if (kind === 'lit') {
+      return '<svg viewBox="0 0 40 40" width="40" height="40"><circle class="vm-lit" cx="20" cy="20" r="18"/>' +
+        '<use href="#i-laurel" x="8" y="8" width="24" height="24" class="vm-laurel"/></svg>';
+    }
+    return '<svg viewBox="0 0 40 40" width="40" height="40"><circle class="vm-track" cx="20" cy="20" r="' + r + '"/>' +
+      '<circle class="vm-fill" cx="20" cy="20" r="' + r + '" stroke-dasharray="' + c.toFixed(1) + '" stroke-dashoffset="' +
+      (c * (1 - fill)).toFixed(1) + '" transform="rotate(-90 20 20)"/></svg>';
+  }
+
+  function renderExcellence() {
+    const row = $('#excellenceRow');
+    const v = virtue;
+    const show = !!v && state.showExcellence;
+    row.hidden = !show;
+    document.body.classList.toggle('is-excellent', !!(show && v.today.excellent));
+    const litNow = !!(v && v.today.excellent);
+    if (show && virtueLit === false && litNow) virtueJustLit = Date.now();
+    virtueLit = v ? litNow : null;
+    if (!show) return;
+    const status = virtueStatus(v, selectedDate);
+    row.className = 'excellence-row is-' + status.kind;
+    $('#excellenceName').textContent = t('virtueName');
+    $('#excellenceNew').hidden = state.excellenceSeen;
+    $('#excellenceNew').textContent = t('virtueNew');
+    $('#excellenceStatus').textContent = status.text;
+    $('#excellenceMedal').innerHTML = virtueMedal(v, selectedDate, status.kind);
+  }
+
+  /* The tick that made today excellent: the row lights up and throws
+     sparks, the app's mark glows, and Pico cheers with a line of its own
+     and his small fanfare of excellence. */
+  function celebrateVirtue(dayDone) {
+    const row = $('#excellenceRow');
+    if (!dayDone) buzz([0, 16, 70, 24, 70, 30]);
+    if (row && !row.hidden && !reducedMotion.matches) {
+      row.classList.remove('just-lit');
+      void row.offsetWidth;
+      row.classList.add('just-lit');
+      sparkBurst($('.excellence-emblem', row), 12, 60, 22);
+    }
+    picoCheer('virtueCheers', 'excellence');
+  }
+
+  function openExcellence() {
+    const v = excellenceOf();
+    if (!v) return;
+    if (!state.excellenceSeen) {
+      state.excellenceSeen = true;
+      save();
+      if (view === 'today') renderExcellence();
+    }
+    const today = todayKey();
+    const status = virtueStatus(v, today);
+    const grade = v.grade;
+    $('#virtueGrade').textContent = grade ? t(gradeKey(grade)) : t('virtueNoGrade');
+    $('#virtueStreak').textContent = v.streak ? t('virtueStreakFmt', v.streak) : t('virtueNoStreak');
+    $('#virtueToday').textContent = status.text;
+    $('#excellenceDialog').dataset.grade = grade ? grade.id : 'none';
+    $('#virtueWeekPct').textContent = v.today.week === null ? t('noneYet') : Math.round(v.today.week * 100) + '%';
+    $('#virtueBest').textContent = streakLabel({ count: v.best, unit: 'days' });
+    $('#virtueTotal').textContent = String(v.total);
+    // The ladder of grades, the current one marked.
+    const ladder = $('#virtueGrades');
+    ladder.innerHTML = '';
+    GRADES.forEach((g) => {
+      const item = document.createElement('li');
+      item.className = 'virtue-step' + (grade && grade.id === g.id ? ' is-now' : '') + (v.best >= g.from ? ' is-reached' : '');
+      item.dataset.grade = g.id;
+      const nameEl = document.createElement('strong');
+      nameEl.textContent = t(gradeKey(g));
+      const from = document.createElement('span');
+      from.textContent = t('virtueFromFmt', g.from);
+      item.append(nameEl, from);
+      if (grade && grade.id === g.id) item.setAttribute('aria-current', 'step');
+      ladder.appendChild(item);
+    });
+    // A maxim for the day.
+    const maxims = t('virtueMaxims');
+    const pick = maxims[dayDiff(today, '2026-01-01') % maxims.length];
+    $('#virtueQuote').textContent = pick.text;
+    $('#virtueSource').textContent = pick.source;
+    $('#excellenceDialog').showModal();
+    renderVirtueWeek(v);
+  }
+
+  // The last seven days, each as a column of what was done, against the 80 %
+  // line; a day of excellence in the excellence colour.
+  function renderVirtueWeek(v) {
+    const keys = lastNDays(VIRTUE.window);
+    const items = keys.map((key) => {
+      const d = v.byKey.get(key);
+      const pct = d && d.due ? Math.round(d.ratio * 100) : null;
+      const label = sentenceCase(parseKey(key).toLocaleDateString(I18N.locale(), { weekday: 'short' }).replace(/\.$/, ''));
+      const status = d ? virtueStatus(v, key).text : t('virtueBefore');
+      return {
+        label: label,
+        value: pct,
+        valueLabel: pct === null ? '' : pct + '%',
+        color: d && d.excellent ? 'var(--virtue)' : 'var(--virtue-soft)',
+        tip: '<b>' + escapeHtml(sentenceCase(fmtDate(key, { weekday: 'long', day: 'numeric', month: 'short' }))) + '</b><br>' + escapeHtml(status),
+      };
+    });
+    Charts.columns($('#virtueChart'), {
+      items: items, max: 100, height: 150, ref: { value: VIRTUE.day * 100, label: '80%' },
+      ariaLabel: t('virtueWeekTitle'),
+    });
+  }
+
+  // Its line on the level card, in Progress.
+  function renderVirtueLine() {
+    const line = $('#virtueLine');
+    const v = excellenceOf();
+    line.hidden = !v;
+    if (!v) return;
+    const grade = v.grade;
+    $('#virtueLineText').textContent = t('virtueName') + ' · ' + (grade
+      ? t(gradeKey(grade)) + ' · ' + t('virtueStreakShortFmt', v.streak)
+      : virtueStatus(v, todayKey()).text);
+    line.dataset.grade = grade ? grade.id : 'none';
+  }
+
+  function applyExcellenceSwitch() {
+    const box = $('#excellenceToggle');
+    if (box) box.checked = state.showExcellence;
+    const label = $('#excellenceState');
+    if (label) label.textContent = t(state.showExcellence ? 'virtueShown' : 'virtueHidden');
   }
 
   /* ── Levels and achievements (2.19) ───────────────────────────────────
@@ -2457,7 +2886,10 @@
      announced), so each is announced once; and whoever had the
      app before 2.19 starts with what they had earned, quietly, instead of a
      flood of them. An achievement once earned stays earned. */
-  const POINTS = { done: 10, perfect: 20, mood: 5 };
+  const POINTS = { done: 10, perfect: 20, mood: 5, virtue: 25 };
+  // The rules the stored achievements were announced under: 2 since 2.20
+  // counted excellence (see noticeProgress).
+  const ACHIEVEMENT_FORMULA = 2;
   const ACHIEVEMENTS = [
     { id: 'first', icon: '🌱', goal: 1, of: (p) => p.done },
     { id: 'perfectDay', icon: '✨', goal: 1, of: (p) => p.perfect },
@@ -2471,6 +2903,10 @@
     { id: 'mood7', icon: '😊', goal: 7, of: (p) => p.moods },
     { id: 'habits5', icon: '🧩', goal: 5, of: (p) => p.habits },
     { id: 'backup', icon: '💾', goal: 1, of: (p) => p.backups },
+    { id: 'virtue1', icon: '🌿', goal: 1, of: (p) => p.virtueDays },
+    { id: 'virtue7', icon: '🕯️', goal: 7, of: (p) => p.virtueBest },
+    { id: 'virtue21', icon: '💡', goal: 21, of: (p) => p.virtueBest },
+    { id: 'virtue66', icon: '🌞', goal: 66, of: (p) => p.virtueBest },
   ];
   const HISTORY_DAYS = 1100;           // three years back is plenty for a streak
 
@@ -2526,10 +2962,13 @@
       });
     }
     const moods = Object.keys(state.moods).filter((key) => key <= today && state.moods[key] && state.moods[key].score).length;
-    const points = done * POINTS.done + perfect * POINTS.perfect + moods * POINTS.mood;
+    const ex = excellenceOf();
+    const virtueDays = ex ? ex.total : 0;
+    const points = done * POINTS.done + perfect * POINTS.perfect + moods * POINTS.mood + virtueDays * POINTS.virtue;
     return {
       done: done, perfect: perfect, perfectRun: perfectRun, streak: streak, activeDays: active.size,
       moods: moods, habits: activeHabits().length, backups: state.lastBackup ? 1 : 0,
+      virtueDays: virtueDays, virtueBest: ex ? ex.best : 0,
       points: points, level: levelOf(points),
     };
   }
@@ -2551,7 +2990,17 @@
     const now = ACHIEVEMENTS.filter((a) => a.of(p) >= a.goal).map((a) => a.id);
     const known = state.achievements;
     if (!known) {                       // the first look: what is there, quietly
-      state.achievements = { seen: now, level: p.level.level };
+      state.achievements = { seen: now, level: p.level.level, formula: ACHIEVEMENT_FORMULA };
+      save();
+      return;
+    }
+    if (known.formula !== ACHIEVEMENT_FORMULA) {
+      // 2.20 counts excellence in the points and has four achievements for
+      // it: what a record already had by those rules is taken in quietly,
+      // as 2.19 took in the rest.
+      known.seen = known.seen.concat(now.filter((id) => !known.seen.includes(id)));
+      known.level = Math.max(known.level, p.level.level);
+      known.formula = ACHIEVEMENT_FORMULA;
       save();
       return;
     }
@@ -2609,6 +3058,7 @@
     $('#levelBar').setAttribute('aria-valuenow', String(pct));
     $('#levelNext').textContent = t('levelNextFmt', { left: L.next - L.points, level: L.level + 1 });
     $('#achievementsCount').textContent = t('achievementsCountFmt', { n: earnedOf(p).size, of: ACHIEVEMENTS.length });
+    renderVirtueLine();
   }
 
   function openAchievements() {
@@ -2839,6 +3289,8 @@
     $('#langSelect').value = state.lang;
     $('#weekStart').value = String(state.weekStart);
     applySound();                     // its label is translated
+    if (emojiPicker) emojiPicker.relabel();
+    applyExcellenceSwitch();
     fillCategorySelect();
     buildLayoutPickers();
     renderPalettePicker();
@@ -2980,7 +3432,7 @@
         return {
           id: h.id,
           name: habitName(h),
-          emoji: h.emoji || '✅',
+          emoji: GlowEmoji.text(h.emoji),
           color: h.colorIndex || 1,
           type: h.type === 'quantity' ? 'quantity' : 'binary',
           target: targetOf(h),
@@ -2994,7 +3446,7 @@
         (h.reminders || []).forEach((time, slot) => {
           const reminder = {
             // `slot` lets the shell give each of a habit's times a different line.
-            id: h.id, time: time, slot: slot, name: habitName(h), emoji: h.emoji || '✅',
+            id: h.id, time: time, slot: slot, name: habitName(h), emoji: GlowEmoji.text(h.emoji),
             msgs: cast ? reminderMessages(h, cast.id) : [],
           };
           // Your own recording plays instead of the character's note (2.10).
@@ -3155,7 +3607,7 @@
      Lines are chosen on this side, not natively, so one place knows how a
      habit maps to a line in both languages. */
   const CHAT_LIMIT = 150;
-  /* The five characters, and your own bot (2.11) dressed the same way. */
+  /* The characters, and your own bot (2.11) dressed the same way. */
   const castLines = (id) => (id === BOT_ID ? botCastLines() : id ? GLOW_CAST.lines(id, I18N.getLang()) : null);
   const currentCast = () => (state.character ? castById(state.character) : null);
 
@@ -3725,7 +4177,7 @@
   }
 
   /* ══ Your own bot (2.11) ═════════════════════════════════════════════
-     Picked like the five characters, but every line is yours. The studio
+     Picked like the characters, but every line is yours. The studio
      shows a script (a greeting, two lines per habit, answers for "done",
      lines for any habit) and you read it aloud in one go. Each phrase is
      found by the pause after it, cut out of the take, levelled, saved as a
@@ -3740,6 +4192,7 @@
   const OWN_PATH_RE = /^mine\/[a-z0-9]{6,40}\.(webm|wav)$/;
 
   const castById = (id) => (id === BOT_ID ? (state.bot ? BOT_CAST : null) : GLOW_CAST.byId(id));
+  const RETIRED_CAST = ['crack', 'grandma'];          // characters retired in 2.20
   const botLines = () => (state.bot && Array.isArray(state.bot.lines) ? state.bot.lines : []);
   const recordedBotLines = (kind) => botLines().filter((line) => line.clip && (!kind || line.kind === kind));
   const botReady = () => botLines().some((line) => line.clip);
@@ -3836,7 +4289,7 @@
     const of = (kind, habitId) => lines.filter((line) => line.kind === kind && (habitId === undefined || line.habitId === habitId));
     return [{ kind: 'intro', title: t('studioIntro'), lines: of('intro') }]
       .concat(activeHabits().map((habit) => ({
-        kind: 'habit', habitId: habit.id, title: (habit.emoji || '✅') + ' ' + habitName(habit), lines: of('habit', habit.id),
+        kind: 'habit', habitId: habit.id, title: GlowEmoji.text(habit.emoji) + ' ' + habitName(habit), lines: of('habit', habit.id),
       })))
       .concat([
         { kind: 'praise', title: t('studioPraise'), lines: of('praise') },
@@ -4262,7 +4715,7 @@
   function sectionTitleOf(line) {
     if (line.kind === 'habit') {
       const habit = habitById(line.habitId);
-      return habit ? (habit.emoji || '✅') + ' ' + habitName(habit) : '';
+      return habit ? GlowEmoji.text(habit.emoji) + ' ' + habitName(habit) : '';
     }
     return t({ intro: 'studioIntro', praise: 'studioPraise', generic: 'studioGeneric' }[line.kind]);
   }
@@ -4760,7 +5213,6 @@
   function renderCastSettings() {
     const group = $('#castSettings');
     group.hidden = !shell;
-    $('#voiceCredits').hidden = !shell;
     if (!shell) return;
     const cast = currentCast();
     const face = $('#castCurrentAvatar');
@@ -4814,7 +5266,7 @@
     const payload = {
       id: habit ? habit.id : '',
       name: habit ? habitName(habit) : t('appName'),
-      emoji: habit ? habit.emoji || '✅' : '✅',
+      emoji: habit ? GlowEmoji.text(habit.emoji) : '✅',
       msg: id ? (lines.length ? lines[testTurn++ % lines.length] : introMessage(id)) : null,
       // A habit with your own note sends that, the way its reminders will.
       own: hasOwnNote(habit) ? notePath(habit.voiceNote.id) : null,
@@ -5047,9 +5499,10 @@
     Object.keys(state.entries).forEach((id) => Object.keys(state.entries[id] || {}).forEach((key) => known.add(key)));
     habits.forEach((h) => { if (h.createdAt) known.add(h.createdAt); });
     const first = [...known].filter((key) => key <= today).sort()[0] || today;
+    const ex = excellenceOf();
     const head = [t('csvDate')]
       .concat(habits.map((h) => habitName(h) + (h.type === 'quantity' && h.unit ? ' (' + h.unit + ')' : '')))
-      .concat([t('csvMood'), t('csvEnergy'), t('csvNote'), t('csvWeight', weightUnit()), t('csvBmi')]);
+      .concat([t('virtueName'), t('csvMood'), t('csvEnergy'), t('csvNote'), t('csvWeight', weightUnit()), t('csvBmi')]);
     const rows = [head];
     for (let day = parseKey(first); keyOf(day) <= today; day = addDays(day, 1)) {
       const key = keyOf(day);
@@ -5062,10 +5515,19 @@
           const value = valueOf(h, key);
           return h.type === 'quantity' ? num(value) : value >= 1 ? t('csvYes') : t('csvNo');
         }))
-        .concat([mood && mood.score ? mood.score : '', mood && mood.score && mood.energy ? mood.energy : '',
+        .concat([virtueCell(ex, key), mood && mood.score ? mood.score : '', mood && mood.score ? energyPctOf(mood) : '',
           mood && mood.note ? mood.note : '', kg ? num(shownWeight(kg), 1) : '', bmi ? num(bmi, 1) : '']));
     }
     return '\uFEFF' + rows.map((row) => row.map(cell).join(sep)).join('\r\n') + '\r\n';
+  }
+
+  // Excellence in the table: Sí or No once it could form and something was
+  // due; empty otherwise, and for a today not over yet unless already lit.
+  function virtueCell(ex, key) {
+    const d = ex && ex.byKey.get(key);
+    if (!d || !d.formed || d.due === 0) return '';
+    if (d.excellent) return t('csvYes');
+    return key === todayKey() ? '' : t('csvNo');
   }
 
   function saveTable() {
@@ -5122,12 +5584,60 @@
       renderHabitList();
     });
 
-    $('#moodEnergy').addEventListener('input', (evt) => {
-      const entry = state.moods[selectedDate];
-      if (!entry) return;
-      entry.energy = Number(evt.target.value);
-      $('#moodEnergyOut').textContent = energyLabel(entry.energy);
-      save();
+    $('#moodEnergy').addEventListener('input', (evt) => setEnergy(evt.target.value));
+    /* A finger (or a pen) moves it a point at a time from the first
+       millimetre: the browser's own slider lets a finger travel a little
+       before following it (to tell a drag from a scroll), and then jumps.
+       Up and down still scroll the page (touch-action: pan-y), and a scroll
+       that began on the slider leaves it as it was. The mouse and the keys
+       are the browser's own, already a point at a time. */
+    const energyRange = $('#moodEnergy');
+    let energyDrag = null;                         // { id, from } while held
+    const energyAt = (x) => {
+      const box = energyRange.getBoundingClientRect();
+      const thumb = parseFloat(getComputedStyle(energyRange).getPropertyValue('--thumb')) || 26;
+      return Math.round(Math.max(0, Math.min(1, (x - box.left - thumb / 2) / (box.width - thumb))) * 100);
+    };
+    energyRange.addEventListener('pointerdown', (evt) => {
+      if (evt.pointerType === 'mouse' || !evt.isPrimary || !state.moods[selectedDate]) return;
+      energyDrag = { id: evt.pointerId, from: Number(energyRange.value) };
+      setEnergy(energyAt(evt.clientX));
+    });
+    energyRange.addEventListener('pointermove', (evt) => {
+      if (energyDrag && evt.pointerId === energyDrag.id) setEnergy(energyAt(evt.clientX));
+    });
+    energyRange.addEventListener('pointerup', (evt) => {
+      if (energyDrag && evt.pointerId === energyDrag.id) energyDrag = null;
+    });
+    energyRange.addEventListener('pointercancel', (evt) => {
+      if (!energyDrag || evt.pointerId !== energyDrag.id) return;
+      const from = energyDrag.from;
+      energyDrag = null;
+      setEnergy(from);                             // it was a scroll
+    });
+    // A point at a time from the buttons; held, they keep going, faster.
+    $$('.energy-step').forEach((btn) => {
+      let timer = 0;
+      const step = () => setEnergy(Number($('#moodEnergy').value) + Number(btn.dataset.step));
+      const stop = () => { clearTimeout(timer); timer = 0; };
+      btn.addEventListener('pointerdown', (evt) => {
+        if (evt.button > 0) return;
+        evt.preventDefault();
+        stop();
+        step();
+        let wait = 380;
+        // At either end the button is disabled, and a disabled button may
+        // never hear the pointer come up: the repeat stops by itself there.
+        const repeat = () => {
+          step();
+          if (btn.disabled) { timer = 0; return; }
+          wait = Math.max(45, wait * 0.8);
+          timer = setTimeout(repeat, wait);
+        };
+        if (!btn.disabled) timer = setTimeout(repeat, wait);
+      });
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach((type) => btn.addEventListener(type, stop));
+      btn.addEventListener('click', (evt) => { if (evt.detail === 0) step(); });   // the keyboard
     });
     $('#moodNote').addEventListener('input', (evt) => {
       const entry = state.moods[selectedDate];
@@ -5139,6 +5649,20 @@
     $('#heatHabit').addEventListener('change', (evt) => {
       heatHabitId = evt.target.value;
       renderHeatmap(lastNDays(range));
+    });
+    // Excellence (2.20): its row in Today, its line in Progress, its note in
+    // Hábitos, its sheet and its switch in Ajustes.
+    $('#excellenceRow').addEventListener('click', () => { Sounds.play('tick'); openExcellence(); });
+    $('#virtueLine').addEventListener('click', () => { Sounds.play('tick'); openExcellence(); });
+    $('#btnVirtueNote').addEventListener('click', () => { Sounds.play('tick'); openExcellence(); });
+    $$('#excellenceDialog [data-close]').forEach((btn) => {
+      btn.addEventListener('click', () => $('#excellenceDialog').close());
+    });
+    $('#excellenceToggle').addEventListener('change', (evt) => {
+      state.showExcellence = evt.target.checked;
+      save();
+      applyExcellenceSwitch();
+      renderToday();
     });
     // Level and achievements (2.19).
     $('#btnAchievements').addEventListener('click', openAchievements);
@@ -5423,13 +5947,14 @@
 
     /* A tab left open past midnight should roll over to the new day. */
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState !== 'visible') return;
+      if (document.visibilityState !== 'visible') { writePendingSave(); return; }
       if (selectedDate < todayKey()) selectedDate = todayKey();
       applyPendingFromShell();
       applyInboxFromShell();
       renderCastSettings();
       renderAll();
     });
+    window.addEventListener('pagehide', writePendingSave);
   }
 
   /* ══ Starting test ═══════════════════════════════════════════════════
@@ -6020,6 +6545,7 @@
       { id: 'habits', view: 'today', pose: 'point',
         target: () => $('#habitList .habit-row') || $('#todayEmpty'),
         body: (node) => (node && node.classList.contains('habit-row') ? 'tourHabitsBody' : 'tourHabitsEmptyBody') },
+      { id: 'excellence', view: 'today', target: () => (state.showExcellence ? $('#excellenceRow') : null), pose: 'happy' },
       { id: 'mood', view: 'today', target: '.mood-card', pose: 'think' },
       { id: 'manage', view: 'habits', target: '#tabBar .tab[data-view="habits"]', pose: 'point' },
       { id: 'progress', view: 'progress', target: '#tabBar .tab[data-view="progress"]', pose: 'point' },
@@ -6217,11 +6743,11 @@
 
   /* Pico hops up when the day completes, in place of the plain toast. */
   let cheerTimer = null;
-  function picoCheer() {
+  function picoCheer(linesKey, voice) {
     const box = $('#picoCheer');
-    const lines = t('picoCheers');
+    const lines = t(linesKey || 'picoCheers');
     Pico.mount($('#picoCheerArt'), 'cheer');
-    picoVoice('cheer', 520);                       // after the day's arpeggio
+    picoVoice(voice || 'cheer', 520);              // after the day's arpeggio
     $('#picoCheerText').textContent = Array.isArray(lines) && lines.length
       ? lines[Math.floor(Math.random() * lines.length)] : t('allDoneTitle');
     box.classList.remove('is-leaving');
