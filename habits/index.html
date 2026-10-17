@@ -19,7 +19,7 @@
   <!-- The typeface (2.19), asked for at once rather than when the stylesheet
        first needs it, so the first screen is drawn in it. -->
   <link rel="preload" href="fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="styles.css?v=2.20">
+  <link rel="stylesheet" href="styles.css?v=2.21">
   <script>
     /* The saved theme and palette, resolved as applyTheme() in app.js resolves
        them, before anything paints: until app.js ran, a light theme opened on
@@ -42,7 +42,7 @@
       }
     })();
   </script>
-  <script src="i18n.js?v=2.20"></script>
+  <script src="i18n.js?v=2.21"></script>
 </head>
 <body>
   <!-- Launch screen. The mark draws itself, then a phrase lands under it.
@@ -234,7 +234,7 @@
               <span data-i18n="showAll">Ver todos</span>
             </label>
           </div>
-          <!-- The habit of excellence (2.20): nobody ticks it; it forms. -->
+          <!-- The habit of excellence (2.20): nobody ticks it; since 2.21 it ticks itself at 70 % of the day. -->
           <button type="button" class="excellence-row" id="excellenceRow" aria-haspopup="dialog" hidden>
             <span class="excellence-emblem" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-laurel"></use></svg></span>
             <span class="excellence-main">
@@ -262,12 +262,6 @@
             <span aria-hidden="true">+</span> <span data-i18n="addHabit">Nuevo hábito</span>
           </button>
         </div>
-        <!-- Excellence is not one to edit (2.20). -->
-        <button type="button" class="virtue-note" id="btnVirtueNote" aria-haspopup="dialog" hidden>
-          <span class="excellence-emblem" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-laurel"></use></svg></span>
-          <span class="virtue-note-text"><strong data-i18n="virtueName">Excelencia</strong><span data-i18n="virtueNote">No se crea ni se marca: se forma con la constancia de todos los demás.</span></span>
-          <svg class="virtue-note-go" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><use href="#i-chevron"></use></svg>
-        </button>
         <ul class="manage-list" id="manageList"></ul>
         <div class="empty-state" id="habitsEmpty" hidden>
           <div class="empty-pico" id="habitsEmptyPico" aria-hidden="true"></div>
@@ -302,11 +296,6 @@
               <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><use href="#i-chevron"></use></svg>
             </button>
           </div>
-          <button type="button" class="virtue-line" id="virtueLine" aria-haspopup="dialog" hidden>
-            <span class="excellence-emblem" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#i-laurel"></use></svg></span>
-            <span id="virtueLineText"></span>
-            <svg class="virtue-line-go" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><use href="#i-chevron"></use></svg>
-          </button>
         </section>
 
         <div class="filter-row" role="group" aria-labelledby="rangeLabel">
@@ -319,7 +308,7 @@
         <figure class="card chart-card" id="figMood">
           <figcaption>
             <h3 data-i18n="chartMoodTitle">Ánimo en el tiempo</h3>
-            <p class="chart-sub" data-i18n="chartMoodSub">1 = muy mal · 5 = muy bien</p>
+            <p class="chart-sub" id="chartMoodSub">1 = muy mal · 5 = muy bien</p>
           </figcaption>
           <div class="chart-host" id="chartMood"></div>
           <p class="chart-empty" id="chartMoodEmpty" hidden data-i18n="chartNoMood">Registra tu ánimo unos días para ver la tendencia.</p>
@@ -450,13 +439,6 @@
             <label class="switch-inline">
               <input type="checkbox" id="soundToggle" checked>
               <span id="soundState"></span>
-            </label>
-          </div>
-          <div class="setting-row">
-            <label for="excellenceToggle" data-i18n="setExcellence">Excelencia en Hoy</label>
-            <label class="switch-inline">
-              <input type="checkbox" id="excellenceToggle" checked>
-              <span id="excellenceState"></span>
             </label>
           </div>
           <div class="setting-row">
@@ -763,12 +745,12 @@
       <figure class="virtue-week">
         <figcaption>
           <h3 data-i18n="virtueWeekTitle">Tus últimos 7 días</h3>
-          <p class="chart-sub" data-i18n="virtueWeekSub">Lo cumplido cada día; la línea marca el 80%.</p>
+          <p class="chart-sub" data-i18n="virtueWeekSub">Lo cumplido cada día; la línea marca el 70%.</p>
         </figcaption>
         <div class="chart-host" id="virtueChart"></div>
       </figure>
       <div class="stat-row virtue-stats">
-        <div class="stat-tile"><span class="stat-value" id="virtueWeekPct"></span><span class="stat-label" data-i18n="virtueWeekLabel">Constancia, 7 días</span></div>
+        <div class="stat-tile"><span class="stat-value" id="virtueTodayPct"></span><span class="stat-label" data-i18n="virtueTodayLabel">Hoy</span></div>
         <div class="stat-tile"><span class="stat-value" id="virtueBest"></span><span class="stat-label" data-i18n="virtueBestLabel">Mejor racha</span></div>
         <div class="stat-tile"><span class="stat-value" id="virtueTotal"></span><span class="stat-label" data-i18n="virtueTotalLabel">Días de excelencia</span></div>
       </div>
@@ -802,6 +784,18 @@
       <p class="muted small" data-i18n="pointsHow">Ganas 10 puntos por cada hábito cumplido, 20 por cada día perfecto y 5 por cada día que registras tu ánimo.</p>
       <ul class="achievement-list" id="achievementList"></ul>
     </div>
+  </dialog>
+
+  <!-- A habit's actions, from its row in Hábitos (2.21). -->
+  <dialog class="sheet action-sheet" id="habitActions" aria-labelledby="habitActionsTitle">
+    <header class="sheet-head">
+      <span class="habit-badge" id="habitActionsBadge" aria-hidden="true"></span>
+      <h2 id="habitActionsTitle"></h2>
+      <button type="button" class="icon-btn" data-close data-i18n-label="close" aria-label="Cerrar">
+        <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20"><use href="#i-close"></use></svg>
+      </button>
+    </header>
+    <div class="action-list" id="habitActionList"></div>
   </dialog>
 
   <dialog class="sheet confirm" id="confirmDialog" aria-labelledby="confirmTitle">
@@ -889,9 +883,10 @@
        being explained and the coach says what it is for. -->
   <div class="tour" id="tour" hidden>
     <div class="tour-spot" id="tourSpot" aria-hidden="true"></div>
+    <!-- Pico stands behind the coach card, his upper half over its edge (2.21). -->
+    <div class="tour-pico" id="tourPico" aria-hidden="true"></div>
     <section class="tour-coach" id="tourCoach" role="dialog" aria-modal="true"
              aria-labelledby="tourTitle" aria-describedby="tourBody">
-      <div class="tour-pico" id="tourPico" aria-hidden="true"></div>
       <div class="tour-text" aria-live="polite">
         <p class="tour-step" id="tourStep"></p>
         <h2 id="tourTitle"></h2>
@@ -969,6 +964,19 @@
     <symbol id="i-restore" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
       <path d="M4 10a8 8 0 1 1 1.2 5"/><path d="M4 4.5V10h5.5"/>
     </symbol>
+    <!-- A habit's actions (2.21). -->
+    <symbol id="i-more" viewBox="0 0 24 24" fill="currentColor">
+      <circle cx="5.5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="18.5" cy="12" r="1.9"/>
+    </symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 7h16M9.5 7V5.2A1.2 1.2 0 0 1 10.7 4h2.6a1.2 1.2 0 0 1 1.2 1.2V7M6.5 7l.9 11.6A1.6 1.6 0 0 0 9 20h6a1.6 1.6 0 0 0 1.6-1.4L17.5 7M10.2 11v5M13.8 11v5"/>
+    </symbol>
+    <symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 19V5M6 11l6-6 6 6"/>
+    </symbol>
+    <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 5v14M6 13l6 6 6-6"/>
+    </symbol>
     <!-- GlowApp's own emojis (2.20): drawn in the habit's colour; Pico in his own. -->
     <symbol id="g-pico" viewBox="0 0 24 24">
       <path d="M9.6 4.1 11 1.6l1 2 1.4-1.6.3 2.4C17.4 5.1 19.8 8.2 19.8 12.4c0 4.7-3.5 8.3-7.8 8.3s-7.8-3.6-7.8-8.3c0-4.4 2.5-7.6 5.4-8.3z" fill="var(--pico-body, #6D28D9)"/>
@@ -1042,13 +1050,13 @@
     </symbol>
   </svg>
 
-  <script src="sounds.js?v=2.20"></script>
-  <script src="pico-voice.js?v=2.20"></script>
-  <script src="pico.js?v=2.20"></script>
-  <script src="select.js?v=2.20"></script>
-  <script src="emoji-picker.js?v=2.20"></script>
-  <script src="charts.js?v=2.20"></script>
-  <script src="characters.js?v=2.20"></script>
-  <script src="app.js?v=2.20"></script>
+  <script src="sounds.js?v=2.21"></script>
+  <script src="pico-voice.js?v=2.21"></script>
+  <script src="pico.js?v=2.21"></script>
+  <script src="select.js?v=2.21"></script>
+  <script src="emoji-picker.js?v=2.21"></script>
+  <script src="charts.js?v=2.21"></script>
+  <script src="characters.js?v=2.21"></script>
+  <script src="app.js?v=2.21"></script>
 </body>
 </html>

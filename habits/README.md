@@ -34,8 +34,8 @@ Screen*.
 - **Mood** — a 1–5 daily rating with its energy and a note, charted over time
   and cross-referenced against habit completion. Energy is a percentage since
   2.20 (see *Energy* below).
-- **Excellence** (2.20) — the one habit nobody ticks: it forms from the
-  constancy of all the others (see *Excellence* below).
+- **Excellence** (2.20) — the one habit nobody ticks by hand: on Today, it
+  ticks itself once 70% of the day's habits are done (see *Excellence* below).
 - **Weight and BMI** (2.12) — a weigh-in a day at most, from the card on
   Today: the latest weight, its BMI with its WHO band for adults, the change
   since the previous weigh-in and what is left to an optional goal. Progress
@@ -75,16 +75,15 @@ form, keys included. It is also `discreet`: a character's reminder for it uses
 only its own three lines, which never say what it is about, and none of the
 generic ones, which name the habit — a reminder shows on the lock screen.
 
-## Excellence (2.20)
+## Excellence (2.20; on Today only, at 70%, since 2.21)
 
 Aristotle held that we become just by doing just acts: excellence is not an
 act but what repeated acts make of us. So GlowApp's one habit that cannot be
-ticked is **Excelencia**. It is never created or marked; it forms.
+ticked by hand is **Excelencia**: it ticks itself.
 
-- **A day is excellent** when at least 80% of that day's habits were done
-  *and* the seven days up to it were as constant (80% of everything due in
-  them). Not perfection, nor neglect: the steady mean, sustained. The first
-  can only come after a week of practice (seven days from the oldest habit).
+- **A day is excellent** as soon as at least 70% of that day's habits are
+  done. (2.20 asked for 80%, of the week before it too, and a week of
+  practice first; 2.21 made it the day's alone, as the user asked.)
 - **Fair to every schedule.** Days with nothing due neither count nor break
   its streak, and an unfinished today does not either. A weekly quota counts
   on the days it was done, and as missing only on days when the week had no
@@ -92,17 +91,20 @@ ticked is **Excelencia**. It is never created or marked; it forms.
 - **Its streak gives it light**: *Chispa* from the first day, *Llama* from 7,
   *Luz* from 21 and *Resplandor* from 66 (the median time a new habit took to
   become automatic in Lally and colleagues' 2010 study).
-- **Where it shows.** A row of its own above Today's habits, with what is
-  left for today; the tick that makes today excellent lights it up and Pico
-  cheers with lines of his own. A tap opens its sheet: grade, streak, the
-  last seven days against the 80% line, best streak, total, how it forms,
-  and a maxim. Progress gives it a line with its grade and streak, puts it
-  first among the longest streaks and offers it in the calendar; Hábitos
-  explains it in a note; *Ajustes* can hide it (`state.showExcellence`).
+- **Only on Today** (2.21): a row of its own above Today's habits, saying
+  what is left for today, and ticked by itself — a check in a gold disc —
+  once the day reaches 70%. The tick that does it lights the row, makes the
+  whole screen glow once, softly (one slow pulse, never a flicker, none under
+  reduced motion), and Pico cheers with lines and a fanfare of his own. A tap
+  opens its sheet: grade, streak, the last seven days against the 70% line,
+  today's share, best streak, total, how it works, and a maxim. Through 2.20
+  it also had a line in Progress, the calendar and the streaks chart, a note
+  in Hábitos and a switch in Ajustes; all gone. (`state.showExcellence` is
+  still kept for 2.20, which reads it, but no longer read.)
 - **Levels and achievements**: 25 points for each excellent day, and four
   achievements (the first excellent day, then 7, 21 and 66 in a row). A
-  record from before 2.20 takes the new points quietly, without a burst of
-  "new level" (`ACHIEVEMENT_FORMULA`).
+  record from before 2.21 takes the new points quietly, without a burst of
+  "new level" (`ACHIEVEMENT_FORMULA`, 3 since 2.21).
 - **The table** (CSV) has an *Excelencia* column: Sí on excellent days.
 
 Like the levels, it is worked out from what is recorded, so an undo, an
@@ -170,6 +172,35 @@ where there is room and in two rows of six on a phone.
   (`glow.emojiRecent`, `glow.emojiTone` in `localStorage`, outside the
   backup).
 
+## The Hábitos list and deleting (2.21)
+
+A row in Hábitos is a habit's icon and its name, nothing else: how often,
+how much and the rest are in its editor, a tap away. Its handle still drags
+it; its **⋯** opens its actions in a short sheet — *Editar*, *Subir*,
+*Bajar* (for whoever does not drag; they skip the archived habits the list
+does not show), *Archivar* or, for an archived one, *Restaurar* — and
+**Eliminar**. Deleting is for good and asks first: the habit goes with its
+whole history, its own voice note and its bot's lines, and the next
+snapshot takes its reminders off the phone. The editor keeps its own
+*Eliminar*.
+
+## Text size (2.21)
+
+*Ajustes → Tamaño* is Pequeño (14 px), Normal (16 px) or Grande (21 px; it
+was 18.5 px, too close to Normal). Text is in `rem` everywhere, so the whole
+interface follows — and since 2.21 the charts too: each draws in units of
+the text's own scale (`widthOf()` in `charts.js`), so its labels, margins
+and marks grow with the rest, and its bar charts put each name over its bar
+when there is no room beside it. Grande on a 320 px phone fits: the summary
+card puts its figures under the ring when it must (a container query in
+`rem`, so it follows the setting, not only the screen), the mood buttons
+and the segmented controls shrink their padding before anything spills.
+Tap targets stay at least 44 px in every size.
+
+A long press selects nothing: the app's text is not selectable
+(`user-select: none` on the body), so holding a habit or an icon does not
+light it up as text; what is typed into stays selectable.
+
 ## Pico and the tour (2.13)
 
 Pico is GlowApp's guide: a crow, because crows collect shiny things and
@@ -212,6 +243,15 @@ of pose is always a movement and never a jump (the tests sample it: no more
 than about two degrees a frame). Gestures sit on top — a wave, a cheer with
 hops and wing beats, a nod, talking, a caw when tapped — and while nothing
 is asked of him he breathes, blinks, glances about and ruffles his crest.
+In the tour (2.21) he is large — about 7 rem at a stop, 9.5 at the first
+and the last — and stands behind the coach card, which hides his lower
+half, as he peeks over the tab bar: at each stop he takes the side of the
+card nearest what it is about and points at it with a wing; for a target as
+wide as the card he takes the other side from where he stood, so from one
+stop to the next he runs along behind the card (`Pico.run`: quick low hops,
+leaning the way he goes, the wings beating in turn), and he rises and sinks
+with the card as it moves. Under reduced motion he is simply there.
+
 One animation loop serves every Pico on the
 page: full rate while something plays, about fifteen frames a second while
 he only breathes, and asleep while none is on screen. The springs move in
@@ -500,9 +540,10 @@ swings past two neighbouring ones, so a 1–5 scale stays within 1–5 and a
 percentage within 0–100, and no wiggle is invented between days. Over 30
 and 90 days a day-by-day mood zigzags, so there the line is its rolling
 mean (5 days over a month, 7 over a quarter, centred, drawn where at least
-half its window has a mood) and each day is a small faint dot under it; a
-key names the two marks, and the tooltip gives the day and its mean. Over
-a week the line still joins the days themselves. A stretch with no mood
+half its window has a mood); its subtitle says so, and the tooltip gives
+the day and its mean. (2.20 also drew each day as a faint dot around the
+line, with a key; 2.21 took the floating dots away.) Over a week the line
+still joins the days themselves. A stretch with no mood
 still breaks the line; the weight line still runs from one weigh-in to the
 next.
 

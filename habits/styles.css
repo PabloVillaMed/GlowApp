@@ -359,9 +359,11 @@
    too, so moving the root size rescales the whole interface in one step.
    Tap targets stay pinned in px: Small may look tighter but must never
    become harder to hit. This replaces pinch-zoom, which is turned off. */
+/* Large was 18.5px until 2.21, too close to Normal to be worth choosing:
+   now it is clearly large (about a third more), everywhere, the charts too. */
 :root { font-size: 16px; }
 :root[data-density='small'] { font-size: 14px; }
-:root[data-density='large'] { font-size: 18.5px; }
+:root[data-density='large'] { font-size: 21px; }
 
 /* ── Reset & base ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -369,6 +371,11 @@
 [hidden] { display: none !important; }
 
 html { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+/* An app, not a page (2.21): a long press on a habit, an icon or a button
+   selects nothing and drags nothing; what is typed into stays selectable. */
+body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+input, textarea, [contenteditable='true'] { -webkit-user-select: text; user-select: text; }
+img, svg { -webkit-user-drag: none; }
 
 body {
   font-family: var(--font);
@@ -571,8 +578,15 @@ body[data-view]:not([data-view='today']):not(.is-scrolled) #viewTitle { opacity:
 .summary-ring-label strong { font-size: 1.55rem; font-weight: 800; letter-spacing: -0.02em; }
 .summary-ring-label span { font-size: 0.75rem; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .summary-stats { min-width: 0; flex: 1; }
+/* Too narrow for the ring and the figures side by side — Grande on a phone
+   (2.21) — the figures go under the ring, as wide as the card. In rem, so it
+   follows the size setting, not only the screen. */
+.summary-card { flex-wrap: wrap; justify-content: center; container-type: inline-size; }
+@container (max-width: 17rem) {
+  .summary-stats { flex-basis: 100%; }
+}
 .summary-date { font-size: 0.82rem; color: var(--ink-2); margin-bottom: 10px; }
-.stat-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stat-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .stat-tile {
   background: var(--surface-3); border-radius: var(--radius);
   padding: 0.5625rem 0.6875rem; display: flex; flex-direction: column; gap: 1px;
@@ -582,7 +596,7 @@ body[data-view]:not([data-view='today']):not(.is-scrolled) #viewTitle { opacity:
 .stat-label { font-size: 0.68rem; color: var(--ink-2); line-height: 1.25; }
 
 /* ── Mood ── */
-.mood-scale { display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; margin-top: 12px; }
+.mood-scale { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; margin-top: 12px; }
 .mood-btn {
   display: flex; flex-direction: column; align-items: center; gap: 4px;
   padding: 0.625rem 0.125rem; border-radius: var(--radius);
@@ -744,7 +758,7 @@ select { appearance: none; padding-right: 32px;
   border-radius: var(--radius-pill); width: 100%;
 }
 .segmented button {
-  flex: 1; min-height: 36px; padding: 0 12px; border-radius: var(--radius-pill);
+  flex: 1; min-width: 0; min-height: 36px; padding: 0 6px; border-radius: var(--radius-pill);
   font-size: 0.82rem; font-weight: 600; color: var(--ink-2); white-space: nowrap;
 }
 .segmented button { transition: background 0.2s, color 0.2s; }
@@ -951,9 +965,22 @@ button.habit-main:hover .habit-name { color: var(--accent); }
 }
 .drag-handle:active { cursor: grabbing; }
 .drag-handle svg { width: 16px; height: 16px; }
-.manage-actions { display: flex; align-items: center; gap: 2px; }
-.manage-actions .icon-btn { min-width: 36px; height: 36px; }
-.manage-actions svg { width: 18px; height: 18px; }
+/* A row in Hábitos is its name (2.21); the rest is behind its "more" button. */
+.manage-row .habit-name { font-size: 1.02rem; }
+.manage-more { flex: none; min-width: var(--tap); height: var(--tap); color: var(--ink-2); }
+
+/* A habit's actions (2.21): a short sheet of large rows. */
+.action-sheet .sheet-head { gap: 12px; }
+.action-sheet .sheet-head h2 { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.action-list { display: flex; flex-direction: column; gap: 2px; padding: 6px 12px calc(14px + var(--safe-b)); }
+.action-item {
+  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 52px; padding: 0 14px;
+  border-radius: var(--radius); font-size: 1rem; font-weight: 600; color: var(--ink); text-align: left;
+}
+.action-item svg { flex: none; color: var(--ink-2); }
+.action-item:hover, .action-item:focus-visible { background: var(--surface-3); }
+.action-item:disabled { opacity: 0.4; }
+.action-item.is-danger, .action-item.is-danger svg { color: var(--danger); }
 .archive summary {
   cursor: pointer; padding: 10px 2px; font-size: 0.85rem;
   font-weight: 600; color: var(--ink-2);
@@ -1018,9 +1045,6 @@ button.habit-main:hover .habit-name { color: var(--accent); }
 }
 .viz-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .viz-legend i { width: 10px; height: 10px; border-radius: 3px; display: block; }
-.viz-legend i.is-dot { width: 7px; height: 7px; border-radius: 50%; opacity: 0.45; }
-.viz-legend i.is-line { width: 16px; height: 3px; border-radius: 2px; }
-.viz-dot.is-raw { opacity: 0.38; stroke: none; }
 .viz-scale { display: flex; align-items: center; gap: 4px; font-size: 0.7rem; color: var(--ink-3); }
 .viz-scale i { width: 12px; height: 12px; border-radius: 3px; display: block; }
 
@@ -1073,7 +1097,7 @@ button.habit-main:hover .habit-name { color: var(--accent); }
 .vm-track { fill: none; stroke: var(--surface-3); stroke-width: 3.5; }
 .vm-fill { fill: none; stroke: var(--virtue); stroke-width: 3.5; stroke-linecap: round; transition: stroke-dashoffset 0.5s ease; }
 .vm-lit { fill: var(--virtue); }
-.vm-laurel { color: var(--virtue-ink); }
+.vm-check { fill: none; stroke: var(--virtue-ink); stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; }
 
 .excellence-row.is-lit {
   border-color: color-mix(in srgb, var(--virtue) 55%, transparent);
@@ -1081,7 +1105,6 @@ button.habit-main:hover .habit-name { color: var(--accent); }
   box-shadow: var(--lift), 0 8px 24px -12px var(--virtue-glow);
 }
 .excellence-row.is-lit .excellence-emblem,
-.virtue-note .excellence-emblem,
 .excellence-sheet .sheet-title .excellence-emblem {
   color: var(--virtue); background: color-mix(in srgb, var(--virtue) 15%, transparent);
 }
@@ -1108,27 +1131,15 @@ body.is-excellent .app-mark {
 }
 @keyframes virtue-mark { 50% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--virtue) 70%, transparent), 0 0 20px var(--virtue-glow); } }
 
-/* Hábitos: the note that says it is not one to edit. */
-.virtue-note {
-  display: flex; align-items: center; gap: 0.75rem; width: 100%;
-  padding: 0.75rem 0.875rem; margin-bottom: 8px; text-align: left; color: var(--ink);
-  border: 1px dashed color-mix(in srgb, var(--virtue) 55%, var(--border)); border-radius: var(--radius-lg);
+/* The whole screen's one soft glow when the day reaches excellence (2.21):
+   under Pico and the tab bar, never taking a touch. */
+.virtue-glow {
+  position: fixed; inset: 0; z-index: 58; pointer-events: none; opacity: 0;
+  background: radial-gradient(ellipse at 50% 38%, color-mix(in srgb, var(--virtue) 34%, transparent),
+    color-mix(in srgb, var(--virtue) 12%, transparent) 55%, transparent 82%);
 }
-.virtue-note-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.virtue-note-text strong { font-size: 0.92rem; font-weight: 700; }
-.virtue-note-text span { font-size: 0.75rem; color: var(--ink-2); }
-.virtue-note-go, .virtue-line-go { flex: none; transform: rotate(-90deg); color: var(--ink-3); }
-
-/* Progress: its line on the level card. */
-.virtue-line {
-  display: flex; align-items: center; gap: 10px; width: 100%; min-height: var(--tap);
-  margin-top: 6px; padding-top: 10px; border-top: 1px solid var(--border);
-  font-size: 0.84rem; font-weight: 650; color: var(--ink); text-align: left;
-}
-.virtue-line .excellence-emblem { width: 1.9rem; height: 1.9rem; }
-.virtue-line .excellence-emblem svg { width: 1.25rem; height: 1.25rem; }
-.virtue-line:not([data-grade='none']) .excellence-emblem { color: var(--virtue); background: color-mix(in srgb, var(--virtue) 15%, transparent); }
-.virtue-line > span:nth-child(2) { flex: 1; min-width: 0; }
+.virtue-glow.is-on { animation: virtue-glow 1.5s ease-out both; }
+@keyframes virtue-glow { 0% { opacity: 0; } 22% { opacity: 1; } 100% { opacity: 0; } }
 
 /* The sheet: the medal, more light as the grade rises. */
 .virtue-hero { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 3px; padding: 4px 0 2px; }
@@ -1227,7 +1238,10 @@ td { font-variant-numeric: tabular-nums; }
 .setting-group { display: flex; flex-direction: column; gap: 12px; }
 .data-block { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
 .data-block h4 { font-size: 0.88rem; font-weight: 650; }
-.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+/* A control too wide to sit beside its label (Grande on a narrow phone,
+   2.21) goes under it, at the full width. */
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 8px 14px; flex-wrap: wrap; }
+.setting-row:not(.setting-row-stack) > :last-child { margin-left: auto; }
 .setting-row label { font-size: 0.88rem; }
 .setting-row select { width: auto; min-width: 140px; }
 .setting-row .gs-trigger { width: auto; min-width: 140px; font-size: 0.9rem; }
@@ -2044,7 +2058,7 @@ dialog.sheet > .sheet-head { position: sticky; top: 0; z-index: 2; background: v
 @keyframes tour-pulse { 50% { opacity: 0.35; } }
 .tour-coach {
   position: fixed; left: 16px; right: 16px; max-width: 26rem; margin: 0 auto;
-  display: grid; grid-template-columns: 4.4rem minmax(0, 1fr); gap: 6px 12px;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px 12px; z-index: 2;
   padding: 14px 14px 12px;
   border-radius: var(--radius-lg); border: 1px solid var(--border-strong);
   background: var(--surface); color: var(--ink); box-shadow: var(--shadow);
@@ -2052,7 +2066,18 @@ dialog.sheet > .sheet-head { position: sticky; top: 0; z-index: 2; background: v
 }
 .tour-coach.is-entering { animation: tour-in 0.26s ease-out both; }
 @keyframes tour-in { from { opacity: 0; transform: translateY(6px) scale(0.98); } }
-.tour-pico { width: 4.4rem; height: 4.4rem; margin-top: -1.9rem; }
+/* Pico (2.21): large, behind the card (which hides his lower half), placed
+   by app.js at its top edge on the side of the target; he runs along it,
+   and rises and sinks with the card as it moves. */
+.tour-pico {
+  position: fixed; left: 0; top: 0; z-index: 1; width: 7rem; height: 7rem;
+  transition: left 0.75s cubic-bezier(0.3, 0.7, 0.35, 1), top var(--spring-time) var(--spring);
+}
+.tour-pico.is-placing { transition: none; }
+/* While the tour runs the page has room at its end, so a target near the
+   bottom of a short page can still be lifted under the app bar, with the
+   card and Pico below it (2.21: Pico grew, and a short page left no room). */
+html.is-touring body { padding-bottom: calc(64px + var(--safe-b) + 70vh); }
 .tour-text { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .tour-step { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--accent); }
 .tour-text h2 { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; }
@@ -2071,7 +2096,7 @@ dialog.sheet > .sheet-head { position: sticky; top: 0; z-index: 2; background: v
 }
 .tour[data-mode='center'] .tour-coach.is-entering { animation-name: tour-in-center; }
 @keyframes tour-in-center { from { opacity: 0; transform: translateY(-40%) scale(0.97); } }
-.tour[data-mode='center'] .tour-pico { width: 7.5rem; height: 7.5rem; margin: -5rem auto 0; }
+.tour[data-mode='center'] .tour-pico { width: 9.5rem; height: 9.5rem; }
 .tour[data-mode='center'] .tour-text { align-items: center; }
 
 /* ── Pico peeking over a ledge (2.15; over a ledge since 2.18) ──
@@ -2122,7 +2147,7 @@ dialog.sheet > .sheet-head { position: sticky; top: 0; z-index: 2; background: v
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tour-spot, .tour-coach, .palette-card { transition: none; }
+  .tour-spot, .tour-coach, .tour-pico, .palette-card { transition: none; }
   .tour[data-mode='target'] .tour-spot::after, .tour-coach.is-entering,
   .pico-cheer, .pico-cheer.is-leaving { animation: none; }
 }

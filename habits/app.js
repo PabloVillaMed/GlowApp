@@ -205,7 +205,7 @@
     if (typeof state.lastBackup !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(state.lastBackup)) state.lastBackup = null;
     state.tourPromoDismissed = state.tourPromoDismissed === true;
     state.moreCharts = state.moreCharts === true;
-    state.showExcellence = state.showExcellence !== false;
+    state.showExcellence = state.showExcellence !== false;   // read by 2.20 only: since 2.21 it is always on Today
     state.excellenceSeen = state.excellenceSeen === true;
     const known = state.achievements;
     if (!(known && Array.isArray(known.seen) && Number.isInteger(known.level))) state.achievements = null;
@@ -540,15 +540,17 @@
     if (!dot) return;
     dot.classList.toggle('filled', dayChipDot(key));
     // A day of excellence wears a golden dot (2.20).
-    const day = virtue && state.showExcellence ? virtue.byKey.get(key) : null;
+    const day = virtue ? virtue.byKey.get(key) : null;
     dot.classList.toggle('virtue', !!(day && day.excellent));
   }
 
   function renderDayStrip() {
     const strip = $('#dayStrip');
     /* Only the day set itself forces a rebuild: a new day, a different week
-       start, or a language change (the weekday letters are localised). */
-    const signature = [todayKey(), state.weekStart, I18N.getLang()].join('|');
+       start, or a language change (the weekday letters are localised); and,
+       since 2.21, the size and layout, whose chips are wider or narrower, so
+       the chosen day is centred again rather than left where it was. */
+    const signature = [todayKey(), state.weekStart, I18N.getLang(), state.density, state.layout].join('|');
 
     if (signature !== dayStripSignature || !strip.children.length) {
       buildDayStrip(strip);
@@ -560,8 +562,9 @@
           0, selected.offsetLeft - (strip.clientWidth - selected.clientWidth) / 2);
       }
     } else {
-      // A tap changes the day being looked at, and — since excellence weighs
-      // a week (2.20) — the golden dots of the days after it too.
+      // A tap changes the day being looked at, and — a weekly quota counting
+      // as due only once the week has no slack left — maybe the golden dots
+      // of the days after it too.
       lastNDays(DAY_STRIP_DAYS).forEach(refreshDayDot);
     }
 
@@ -1186,8 +1189,8 @@
      in view, and points at it (look at this) or considers it, wing at his chin. */
   function picoAtCharts() {
     if (view !== 'progress') return;
-    // The level card counts too (2.20): it carries excellence, and on a short
-    // screen it can be all that is in view.
+    // The level card counts too (2.20): on a short screen it can be all
+    // that is in view.
     const chart = $$('#view-progress .level-card, #view-progress .chart-card').find((fig) => {
       const r = fig.getBoundingClientRect();
       return !fig.hidden && r.height > 0 && r.top > 60 && r.top < window.innerHeight - 220;
@@ -1633,52 +1636,96 @@
     badge.setAttribute('aria-hidden', 'true');
     GlowEmoji.draw(badge, habit.emoji);
 
+    // Its name and nothing else (2.21): how often, how much and the rest
+    // are in the editor, a tap away.
     const open = button('habit-main', null, { 'aria-label': t('editHabit') + ': ' + habitName(habit) });
     open.style.textAlign = 'left';
     const name = document.createElement('span');
     name.className = 'habit-name';
     name.textContent = habitName(habit);
-    const meta = document.createElement('span');
-    meta.className = 'habit-meta';
-    meta.textContent = scheduleLabel(habit) + ' · ' +
-      (habit.type === 'quantity' ? targetOf(habit) + ' ' + (habit.unit || '') : t('typeBinary')) +
-      (shell && hasOwnNote(habit) ? ' · 🎙️' : '');
-    open.append(name, meta);
+    open.append(name);
     open.addEventListener('click', () => openHabitDialog(habit.id));
 
-    const actions = document.createElement('div');
-    actions.className = 'manage-actions';
+    // One button for everything else (2.21), deleting included.
+    const more = button('icon-btn manage-more', null, {
+      'aria-label': t('habitActions') + ': ' + habitName(habit), 'aria-haspopup': 'dialog', title: t('habitActions'),
+    });
+    more.innerHTML = iconSvg('i-more', 20);
+    more.addEventListener('click', () => openHabitActions(habit.id));
 
-    if (archived) {
-      const restore = button('icon-btn', null, { 'aria-label': t('restore'), title: t('restore') });
-      restore.innerHTML = iconSvg('i-restore');
-      restore.addEventListener('click', () => {
-        habit.archived = false;
-        save();
-        renderHabitsView();
-        renderToday();
-        toast(t('habitRestored'));
-      });
-      actions.appendChild(restore);
-    } else {
-      const archive = button('icon-btn', null, { 'aria-label': t('archive'), title: t('archive') });
-      archive.innerHTML = iconSvg('i-archive');
-      archive.addEventListener('click', () => {
-        habit.archived = true;
-        save();
-        renderHabitsView();
-        renderToday();
-        toast(t('habitArchived'));
-      });
-      const up = button('icon-btn', '↑', { 'aria-label': t('moveUp'), title: t('moveUp') });
-      up.addEventListener('click', () => reorder(habit.id, -1));
-      const down = button('icon-btn', '↓', { 'aria-label': t('moveDown'), title: t('moveDown') });
-      down.addEventListener('click', () => reorder(habit.id, 1));
-      actions.append(up, down, archive);
-    }
-
-    li.append(badge, open, actions);
+    li.append(badge, open, more);
     return li;
+  }
+
+  /* A habit's actions (2.21), in a sheet from its row in Hábitos: edit,
+     move up or down (for whoever does not drag), archive or restore, and
+     delete — for good, after asking. */
+  function openHabitActions(id) {
+    const habit = habitById(id);
+    if (!habit) return;
+    const dlg = $('#habitActions');
+    GlowEmoji.draw($('#habitActionsBadge'), habit.emoji);
+    $('#habitActionsBadge').style.setProperty('--habit-color', colorVar(habit));
+    $('#habitActionsTitle').textContent = habitName(habit);
+    const list = $('#habitActionList');
+    list.innerHTML = '';
+    const shown = activeHabits();
+    const at = shown.findIndex((h) => h.id === id);
+    const add = (icon, label, run, opts) => {
+      const o = opts || {};
+      const item = button('action-item' + (o.danger ? ' is-danger' : ''), null, {});
+      item.innerHTML = iconSvg(icon, 20);
+      const text = document.createElement('span');
+      text.textContent = label;
+      item.appendChild(text);
+      item.disabled = !!o.disabled;
+      item.addEventListener('click', () => {
+        dlg.close();
+        run();
+      });
+      list.appendChild(item);
+    };
+    if (!habit.archived) {
+      add('i-edit', t('edit'), () => openHabitDialog(id));
+      add('i-up', t('moveUp'), () => reorder(id, -1), { disabled: at <= 0 });
+      add('i-down', t('moveDown'), () => reorder(id, 1), { disabled: at >= shown.length - 1 });
+      add('i-archive', t('archive'), () => setArchived(id, true));
+    } else {
+      add('i-restore', t('restore'), () => setArchived(id, false));
+    }
+    add('i-trash', t('delete'), () => askDeleteHabit(id), { danger: true });
+    dlg.showModal();
+  }
+
+  function setArchived(id, archived) {
+    const habit = habitById(id);
+    if (!habit) return;
+    habit.archived = archived;
+    save();
+    renderHabitsView();
+    renderToday();
+    toast(t(archived ? 'habitArchived' : 'habitRestored'));
+  }
+
+  /* Deleting is for good: the habit, its whole history, its voice note and
+     its bot's lines. Asked first, from its actions or from its editor. */
+  async function askDeleteHabit(id) {
+    if (!habitById(id)) return false;
+    const ok = await confirmDialog(t('deleteHabitTitle'), t('deleteHabitBody'), t('delete'));
+    if (!ok) return false;
+    const gone = habitById(id);
+    if (!gone) return false;
+    if (hasOwnNote(gone)) deleteNoteFile(gone.voiceNote.id);
+    dropBotLinesOf(id);
+    state.habits = state.habits.filter((h) => h.id !== id);
+    delete state.entries[id];
+    save();
+    renderHabitsView();
+    renderToday();
+    renderProgressIfVisible();
+    renderCastSettings();
+    toast(t('habitDeleted'));
+    return true;
   }
 
   /* ── Drag to reorder ────────────────────────────────────────────────
@@ -1760,8 +1807,12 @@
   function reorder(id, delta) {
     const list = state.habits;
     const from = list.findIndex((h) => h.id === id);
-    const to = from + delta;
-    if (from < 0 || to < 0 || to >= list.length) return;
+    if (from < 0) return;
+    // Past the neighbour the list shows: archived habits are not in it, and
+    // moving behind one changed nothing that could be seen (2.21).
+    let to = from + delta;
+    while (to >= 0 && to < list.length && !!list[to].archived !== !!list[from].archived) to += delta;
+    if (to < 0 || to >= list.length) return;
     const [moved] = list.splice(from, 1);
     list.splice(to, 0, moved);
     save();
@@ -1775,7 +1826,6 @@
     const list = $('#manageList');
     list.innerHTML = '';
     active.forEach((h) => list.appendChild(manageRow(h, false)));
-    $('#btnVirtueNote').hidden = !active.length || !state.showExcellence;
     $('#habitsEmpty').hidden = active.length > 0;
     perchPico('#habitsEmptyPico', !active.length);
     if (active.length === 0) renderPresets();
@@ -2211,6 +2261,11 @@
   }
 
   function renderMoodChart(days) {
+    // A month or a quarter of days zigzags: there the line is their rolling
+    // average (5 days over a month, 7 over a quarter; 2.20), and the
+    // subtitle says so (2.21).
+    const span = days.length >= 90 ? 7 : days.length >= 30 ? 5 : 0;
+    $('#chartMoodSub').textContent = (span ? t('chartAvgFmt', span) + ' · ' : '') + t('chartMoodSub');
     const has = days.some((key) => state.moods[key] && state.moods[key].score);
     $('#chartMoodEmpty').hidden = has;
     const host = $('#chartMood');
@@ -2229,10 +2284,6 @@
       return { label: dateLabel, value: score, tip: tip };
     });
 
-    // A month or a quarter of days zigzags: there the line is their rolling
-    // average (5 days over a month, 7 over a quarter) and each day a faint
-    // dot under it (2.20).
-    const span = days.length >= 90 ? 7 : days.length >= 30 ? 5 : 0;
     Charts.line(host, {
       points: points,
       min: 1,
@@ -2241,7 +2292,6 @@
       color: 'var(--s1)',
       smooth: span || undefined,
       meanLabel: (v) => t('chartAvgFmt', span) + ': ' + v.toFixed(1),
-      legend: [{ mark: 'dot', name: t('chartDaily') }, { mark: 'line', name: t('chartAvgFmt', span) }],
       ariaLabel: t('chartMoodTitle'),
     });
   }
@@ -2283,44 +2333,26 @@
     all.value = 'all';
     all.textContent = t('allHabits');
     select.appendChild(all);
-    // Excellence first after "all" (2.20): its days, lit or not.
-    if (activeHabits().length) {
-      const opt = document.createElement('option');
-      opt.value = VIRTUE_ID;
-      opt.textContent = '🌿 ' + t('virtueName');
-      select.appendChild(opt);
-    }
     activeHabits().forEach((habit) => {
       const opt = document.createElement('option');
       opt.value = habit.id;
       opt.textContent = GlowEmoji.text(habit.emoji) + ' ' + habitName(habit);
       select.appendChild(opt);
     });
-    heatHabitId = previous === VIRTUE_ID && activeHabits().length ? previous
-      : habitById(previous) && !habitById(previous).archived ? previous : 'all';
+    heatHabitId = habitById(previous) && !habitById(previous).archived ? previous : 'all';
     select.value = heatHabitId;
   }
 
-  const VIRTUE_ID = '__excellence';
-
   function renderHeatmap(days) {
     const host = $('#chartHeat');
-    const ex = heatHabitId === VIRTUE_ID ? excellenceOf() : null;
-    const habit = heatHabitId === 'all' || ex ? null : habitById(heatHabitId);
+    const habit = heatHabitId === 'all' ? null : habitById(heatHabitId);
 
     const cells = days.map((key) => {
       const dateLabel = fmtDate(key, { weekday: 'short', day: 'numeric', month: 'short' });
       let level = 0;
       let scheduled = true;
       let detail;
-      if (ex) {
-        // Excellence: a lit day at the top of the ramp, a day that fell
-        // short at its foot, a day with nothing due (or still forming) blank.
-        const d = ex.byKey.get(key);
-        scheduled = !!(d && d.formed && d.due > 0 && !(key === todayKey() && !d.excellent));
-        level = d && d.excellent ? 5 : 1;
-        detail = d ? virtueStatus(ex, key).text : t('virtueBefore');
-      } else if (habit) {
+      if (habit) {
         scheduled = isScheduled(habit, key);
         const ratio = valueOf(habit, key) / targetOf(habit);
         level = levelFor(ratio);
@@ -2542,30 +2574,11 @@
     return { best: best, of: of, unit: 'days' };
   }
 
-  // Excellence's own longest run in the range, as bestStreakIn() counts a habit's.
-  function virtueStreakIn(days) {
-    const ex = excellenceOf();
-    if (!ex) return null;
-    const today = todayKey();
-    let run = 0;
-    let best = 0;
-    let of = 0;
-    days.forEach((key) => {
-      const d = ex.byKey.get(key);
-      if (!d || !d.formed || d.due === 0) return;
-      if (d.excellent) { run++; of++; best = Math.max(best, run); }
-      else if (key !== today) { run = 0; of++; }
-    });
-    return of ? { best: best, of: of, unit: 'days' } : null;
-  }
-
   function renderStreakChart(days) {
     const rows = activeHabits()
       .map((habit) => ({ habit: habit, streak: bestStreakIn(habit, days) }))
       .filter((row) => row.streak.of > 0)
       .sort((a, b) => b.streak.best / b.streak.of - a.streak.best / a.streak.of || b.streak.best - a.streak.best);
-    const virtueRun = state.showExcellence ? virtueStreakIn(days) : null;
-    if (virtueRun) rows.unshift({ habit: { emoji: '🌿', virtue: true }, streak: virtueRun });
     $('#chartStreaksEmpty').hidden = rows.length > 0;
     const host = $('#chartStreaks');
     host.hidden = rows.length === 0;
@@ -2576,30 +2589,28 @@
       ariaLabel: t('chartStreaksTitle'),
       items: rows.map((row) => {
         const label = streakLabel({ count: row.streak.best, unit: row.streak.unit });
-        const name = row.habit.virtue ? t('virtueName') : habitName(row.habit);
+        const name = habitName(row.habit);
         return {
           label: GlowEmoji.text(row.habit.emoji) + ' ' + name,
           value: row.streak.best / row.streak.of,
           valueLabel: label,
-          color: row.habit.virtue ? 'var(--virtue)' : colorVar(row.habit),
+          color: colorVar(row.habit),
           tip: '<b>' + escapeHtml(name) + '</b><br>' + label,
         };
       }),
     });
   }
 
-  /* ── Excellence (2.20) ────────────────────────────────────────────────
+  /* ── Excellence (2.20; on Today only, at 70 %, since 2.21) ─────────────
      The one habit nobody ticks. Aristotle held that we become just by
      doing just acts and brave by doing brave ones: excellence is not an act
      but what repeated acts make of us — "not an act, but a habit", as Will
-     Durant summed him up. So here it is never marked; it forms.
+     Durant summed him up. So here it is never ticked by hand: it ticks
+     itself.
 
-     A day is excellent when at least 80 % of that day's habits were done
-     and the seven days up to it were as constant (80 % of all that was due
-     in them). Not perfection, the excess, nor neglect, the deficiency: the
-     steady mean between them. The first can only come once there has been
-     a week to practise in — one swallow does not make a summer, nor does
-     one day. Days with nothing due neither count nor break its streak, and
+     A day is excellent once at least 70 % of that day's habits are done
+     (2.20 also asked as much of the week before it, and a week of practice
+     first). Days with nothing due neither count nor break its streak, and
      an unfinished today does not either. A weekly quota counts on the days
      it was done, and as missing only on the days the week had no slack left
      to meet it, so a flexible habit never drags a day down for nothing.
@@ -2609,7 +2620,7 @@
      (the median time a new habit took to become automatic in Lally and
      colleagues' 2010 study). Everything is worked out from what is
      recorded; nothing about it is stored but whether it is shown. */
-  const VIRTUE = { day: 0.8, week: 0.8, window: 7 };
+  const VIRTUE = { day: 0.7, window: 7 };                 // window: the days its sheet shows
   const GRADES = [
     { id: 'spark', from: 1 },
     { id: 'flame', from: 7 },
@@ -2674,22 +2685,10 @@
       }
       return { key: key, due: due, done: done };
     });
-    // The rolling week, and each day's verdict.
-    let sumDue = 0;
-    let sumDone = 0;
-    days.forEach((d, i) => {
-      sumDue += d.due;
-      sumDone += d.done;
-      if (i >= VIRTUE.window) {
-        sumDue -= days[i - VIRTUE.window].due;
-        sumDone -= days[i - VIRTUE.window].done;
-      }
-      d.weekDue = sumDue;
-      d.weekDone = sumDone;
-      d.week = sumDue ? sumDone / sumDue : null;
+    // Each day's verdict.
+    days.forEach((d) => {
       d.ratio = d.due ? d.done / d.due : null;
-      d.formed = dayDiff(d.key, start) >= VIRTUE.window - 1;
-      d.excellent = d.formed && d.due > 0 && atLeast(d.ratio, VIRTUE.day) && atLeast(d.week, VIRTUE.week);
+      d.excellent = d.due > 0 && atLeast(d.ratio, VIRTUE.day);
     });
     let total = 0;
     let run = 0;
@@ -2707,14 +2706,11 @@
     }
     const byKey = new Map(days.map((d) => [d.key, d]));
     const now = days[days.length - 1];
-    // What today still needs: enough of its own habits, and enough for the week.
-    const remaining = now.due - now.done;
-    const needDay = Math.max(0, Math.ceil(VIRTUE.day * now.due - 1e-9) - now.done);
-    const needWeek = Math.max(0, Math.ceil(VIRTUE.week * now.weekDue - 1e-9) - now.weekDone);
+    // What today still needs.
+    const need = Math.max(0, Math.ceil(VIRTUE.day * now.due - 1e-9) - now.done);
     return {
       start: start, days: days, byKey: byKey, total: total, best: best, streak: streak,
-      grade: gradeOf(streak), today: now, need: Math.max(needDay, needWeek), remaining: remaining,
-      practised: dayDiff(today, start) + 1,
+      grade: gradeOf(streak), today: now, need: need,
     };
   }
 
@@ -2724,13 +2720,10 @@
     const isToday = key === todayKey();
     if (!d) return { kind: 'before', text: t('virtueBefore') };
     if (isToday) {
-      if (!d.formed) return { kind: 'forming', text: t('virtueForming', { day: v.practised, of: VIRTUE.window }) };
       if (d.due === 0) return { kind: 'rest', text: t('virtueRest') };
       if (d.excellent) return { kind: 'lit', text: v.streak > 1 ? t('virtueLitStreak', v.streak) : t('virtueLit') };
-      if (v.need <= v.remaining) return { kind: 'near', text: t('virtueNeed', v.need) };
-      return { kind: 'week', text: t('virtueWeekLow', Math.round(d.week * 100)) };
+      return { kind: 'near', text: t('virtueNeed', v.need) };
     }
-    if (!d.formed) return { kind: 'forming', text: t('virtueWasForming') };
     if (d.due === 0) return { kind: 'rest', text: t('virtueWasRest') };
     if (d.excellent) return { kind: 'lit', text: t('virtueWasLit') };
     return { kind: 'short', text: t('virtueWasShort', Math.round(d.ratio * 100)) };
@@ -2743,14 +2736,14 @@
     const r = 15;
     const c = 2 * Math.PI * r;
     let fill = 0;
-    if (kind === 'forming') fill = Math.min(1, v.practised / VIRTUE.window);
-    else if (d && d.due > 0 && kind !== 'lit') {
+    if (d && d.due > 0 && kind !== 'lit') {
       const goal = Math.max(1, Math.ceil(VIRTUE.day * d.due - 1e-9));
       fill = Math.min(1, d.done / goal);
     }
     if (kind === 'lit') {
+      // Ticked by itself (2.21): the check every done habit has.
       return '<svg viewBox="0 0 40 40" width="40" height="40"><circle class="vm-lit" cx="20" cy="20" r="18"/>' +
-        '<use href="#i-laurel" x="8" y="8" width="24" height="24" class="vm-laurel"/></svg>';
+        '<path class="vm-check" d="M12.5 20.5l5 5 10-11"/></svg>';
     }
     return '<svg viewBox="0 0 40 40" width="40" height="40"><circle class="vm-track" cx="20" cy="20" r="' + r + '"/>' +
       '<circle class="vm-fill" cx="20" cy="20" r="' + r + '" stroke-dasharray="' + c.toFixed(1) + '" stroke-dashoffset="' +
@@ -2760,7 +2753,7 @@
   function renderExcellence() {
     const row = $('#excellenceRow');
     const v = virtue;
-    const show = !!v && state.showExcellence;
+    const show = !!v;
     row.hidden = !show;
     document.body.classList.toggle('is-excellent', !!(show && v.today.excellent));
     const litNow = !!(v && v.today.excellent);
@@ -2787,8 +2780,25 @@
       void row.offsetWidth;
       row.classList.add('just-lit');
       sparkBurst($('.excellence-emblem', row), 12, 60, 22);
+      virtueGlow();
     }
     picoCheer('virtueCheers', 'excellence');
+  }
+
+  /* The whole screen glows once, softly, in the colour of excellence
+     (2.21): one slow pulse, never a flicker, and none under reduced motion. */
+  function virtueGlow() {
+    let glow = $('#virtueGlow');
+    if (!glow) {
+      glow = document.createElement('div');
+      glow.id = 'virtueGlow';
+      glow.className = 'virtue-glow';
+      glow.setAttribute('aria-hidden', 'true');
+      document.body.appendChild(glow);
+    }
+    glow.classList.remove('is-on');
+    void glow.offsetWidth;
+    glow.classList.add('is-on');
   }
 
   function openExcellence() {
@@ -2806,7 +2816,7 @@
     $('#virtueStreak').textContent = v.streak ? t('virtueStreakFmt', v.streak) : t('virtueNoStreak');
     $('#virtueToday').textContent = status.text;
     $('#excellenceDialog').dataset.grade = grade ? grade.id : 'none';
-    $('#virtueWeekPct').textContent = v.today.week === null ? t('noneYet') : Math.round(v.today.week * 100) + '%';
+    $('#virtueTodayPct').textContent = v.today.ratio === null ? t('noneYet') : Math.round(v.today.ratio * 100) + '%';
     $('#virtueBest').textContent = streakLabel({ count: v.best, unit: 'days' });
     $('#virtueTotal').textContent = String(v.total);
     // The ladder of grades, the current one marked.
@@ -2833,7 +2843,7 @@
     renderVirtueWeek(v);
   }
 
-  // The last seven days, each as a column of what was done, against the 80 %
+  // The last seven days, each as a column of what was done, against the 70 %
   // line; a day of excellence in the excellence colour.
   function renderVirtueWeek(v) {
     const keys = lastNDays(VIRTUE.window);
@@ -2851,29 +2861,9 @@
       };
     });
     Charts.columns($('#virtueChart'), {
-      items: items, max: 100, height: 150, ref: { value: VIRTUE.day * 100, label: '80%' },
+      items: items, max: 100, height: 150, ref: { value: VIRTUE.day * 100, label: Math.round(VIRTUE.day * 100) + '%' },
       ariaLabel: t('virtueWeekTitle'),
     });
-  }
-
-  // Its line on the level card, in Progress.
-  function renderVirtueLine() {
-    const line = $('#virtueLine');
-    const v = excellenceOf();
-    line.hidden = !v;
-    if (!v) return;
-    const grade = v.grade;
-    $('#virtueLineText').textContent = t('virtueName') + ' · ' + (grade
-      ? t(gradeKey(grade)) + ' · ' + t('virtueStreakShortFmt', v.streak)
-      : virtueStatus(v, todayKey()).text);
-    line.dataset.grade = grade ? grade.id : 'none';
-  }
-
-  function applyExcellenceSwitch() {
-    const box = $('#excellenceToggle');
-    if (box) box.checked = state.showExcellence;
-    const label = $('#excellenceState');
-    if (label) label.textContent = t(state.showExcellence ? 'virtueShown' : 'virtueHidden');
   }
 
   /* ── Levels and achievements (2.19) ───────────────────────────────────
@@ -2888,8 +2878,9 @@
      flood of them. An achievement once earned stays earned. */
   const POINTS = { done: 10, perfect: 20, mood: 5, virtue: 25 };
   // The rules the stored achievements were announced under: 2 since 2.20
-  // counted excellence (see noticeProgress).
-  const ACHIEVEMENT_FORMULA = 2;
+  // counted excellence, 3 since 2.21 counts it at 70 % of a day (see
+  // noticeProgress).
+  const ACHIEVEMENT_FORMULA = 3;
   const ACHIEVEMENTS = [
     { id: 'first', icon: '🌱', goal: 1, of: (p) => p.done },
     { id: 'perfectDay', icon: '✨', goal: 1, of: (p) => p.perfect },
@@ -3058,7 +3049,6 @@
     $('#levelBar').setAttribute('aria-valuenow', String(pct));
     $('#levelNext').textContent = t('levelNextFmt', { left: L.next - L.points, level: L.level + 1 });
     $('#achievementsCount').textContent = t('achievementsCountFmt', { n: earnedOf(p).size, of: ACHIEVEMENTS.length });
-    renderVirtueLine();
   }
 
   function openAchievements() {
@@ -3290,7 +3280,6 @@
     $('#weekStart').value = String(state.weekStart);
     applySound();                     // its label is translated
     if (emojiPicker) emojiPicker.relabel();
-    applyExcellenceSwitch();
     fillCategorySelect();
     buildLayoutPickers();
     renderPalettePicker();
@@ -5521,11 +5510,11 @@
     return '\uFEFF' + rows.map((row) => row.map(cell).join(sep)).join('\r\n') + '\r\n';
   }
 
-  // Excellence in the table: Sí or No once it could form and something was
-  // due; empty otherwise, and for a today not over yet unless already lit.
+  // Excellence in the table: Sí or No when something was due; empty
+  // otherwise, and for a today not over yet unless already lit.
   function virtueCell(ex, key) {
     const d = ex && ex.byKey.get(key);
-    if (!d || !d.formed || d.due === 0) return '';
+    if (!d || d.due === 0) return '';
     if (d.excellent) return t('csvYes');
     return key === todayKey() ? '' : t('csvNo');
   }
@@ -5650,19 +5639,10 @@
       heatHabitId = evt.target.value;
       renderHeatmap(lastNDays(range));
     });
-    // Excellence (2.20): its row in Today, its line in Progress, its note in
-    // Hábitos, its sheet and its switch in Ajustes.
+    // Excellence: its row in Today and its sheet (2.21: nowhere else).
     $('#excellenceRow').addEventListener('click', () => { Sounds.play('tick'); openExcellence(); });
-    $('#virtueLine').addEventListener('click', () => { Sounds.play('tick'); openExcellence(); });
-    $('#btnVirtueNote').addEventListener('click', () => { Sounds.play('tick'); openExcellence(); });
     $$('#excellenceDialog [data-close]').forEach((btn) => {
       btn.addEventListener('click', () => $('#excellenceDialog').close());
-    });
-    $('#excellenceToggle').addEventListener('change', (evt) => {
-      state.showExcellence = evt.target.checked;
-      save();
-      applyExcellenceSwitch();
-      renderToday();
     });
     // Level and achievements (2.19).
     $('#btnAchievements').addEventListener('click', openAchievements);
@@ -5754,20 +5734,10 @@
       $('#btnSaveHabit').disabled = false;
     });
     $('#btnDeleteHabit').addEventListener('click', async () => {
-      const ok = await confirmDialog(t('deleteHabitTitle'), t('deleteHabitBody'));
-      if (!ok) return;
-      const gone = habitById(editingId);
-      if (hasOwnNote(gone)) deleteNoteFile(gone.voiceNote.id);
-      dropBotLinesOf(editingId);
-      state.habits = state.habits.filter((h) => h.id !== editingId);
-      delete state.entries[editingId];
-      save();
-      $('#habitDialog').close();
-      renderHabitsView();
-      renderToday();
-      renderProgressIfVisible();
-      renderCastSettings();
-      toast(t('habitDeleted'));
+      if (await askDeleteHabit(editingId)) $('#habitDialog').close();
+    });
+    $$('#habitActions [data-close]').forEach((btn) => {
+      btn.addEventListener('click', () => $('#habitActions').close());
     });
 
     /* Settings */
@@ -6541,17 +6511,17 @@
     const steps = [
       { id: 'hello', view: 'today', pose: 'wave' },
       { id: 'days', view: 'today', target: '#dayStrip', pose: 'point' },
-      { id: 'ring', view: 'today', target: '.summary-card', pose: 'happy' },
+      { id: 'ring', view: 'today', target: '.summary-card', pose: 'point' },
       { id: 'habits', view: 'today', pose: 'point',
         target: () => $('#habitList .habit-row') || $('#todayEmpty'),
         body: (node) => (node && node.classList.contains('habit-row') ? 'tourHabitsBody' : 'tourHabitsEmptyBody') },
-      { id: 'excellence', view: 'today', target: () => (state.showExcellence ? $('#excellenceRow') : null), pose: 'happy' },
-      { id: 'mood', view: 'today', target: '.mood-card', pose: 'think' },
+      { id: 'excellence', view: 'today', target: '#excellenceRow', pose: 'point' },
+      { id: 'mood', view: 'today', target: '.mood-card', pose: 'point' },
       { id: 'manage', view: 'habits', target: '#tabBar .tab[data-view="habits"]', pose: 'point' },
       { id: 'progress', view: 'progress', target: '#tabBar .tab[data-view="progress"]', pose: 'point' },
-      { id: 'palette', view: 'settings', target: '#paletteField', pose: 'happy' },
+      { id: 'palette', view: 'settings', target: '#paletteField', pose: 'point' },
     ];
-    if (shell) steps.push({ id: 'cast', view: 'settings', target: '#castSettings', pose: 'talk' });
+    if (shell) steps.push({ id: 'cast', view: 'settings', target: '#castSettings', pose: 'point' });
     steps.push({ id: 'bye', view: 'today', pose: 'cheer' });
     return steps;
   }
@@ -6568,8 +6538,11 @@
     $$('dialog[open]').forEach((dlg) => dlg.close());
     tour.steps = tourSteps();
     tour.open = true;
+    tour.picoX = null;                 // where he stands: none yet (he appears, then runs)
+    tour.picoSide = null;
     Pico.mount($('#tourPico'), 'wave');
     $('#tour').hidden = false;
+    document.documentElement.classList.add('is-touring');   // room to lift any target (styles.css)
     setBackgroundInert(true);
     renderTourPromo();
     showTourStep(0);
@@ -6608,8 +6581,10 @@
   }
 
   /* Frames the stop's target and puts the coach below it when it fits, else
-     above, else over the far end of the screen; then Pico looks, and points
-     if the pose says so, at the middle of the target. */
+     above, else over the far end of the screen; then Pico takes his place
+     behind the card, on the target's side (running there along the card's
+     edge when he was on the other), looks, and points at the middle of the
+     target. */
   function placeTour() {
     if (!tour.open) return;
     const node = tourTarget(tour.steps[tour.at]);
@@ -6621,6 +6596,10 @@
     if (!node) {
       spot.removeAttribute('style');
       coach.style.top = '';
+      // Centred over the centred card (styles.css lifts it by 42 % of itself).
+      const size = picoHost.offsetWidth;
+      const cardTop = coach.offsetTop - 0.42 * coach.offsetHeight;
+      placeTourPico(coach.offsetLeft + (coach.offsetWidth - size) / 2, cardTop - TOUR_PICO_RISE * size);
       Pico.look(picoHost, 0, 0);
       return;
     }
@@ -6640,7 +6619,8 @@
     let box = frame();
 
     const height = coach.offsetHeight;
-    const rise = Math.max(0, -picoHost.offsetTop);   // how far Pico stands above the coach
+    const size = picoHost.offsetWidth;
+    const rise = TOUR_PICO_RISE * size;               // how far Pico shows above the coach
     const gap = 14;
     const margin = 12;
     const below = height + gap + rise + margin;       // room the coach needs under the target
@@ -6670,15 +6650,49 @@
     spot.style.height = Math.max(0, box.bottom - box.top) + 'px';
     coach.style.top = Math.round(top) + 'px';
 
-    // Pico looks, and points, at the middle of what is framed.
-    const pr = picoHost.getBoundingClientRect();
-    const px = pr.left + pr.width / 2;
-    const py = top + picoHost.offsetTop + pr.height / 2;
-    const dx = (box.left + box.right) / 2 - px;
+    // Pico behind the card, on the target's side, then looking and
+    // pointing from there at the middle of what is framed.
+    const cardLeft = coach.offsetLeft;
+    const cardRight = cardLeft + coach.offsetWidth;
+    const targetX = (box.left + box.right) / 2;
+    // His side, chosen once a stop (a resize keeps it): the target's, or, for
+    // one as wide as the card, the other side from where he stands — so he
+    // runs across behind the card from one stop to the next.
+    if (!tour.picoSide || tour.picoSide.at !== tour.at) {
+      const wide = box.right - box.left >= 0.6 * (cardRight - cardLeft);
+      const atRight = tour.picoX !== null && tour.picoX > (cardLeft + cardRight) / 2 - size / 2;
+      const side = wide ? (atRight ? 'left' : 'right') : targetX < (cardLeft + cardRight) / 2 ? 'left' : 'right';
+      tour.picoSide = { at: tour.at, side: side };
+    }
+    const x = tour.picoSide.side === 'left' ? cardLeft + 6 : cardRight - size - 6;
+    const y = top - rise;
+    placeTourPico(x, y);
+    const px = x + size / 2;
+    const py = y + size / 2;
+    const dx = targetX - px;
     const dy = (box.top + box.bottom) / 2 - py;
     const length = Math.hypot(dx, dy) || 1;
     Pico.look(picoHost, dx / length, dy / length);
     Pico.point(picoHost, (Math.atan2(dy, dx) * 180) / Math.PI);
+  }
+
+  /* How much of Pico shows above the coach card: his head, crest, wings and
+     chest; the rest is behind it. */
+  const TOUR_PICO_RISE = 0.6;
+
+  // Puts Pico at x, y (his box's top left); a change of side is run.
+  function placeTourPico(x, y) {
+    const host = $('#tourPico');
+    const from = tour.picoX;
+    if (from === null) {
+      host.classList.add('is-placing');              // the first stop: he is simply there
+      requestAnimationFrame(() => requestAnimationFrame(() => host.classList.remove('is-placing')));
+    } else if (Math.abs(x - from) > 24 && !reducedMotion.matches) {
+      Pico.run(host, x - from, 0.75);
+    }
+    host.style.left = Math.round(x) + 'px';
+    host.style.top = Math.round(y) + 'px';
+    tour.picoX = x;
   }
 
   /* Puts text into node a word at a time (each word fades in after the one
@@ -6724,6 +6738,7 @@
     tour.open = false;
     cancelAnimationFrame(tour.frame);
     $('#tour').hidden = true;
+    document.documentElement.classList.remove('is-touring');
     Pico.unmount($('#tourPico'));
     if (window.PicoVoice) PicoVoice.hush();
     setBackgroundInert(false);

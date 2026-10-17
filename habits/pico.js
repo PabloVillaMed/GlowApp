@@ -206,7 +206,7 @@
       // from off screen it is old, and a gesture timed from it would be over
       // before its first frame (2.16: a wave or a cheer silently skipped).
       const t = this.now = Math.max(this.now, performance.now() / 1000);
-      const span = { wave: 2.3, cheer: 1.9, talk: seconds || 1.6, nod: 0.9, hop: 0.46, caw: 0.5, wink: 1.15 }[name] || 1;
+      const span = { wave: 2.3, cheer: 1.9, talk: seconds || 1.6, nod: 0.9, hop: 0.46, caw: 0.5, wink: 1.15, run: seconds || 0.75 }[name] || 1;
       if (name === 'talk') this.talkUntil = t + span;
       if (name === 'cheer') [0, 0.5, 1.0].forEach((d) => this.gestures.push({ name: 'hop', start: t + d, end: t + d + 0.46 }));
       this.gestures.push({ name, start: t, end: t + span });
@@ -241,6 +241,12 @@
     setLook(dx, dy) {
       this.look = [clamp(Number(dx) || 0, -1, 1), clamp(Number(dy) || 0, -1, 1)];
       wake();
+    }
+
+    /* A run (2.21): towards dir (-1 left, 1 right) for seconds. */
+    run(dir, seconds) {
+      this.runDir = dir < 0 ? -1 : 1;
+      this.gesture('run', seconds);
     }
 
     /* A tap: a little hop, a caw, a glad blink. */
@@ -293,6 +299,14 @@
           off.faceY -= 0.8 * shut;
         }
         if (g.name === 'caw') { off.beak = Math.max(off.beak, Math.sin(Math.PI * u)); off.crest -= 14 * Math.sin(Math.PI * u); }
+        if (g.name === 'run') {
+          // Quick low hops, leaning the way he goes, the wings beating in turn.
+          off.hop -= 6 * Math.abs(Math.sin(local * Math.PI * 7)) * env;
+          off.lean += 9 * (this.runDir || 1) * env;
+          off.wingL += 34 * Math.max(0, Math.sin(local * 2 * Math.PI * 3.5)) * env;
+          off.wingR += 34 * Math.max(0, Math.sin(local * 2 * Math.PI * 3.5 + Math.PI)) * env;
+          off.crest += 8 * env;
+        }
         if (g.name === 'hop') {
           off.hop -= 9 * 4 * u * (1 - u);                                  // a parabola, up and down
           off.squash += u < 0.12 ? -0.07 * (u / 0.12) : u > 0.82 ? 0.08 * Math.sin(Math.PI * (u - 0.82) / 0.18) : 0.04;
@@ -514,6 +528,7 @@
     point: withRig((rig, angle) => rig.point(angle)),
     say: withRig((rig, ms) => rig.gesture('talk', Math.max(0.3, (Number(ms) || 1200) / 1000))),
     gesture: withRig((rig, name) => rig.gesture(name)),
+    run: withRig((rig, dir, seconds) => rig.run(dir, seconds)),
     react: withRig((rig) => rig.react()),
   };
 })(window);

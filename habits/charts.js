@@ -46,10 +46,17 @@
     return w / vb.width;
   }
 
-  /* Draw at the host's real pixel width so 11px text renders as 11px. */
+  /* Draw at the host's width in the text's own scale: at the default size a
+     unit is a pixel, so 11px text renders as 11px; with Ajustes → Tamaño
+     (2.21) the whole chart — its text, margins and marks — grows or shrinks
+     with the rest of the app, the SVG being as wide as its host. */
+  function textScale() {
+    const px = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    return px / 16;
+  }
   function widthOf(host, min) {
-    const w = Math.round(host.getBoundingClientRect().width || host.clientWidth || 0);
-    return Math.max(min || 280, w || 340);
+    const w = Math.round((host.getBoundingClientRect().width || host.clientWidth || 0) / textScale());
+    return Math.max(min || 200, w || 340);
   }
 
   function reset(host) {
@@ -175,7 +182,7 @@
     });
 
     /* What the line follows: the values, or (opts.smooth, 2.20) their
-       rolling mean, the daily values then shown as faint dots under it. */
+       rolling mean (2.21: without the daily values as dots around it). */
     const raw = pts.map((p) => (p.value === null || p.value === undefined ? null : p.value));
     const line = opts.smooth ? rollingMean(raw, opts.smooth) : raw;
     const color = opts.color || 'var(--s1)';
@@ -202,12 +209,6 @@
           class: 'viz-area', fill: color,
           d: 'M' + xAt(run[0]).toFixed(1) + ' ' + base + 'L' + curve.slice(1) + 'L' + xAt(run[run.length - 1]).toFixed(1) + ' ' + base + 'Z',
         }, svg);
-      });
-    }
-    // The daily values under a smoothed line: small and faint.
-    if (opts.smooth) {
-      raw.forEach((v, i) => {
-        if (v !== null) el('circle', { class: 'viz-dot is-raw', cx: xAt(i), cy: yAt(v), r: 2.4, fill: color }, svg);
       });
     }
     runs.forEach((run) => el('path', { class: 'viz-line', d: curvePath(pointsOf(run)), stroke: color }, svg));
@@ -277,22 +278,6 @@
     hit.addEventListener('pointermove', move);
     hit.addEventListener('pointerdown', move);
     hit.addEventListener('pointerleave', leave);
-
-    /* Two marks need a key: the faint dots are each day, the line their
-       average (2.20). Each swatch mirrors its mark. */
-    if (opts.smooth && opts.legend) {
-      const box = document.createElement('div');
-      box.className = 'viz-legend';
-      opts.legend.forEach((item) => {
-        const entry = document.createElement('span');
-        const swatch = document.createElement('i');
-        swatch.className = item.mark === 'dot' ? 'is-dot' : 'is-line';
-        swatch.style.background = color;
-        entry.append(swatch, document.createTextNode(item.name));
-        box.appendChild(entry);
-      });
-      host.appendChild(box);
-    }
   }
 
   /* ── Horizontal bars ─────────────────────────────────────────────────
@@ -302,9 +287,12 @@
     const tip = reset(host);
     const items = opts.items;
     const W = widthOf(host);
-    const rowH = 36;
+    // Narrow (Grande on a phone, 2.21): each name goes over its bar, and the
+    // bar has the whole width.
+    const stacked = W < 300;
+    const rowH = stacked ? 40 : 36;
     const gap = 8;
-    const labelW = Math.round(Math.min(190, Math.max(96, W * 0.42)));
+    const labelW = stacked ? 0 : Math.round(Math.min(190, Math.max(96, W * 0.42)));
     const H = items.length * (rowH + gap) + 18;
     const innerW = W - labelW - (opts.valueW || 46);   // room for the value at the end
 
@@ -313,13 +301,15 @@
 
     items.forEach((item, i) => {
       const y = i * (rowH + gap);
-      const barH = 18;
-      const barY = y + (rowH - barH) / 2;
+      const barH = stacked ? 14 : 18;
+      const barY = stacked ? y + rowH - barH : y + (rowH - barH) / 2;
 
-      const name = el('text', { class: 'viz-label', x: 0, y: y + rowH / 2 - 1, 'dominant-baseline': 'middle' }, svg);
-      name.textContent = fit(item.label, labelW - 8);
+      const name = el('text', { class: 'viz-label', x: 0, y: stacked ? y + 9 : y + rowH / 2 - 1, 'dominant-baseline': 'middle' }, svg);
+      name.textContent = fit(item.label, stacked ? W - (item.sub ? 52 : 8) : labelW - 8);
       if (item.sub) {
-        el('text', { class: 'viz-tick', x: 0, y: y + rowH / 2 + 12 }, svg).textContent = item.sub;
+        el('text', stacked
+          ? { class: 'viz-tick', x: W, y: y + 9, 'text-anchor': 'end', 'dominant-baseline': 'middle' }
+          : { class: 'viz-tick', x: 0, y: y + rowH / 2 + 12 }, svg).textContent = item.sub;
       }
 
       el('rect', { class: 'viz-bar', x: labelW, y: barY, width: innerW, height: barH, fill: 'var(--surface-3)' }, svg);
@@ -359,7 +349,7 @@
 
     const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': opts.ariaLabel || '' }, host);
     el('line', { class: 'viz-axis', x1: 0, x2: W, y1: base, y2: base }, svg);
-    /* A goal across the columns (2.20: excellence's 80 %), under them; the
+    /* A goal across the columns (excellence's 70 % since 2.21), under them; the
        caption says what it is, so it needs no label of its own. */
     if (opts.ref) {
       const y = base - (opts.ref.value / max) * innerH;
@@ -400,8 +390,10 @@
     const groups = opts.groups;
     const series = opts.series;
     const W = widthOf(host);
-    const H = 40 + groups.length * 52;
-    const labelW = Math.round(Math.min(190, Math.max(96, W * 0.42)));
+    const stacked = W < 300;                          // the name over its pair (2.21)
+    const groupH = stacked ? 60 : 52;
+    const H = 40 + groups.length * groupH;
+    const labelW = stacked ? 0 : Math.round(Math.min(190, Math.max(96, W * 0.42)));
     const innerW = W - labelW - 44;
     const max = opts.max || 5;
 
@@ -416,14 +408,14 @@
     el('line', { class: 'viz-axis', x1: labelW, x2: labelW, y1: 0, y2: H - 22 }, svg);
 
     groups.forEach((g, gi) => {
-      const top = gi * 52 + 4;
-      const name = el('text', { class: 'viz-label', x: 0, y: top + 22, 'dominant-baseline': 'middle' }, svg);
-      name.textContent = fit(g.label, labelW - 8);
+      const top = gi * groupH + 4;
+      const name = el('text', { class: 'viz-label', x: 0, y: stacked ? top + 6 : top + 22, 'dominant-baseline': 'middle' }, svg);
+      name.textContent = fit(g.label, stacked ? W - 8 : labelW - 8);
 
       g.values.forEach((v, si) => {
         /* 2px surface gap between adjacent bars keeps the pair readable. */
         const barH = 16;
-        const y = top + si * (barH + 2);
+        const y = (stacked ? top + 16 : top) + si * (barH + 2);
         if (v.value === null) return;
         const w = Math.max(3, (v.value / max) * innerW);
         const bar = el('rect', { class: 'viz-bar', x: labelW, y: y, width: w, height: barH, fill: series[si].color }, svg);
