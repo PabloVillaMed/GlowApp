@@ -250,11 +250,13 @@ card nearest what it is about and points at it with a wing; for a target as
 wide as the card he takes the other side from where he stood, so from one
 stop to the next he runs along behind the card (`Pico.run`: quick low hops,
 leaning the way he goes, the wings beating in turn), and he rises and sinks
-with the card as it moves. Under reduced motion he is simply there.
+with the card as it moves, growing or shrinking on the way between his two
+sizes (2.22). Under reduced motion he is simply there.
 
 One animation loop serves every Pico on the
 page: full rate while something plays, about fifteen frames a second while
-he only breathes, and asleep while none is on screen. The springs move in
+he only breathes, and asleep while none is on screen. The tour's Pico, large
+and watched, keeps the full rate even at rest (`Pico.lively`, 2.22). The springs move in
 steps of at most 1/120 s however long a frame is: until 2.19 each frame was
 one step, and at twenty frames a second (a slow phone, the emulator, or
 his own fifteen at rest) the stiffest springs — the eyelids and the beak —
@@ -274,6 +276,22 @@ tall target is lifted under the app bar and framed as far as it fits. The
 overlay takes every touch and the app behind is inert; Next, Back, Skip, the
 arrow keys, Escape and Android's back all work, and finishing, skipping or
 backing out all count as taken (`state.tourDone`).
+
+From one stop to the next (2.22) everything moves on the compositor:
+opacity, `translate` and `scale`, never `top`, `left`, `width` or `height`.
+Until 2.21 the highlight, the card and Pico animated those, so the browser
+laid out and repainted the whole screen on every frame of a move and a
+phone showed it in a few jerky frames. On the same view the tap answers at
+once (the words, the dots and the buttons change), the highlight closes
+into a plain dim (`#tourDim`) while the page scrolls smoothly to what comes
+next, and opens around it as the card and Pico glide there from where they
+were seen: each is put in its new place, moved back to where it was with a
+transform, and let go on the spring, so a second tap mid-move goes on from
+wherever things are. A stop in another view is a change of scene: the card
+and Pico step out, the view is drawn and scrolled while nothing moves, and
+they come back with the new stop, Pico talking and the words coming as they
+do. `#tour[data-settled]` turns `true` when a move is over; the tests wait
+on it.
 
 When a day completes, Pico hops up over the tab bar with one of his lines
 instead of the plain toast, and leaves by himself. When a habit is done and

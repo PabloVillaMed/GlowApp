@@ -5818,7 +5818,7 @@
     window.addEventListener('resize', () => {
       if (!tour.open) return;
       cancelAnimationFrame(tour.frame);
-      tour.frame = requestAnimationFrame(placeTour);
+      tour.frame = requestAnimationFrame(() => placeTour(false, 0));
     });
     $('#picoCheer').addEventListener('click', hidePicoCheer);
     // Swipe the coach: right to left for the next stop, left to right to go back.
@@ -6540,7 +6540,10 @@
     tour.open = true;
     tour.picoX = null;                 // where he stands: none yet (he appears, then runs)
     tour.picoSide = null;
+    tour.placed = null;                // where the card and Pico were last put
+    tour.seq = 0;
     Pico.mount($('#tourPico'), 'wave');
+    Pico.lively($('#tourPico'), true); // every frame in the tour: he is large, and watched
     $('#tour').hidden = false;
     document.documentElement.classList.add('is-touring');   // room to lift any target (styles.css)
     setBackgroundInert(true);
@@ -6548,16 +6551,79 @@
     showTourStep(0);
   }
 
+  /* A stop. Since 2.22 everything that moves moves on the compositor —
+     opacity, translate and scale, never top, left, width or height — so a
+     view being drawn, or Pico's own frame, cannot make it stutter. On the
+     same view the tap answers at once (the words, the dots and the buttons
+     change before anything moves), the highlight closes into a plain dim
+     while the page scrolls smoothly to what comes next, and opens around it
+     as the card and Pico glide there. In another view it is a change of
+     scene: the card and Pico step out, the view is drawn, and they come
+     back with the new stop. */
   function showTourStep(index) {
     const step = tour.steps[index];
     if (!step) return;
+    const seq = ++tour.seq;
+    const overlay = $('#tour');
+    const animate = !reducedMotion.matches && tour.placed !== null;
+    // Another view: a change of scene rather than a glide (see placeTour). So
+    // is any stop asked for while one is under way (a quick Back): the card
+    // and Pico are away.
+    const scene = animate && (step.view !== view || overlay.classList.contains('is-changing'));
     tour.at = index;
-    if (step.view !== view) setView(step.view);
+    overlay.dataset.settled = 'false';
+    const arrive = () => {
+      if (seq !== tour.seq || !tour.open) return;
+      const plan = planTour(tourTarget(step));
+      const place = () => {
+        if (seq !== tour.seq || !tour.open) return;
+        placeTour(animate && !scene, seq, scene);
+      };
+      const still = plan.scroll === null || Math.abs(plan.scroll - window.scrollY) < 2;
+      if (animate && !scene && !still) {
+        smoothScrollThen(plan.scroll, place);         // the page glides there under the dim
+        return;
+      }
+      // A view just drawn is simply there where it is wanted.
+      if (!still) window.scrollTo({ top: plan.scroll, behavior: 'instant' });
+      // Let the highlight close first; after a change of view, let the view be
+      // drawn while nothing moves, however long that takes on this phone.
+      if (scene) whenDrawn(place);
+      else if (animate) setTimeout(place, 170);
+      else place();
+    };
+    const fill = (held) => {
+      if (step.view !== view) setView(step.view);
+      fillTourStop(step, index, held);
+      arrive();
+    };
+    if (!animate) {
+      fill(false);
+      return;
+    }
+    closeTourSpot();
+    if (scene) {
+      // The card and Pico step out with the highlight; the stop is filled in,
+      // and its view drawn, while they are away; its words and Pico's voice
+      // wait for them to be back.
+      overlay.classList.add('is-changing');
+      setTimeout(() => { if (seq === tour.seq && tour.open) fill(true); }, 190);
+    } else fill(false);
+  }
+
+  /* The stop's words, dots and buttons, Pico's pose, and what he says.
+     held: the words and his voice wait, paused, for placeTour to let them go
+     (the card is away, in a change of scene). */
+  function fillTourStop(step, index, held) {
     const key = 'tour' + step.id.charAt(0).toUpperCase() + step.id.slice(1);
     const last = index === tour.steps.length - 1;
+    const node = tourTarget(step);
+    // Centred or not with its words, rather than once the card gets there (2.22).
+    $('#tour').dataset.mode = node ? 'target' : 'center';
     $('#tourStep').textContent = t('tourStep', { at: index + 1, of: tour.steps.length });
     $('#tourTitle').textContent = t(key + 'Title');
-    const speech = revealWords($('#tourBody'), t(step.body ? step.body(tourTarget(step)) : key + 'Body'));
+    const speech = revealWords($('#tourBody'), t(step.body ? step.body(node) : key + 'Body'));
+    $('#tourBody').classList.toggle('is-held', !!held);
     $('#tourBack').hidden = index === 0;
     $('#tourSkip').hidden = last;
     $('#tourNext').textContent = t(index === 0 ? 'tourStart' : last ? 'tourDone' : 'tourNext');
@@ -6569,131 +6635,277 @@
       dots.appendChild(dot);
     });
     Pico.pose($('#tourPico'), step.pose);
-    Pico.say($('#tourPico'), speech);
-    // He says it in his own sounds, a sentence's worth, while the words come.
-    if (window.PicoVoice && speech) PicoVoice.babble(Math.min(speech, 1300));
-    const coach = $('#tourCoach');
-    coach.classList.remove('is-entering');
-    void coach.offsetWidth;            // restart the entrance for each stop
-    coach.classList.add('is-entering');
-    placeTour();
+    const talk = () => {
+      Pico.say($('#tourPico'), speech);
+      // He says it in his own sounds, a sentence's worth, while the words come.
+      if (window.PicoVoice && speech) PicoVoice.babble(Math.min(speech, 1300));
+    };
+    tour.talk = held ? talk : null;
+    if (!held) talk();
     $('#tourNext').focus({ preventScroll: true });
   }
 
-  /* Frames the stop's target and puts the coach below it when it fits, else
-     above, else over the far end of the screen; then Pico takes his place
-     behind the card, on the target's side (running there along the card's
-     edge when he was on the other), looks, and points at the middle of the
-     target. */
-  function placeTour() {
+  /* Where the page should scroll for a stop's target: centred, or, when the
+     card and Pico would fit neither under nor over it, lifted to just under
+     the app bar. Null when nothing need scroll (a stop with no target, or
+     one in the tab bar). Worked out from where things are now, before
+     anything moves. */
+  function planTour(node) {
+    if (!node || node.closest('#tabBar')) return { scroll: null };
+    const vh = window.innerHeight;
+    const max = Math.max(0, document.documentElement.scrollHeight - vh);
+    const r = node.getBoundingClientRect();
+    const clamp = (y) => Math.max(0, Math.min(max, Math.round(y)));
+    const centred = clamp(window.scrollY + r.top + r.height / 2 - vh / 2);
+    const fit = tourFit(node, centred - window.scrollY);
+    if (fit.room) return { scroll: centred };
+    const ceiling = $('.app-bar').getBoundingClientRect().bottom + 4;
+    const lifted = clamp(centred + (fit.box.top - ceiling - 4));
+    return { scroll: lifted };
+  }
+
+  // The target's frame if the page were scrolled by dy, and whether the card
+  // (with Pico over it) fits under or over it.
+  function tourFit(node, dy) {
+    const vw = document.documentElement.clientWidth;
+    const vh = window.innerHeight;
+    const inBar = !!node.closest('#tabBar');
+    const ceiling = inBar ? 4 : $('.app-bar').getBoundingClientRect().bottom + 4;
+    const r = node.getBoundingClientRect();
+    const pad = 6;
+    const box = {
+      left: Math.max(4, r.left - pad), top: Math.max(ceiling, r.top - dy - pad),
+      right: Math.min(vw - 4, r.right + pad), bottom: Math.min(vh - 4, r.bottom - dy + pad),
+    };
+    const height = $('#tourCoach').offsetHeight;
+    const pico = $('#tourPico');
+    // Pico's size at a stop with a target, even while still large from one without.
+    const rise = TOUR_PICO_RISE * pico.offsetWidth * (pico.classList.contains('is-big') ? TOUR_PICO_SMALL : 1);
+    const room = box.bottom + height + 14 + rise + 12 <= vh || box.top - 14 - height - rise - 12 >= 0;
+    return { box, room, ceiling, inBar };
+  }
+
+  /* Frames the stop's target (or none) and puts the card below it when it
+     fits, else above, else over the far end of the screen; Pico behind the
+     card, on the target's side (running there along the card's edge when he
+     was on the other), looking and pointing at the middle of the target. All
+     from where the page is now: planTour() has scrolled it. animate: the
+     highlight opens and the card and Pico glide from where they were. */
+  function placeTour(animate, seq, scene) {
     if (!tour.open) return;
     const node = tourTarget(tour.steps[tour.at]);
     const overlay = $('#tour');
     const spot = $('#tourSpot');
     const coach = $('#tourCoach');
     const picoHost = $('#tourPico');
-    overlay.dataset.mode = node ? 'target' : 'center';
-    if (!node) {
-      spot.removeAttribute('style');
-      coach.style.top = '';
-      // Centred over the centred card (styles.css lifts it by 42 % of itself).
-      const size = picoHost.offsetWidth;
-      const cardTop = coach.offsetTop - 0.42 * coach.offsetHeight;
-      placeTourPico(coach.offsetLeft + (coach.offsetWidth - size) / 2, cardTop - TOUR_PICO_RISE * size);
-      Pico.look(picoHost, 0, 0);
-      return;
-    }
-    const inBar = !!node.closest('#tabBar');          // fixed; never scrolled
-    if (!inBar) node.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
-    const vw = document.documentElement.clientWidth;
     const vh = window.innerHeight;
-    const ceiling = inBar ? 4 : $('.app-bar').getBoundingClientRect().bottom + 4;   // the sticky bar covers the top
-    const pad = 6;
-    const frame = () => {
-      const r = node.getBoundingClientRect();
-      return {
-        left: Math.max(4, r.left - pad), top: Math.max(ceiling, r.top - pad),
-        right: Math.min(vw - 4, r.right + pad), bottom: Math.min(vh - 4, r.bottom + pad),
-      };
-    };
-    let box = frame();
-
+    // Where the card and Pico are seen now, mid-glide too when Next came
+    // quickly: they go on from there.
+    const was = tour.placed;
+    const seenCoach = was ? coach.getBoundingClientRect() : null;
+    const seenPico = was ? picoHost.getBoundingClientRect() : null;
+    overlay.dataset.mode = node ? 'target' : 'center';
+    picoHost.classList.toggle('is-big', !node);       // large on his own, as at the first and last stops
     const height = coach.offsetHeight;
     const size = picoHost.offsetWidth;
-    const rise = TOUR_PICO_RISE * size;               // how far Pico shows above the coach
+    const rise = TOUR_PICO_RISE * size;               // how far Pico shows above the card
     const gap = 14;
     const margin = 12;
-    const below = height + gap + rise + margin;       // room the coach needs under the target
+    let box = null;
     let top;
-    if (box.bottom + below <= vh) top = box.bottom + gap + rise;
-    else if (box.top - gap - height - rise - margin >= 0) top = box.top - gap - height;
-    else {
-      /* No room either side, which happens on a small screen or with a tall
-         target: lift the target to just under the app bar, frame as much of
-         it as fits, and put the coach underneath. */
-      if (!inBar) {
-        window.scrollBy({ top: box.top - ceiling - 4, behavior: 'instant' });
-        box = frame();
-      }
-      const floor = vh - below;
-      if (floor - box.top >= 64) {
-        box.bottom = Math.min(box.bottom, floor);
-        top = box.bottom + gap + rise;
-      } else {
-        top = margin + rise;
-        box.top = Math.max(box.top, top + height + gap);
+    if (!node) {
+      // In the middle, a little above it (as styles.css had it until 2.22).
+      top = Math.round(vh / 2 - 0.42 * height);
+    } else {
+      const fit = tourFit(node, 0);
+      box = fit.box;
+      const below = height + gap + rise + margin;     // room the card needs under the target
+      if (box.bottom + below <= vh) top = box.bottom + gap + rise;
+      else if (box.top - gap - height - rise - margin >= 0) top = box.top - gap - height;
+      else {
+        // Lifted already (planTour): frame as much of it as fits, the card under it.
+        const floor = vh - below;
+        if (floor - box.top >= 64) {
+          box.bottom = Math.min(box.bottom, floor);
+          top = box.bottom + gap + rise;
+        } else {
+          top = margin + rise;
+          box.top = Math.max(box.top, top + height + gap);
+        }
       }
     }
-    spot.style.left = box.left + 'px';
-    spot.style.top = box.top + 'px';
-    spot.style.width = (box.right - box.left) + 'px';
-    spot.style.height = Math.max(0, box.bottom - box.top) + 'px';
-    coach.style.top = Math.round(top) + 'px';
 
-    // Pico behind the card, on the target's side, then looking and
-    // pointing from there at the middle of what is framed.
+    // The highlight: where it opens.
+    if (box) {
+      spot.style.left = box.left + 'px';
+      spot.style.top = box.top + 'px';
+      spot.style.width = (box.right - box.left) + 'px';
+      spot.style.height = Math.max(0, box.bottom - box.top) + 'px';
+    } else {
+      spot.removeAttribute('style');                  // nothing framed: the dim alone
+    }
+    spot.classList.toggle('is-target', !!box);        // its ring, kept as it fades out whatever comes next
+
+    // The card.
+    top = Math.round(top);
+    coach.style.top = top + 'px';
+    glide(coach, animate, 0, seenCoach ? seenCoach.top - top : 0);
+    if (!was && !reducedMotion.matches) {
+      // The tour's first stop: the card comes in (later ones glide).
+      coach.classList.remove('is-entering');
+      void coach.offsetWidth;
+      coach.classList.add('is-entering');
+      coach.addEventListener('animationend', () => coach.classList.remove('is-entering'), { once: true });
+    }
+
+    // Pico behind the card, on the target's side.
     const cardLeft = coach.offsetLeft;
     const cardRight = cardLeft + coach.offsetWidth;
-    const targetX = (box.left + box.right) / 2;
-    // His side, chosen once a stop (a resize keeps it): the target's, or, for
-    // one as wide as the card, the other side from where he stands — so he
-    // runs across behind the card from one stop to the next.
-    if (!tour.picoSide || tour.picoSide.at !== tour.at) {
-      const wide = box.right - box.left >= 0.6 * (cardRight - cardLeft);
-      const atRight = tour.picoX !== null && tour.picoX > (cardLeft + cardRight) / 2 - size / 2;
-      const side = wide ? (atRight ? 'left' : 'right') : targetX < (cardLeft + cardRight) / 2 ? 'left' : 'right';
-      tour.picoSide = { at: tour.at, side: side };
+    let x;
+    if (!box) {
+      x = cardLeft + (coach.offsetWidth - size) / 2;
+    } else {
+      const targetX = (box.left + box.right) / 2;
+      // His side, chosen once a stop (a resize keeps it): the target's, or, for
+      // one as wide as the card, the other side from where he stands — so he
+      // runs across behind the card from one stop to the next.
+      if (!tour.picoSide || tour.picoSide.at !== tour.at) {
+        const wide = box.right - box.left >= 0.6 * (cardRight - cardLeft);
+        const atRight = tour.picoX !== null && tour.picoX > (cardLeft + cardRight) / 2 - size / 2;
+        const side = wide ? (atRight ? 'left' : 'right') : targetX < (cardLeft + cardRight) / 2 ? 'left' : 'right';
+        tour.picoSide = { at: tour.at, side: side };
+      }
+      x = tour.picoSide.side === 'left' ? cardLeft + 6 : cardRight - size - 6;
     }
-    const x = tour.picoSide.side === 'left' ? cardLeft + 6 : cardRight - size - 6;
-    const y = top - rise;
-    placeTourPico(x, y);
-    const px = x + size / 2;
-    const py = y + size / 2;
-    const dx = targetX - px;
-    const dy = (box.top + box.bottom) / 2 - py;
-    const length = Math.hypot(dx, dy) || 1;
-    Pico.look(picoHost, dx / length, dy / length);
-    Pico.point(picoHost, (Math.atan2(dy, dx) * 180) / Math.PI);
+    x = Math.round(x);
+    const y = Math.round(top - rise);
+    const run = seenPico ? x + size / 2 - (seenPico.left + seenPico.width / 2) : 0;
+    if (animate && Math.abs(run) > 24) Pico.run(picoHost, run, 0.6);
+    picoHost.style.left = x + 'px';
+    picoHost.style.top = y + 'px';
+    // From where he was seen, at the size he was seen: he grows or shrinks on the way.
+    glide(picoHost, animate, seenPico ? seenPico.left - x : 0, seenPico ? seenPico.top - y : 0, seenPico ? seenPico.width / size : 1);
+    tour.picoX = x;
+    tour.placed = { top: top, x: x, y: y };
+
+    if (box) {
+      const dx = (box.left + box.right) / 2 - (x + size / 2);
+      const dy = (box.top + box.bottom) / 2 - (y + size / 2);
+      const length = Math.hypot(dx, dy) || 1;
+      Pico.look(picoHost, dx / length, dy / length);
+      Pico.point(picoHost, (Math.atan2(dy, dx) * 180) / Math.PI);
+    } else {
+      Pico.look(picoHost, 0, 0);
+    }
+
+    openTourSpot(!was && !reducedMotion.matches);
+    if (scene) {
+      // Back in, in place: the card as on the tour's first stop, Pico fading
+      // in; the words come, and he says them.
+      overlay.classList.remove('is-changing');
+      $('#tourBody').classList.remove('is-held');
+      const talk = tour.talk;
+      tour.talk = null;
+      if (talk) talk();
+      coach.classList.remove('is-entering');
+      void coach.offsetWidth;
+      coach.classList.add('is-entering');
+      coach.addEventListener('animationend', () => coach.classList.remove('is-entering'), { once: true });
+    }
+    // Settled once the glide or the fade is over (tests and a resize read this).
+    const done = () => { if (!seq || seq === tour.seq) overlay.dataset.settled = 'true'; };
+    if (animate || scene) setTimeout(done, animate ? 620 : 320);
+    else done();
+  }
+
+  /* Shows an element where it was seen (dx, dy away and k times its size,
+     from its top left) and lets it glide to where its layout now puts it, on
+     the compositor, with the stylesheet's spring. Without animate it is
+     simply there, any glide under way let go. The translate and scale
+     properties where the browser has them, so the card's entrance (a
+     transform) can play at the same time; a transform where it has not. */
+  const SPLIT_TRANSFORMS = !!(window.CSS && CSS.supports && CSS.supports('translate', '1px 1px') && CSS.supports('scale', '1'));
+  function glide(el, animate, dx, dy, k) {
+    const scale = k || 1;
+    const clear = () => {
+      el.style.translate = '';
+      el.style.scale = '';
+      el.style.transform = '';
+    };
+    el.style.transition = 'none';
+    clear();
+    if (animate && (Math.abs(dx) >= 0.5 || Math.abs(dy) >= 0.5 || Math.abs(scale - 1) >= 0.005)) {
+      if (SPLIT_TRANSFORMS) {
+        el.style.translate = dx + 'px ' + dy + 'px';
+        el.style.scale = String(scale);
+      } else {
+        el.style.transform = 'translate(' + dx + 'px, ' + dy + 'px) scale(' + scale + ')';
+      }
+    }
+    void el.offsetWidth;                              // commit where it starts, or stop what was under way
+    el.style.transition = '';
+    clear();
+  }
+
+  // The highlight closes into the plain dim, and opens again (2.22): opacity only.
+  function closeTourSpot() {
+    $('#tourDim').classList.add('is-on');
+    $('#tourSpot').classList.remove('is-open');
+  }
+  function openTourSpot(fadeIn) {
+    const spot = $('#tourSpot');
+    const dim = $('#tourDim');
+    if (fadeIn) {
+      // The tour's very first frame: the dim comes in.
+      spot.classList.remove('is-open');
+      void spot.offsetWidth;
+    }
+    dim.classList.remove('is-on');
+    spot.classList.add('is-open');
+  }
+
+  /* Calls done once the page draws on time again after a view was drawn:
+     two frames in a row, each no slower than half as long again as the
+     quickest seen before it (so a phone at 30 or at 120 frames a second is
+     read right) nor than 50 ms; or after 600 ms at most. */
+  function whenDrawn(done) {
+    const t0 = performance.now();
+    let last = 0;
+    let quickest = 0;
+    let calm = 0;
+    const tick = (now) => {
+      if (last) {
+        const gap = now - last;
+        calm = quickest && gap <= Math.min(quickest * 1.5, 50) ? calm + 1 : 0;
+        quickest = quickest ? Math.min(quickest, gap) : gap;
+      }
+      last = now;
+      if (calm >= 2 || now - t0 > 600) done();
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  // Scrolls smoothly, then calls done (once, at the end or after 900 ms).
+  function smoothScrollThen(top, done) {
+    let over = false;
+    const end = () => {
+      if (over) return;
+      over = true;
+      window.removeEventListener('scrollend', end);
+      clearTimeout(timer);
+      done();
+    };
+    const timer = setTimeout(end, 900);
+    window.addEventListener('scrollend', end);
+    window.scrollTo({ top: top, behavior: 'smooth' });
   }
 
   /* How much of Pico shows above the coach card: his head, crest, wings and
      chest; the rest is behind it. */
   const TOUR_PICO_RISE = 0.6;
-
-  // Puts Pico at x, y (his box's top left); a change of side is run.
-  function placeTourPico(x, y) {
-    const host = $('#tourPico');
-    const from = tour.picoX;
-    if (from === null) {
-      host.classList.add('is-placing');              // the first stop: he is simply there
-      requestAnimationFrame(() => requestAnimationFrame(() => host.classList.remove('is-placing')));
-    } else if (Math.abs(x - from) > 24 && !reducedMotion.matches) {
-      Pico.run(host, x - from, 0.75);
-    }
-    host.style.left = Math.round(x) + 'px';
-    host.style.top = Math.round(y) + 'px';
-    tour.picoX = x;
-  }
+  // His size at a stop with a target, against his size on his own (styles.css: 7rem, 9.5rem).
+  const TOUR_PICO_SMALL = 7 / 9.5;
 
   /* Puts text into node a word at a time (each word fades in after the one
      before) and returns, in milliseconds, how long that takes: how long Pico
@@ -6737,7 +6949,11 @@
     if (!tour.open) return;
     tour.open = false;
     cancelAnimationFrame(tour.frame);
+    tour.seq++;                        // any stop still on its way is let go
+    $('#tour').classList.remove('is-changing');
     $('#tour').hidden = true;
+    $('#tourDim').classList.remove('is-on');
+    $('#tourSpot').classList.remove('is-open');
     document.documentElement.classList.remove('is-touring');
     Pico.unmount($('#tourPico'));
     if (window.PicoVoice) PicoVoice.hush();

@@ -466,7 +466,8 @@
     for (const rig of rigs) {
       if (!rig.svg.isConnected) { release(rig); continue; }
       if (document.hidden || !rig.visible) continue;
-      busy = Math.max(busy, rig.step(dt, now / 1000));
+      const b = rig.step(dt, now / 1000);
+      busy = Math.max(busy, b === 1 && rig.lively ? 2 : b);   // a lively one breathes at full rate (2.22)
       rig.render();
     }
     // Full rate while something plays; about fifteen frames a second while
@@ -529,6 +530,8 @@
     say: withRig((rig, ms) => rig.gesture('talk', Math.max(0.3, (Number(ms) || 1200) / 1000))),
     gesture: withRig((rig, name) => rig.gesture(name)),
     run: withRig((rig, dir, seconds) => rig.run(dir, seconds)),
+    // Every frame even at rest (2.22): for a Pico large and watched, as in the tour.
+    lively: withRig((rig, on) => { rig.lively = !!on; wake(); }),
     react: withRig((rig) => rig.react()),
   };
 })(window);

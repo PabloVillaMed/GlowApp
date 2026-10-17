@@ -2043,14 +2043,23 @@ dialog.sheet > .sheet-head { position: sticky; top: 0; z-index: 2; background: v
       0.9975 92%, 0.9986 96%, 1);
   }
 }
+/* Since 2.22 nothing here animates its place or size, which made the
+   browser lay out and repaint the whole screen on every frame: the
+   highlight fades (opacity), the card and Pico glide (translate, and scale
+   for Pico's size; transform where a browser lacks those). */
+.tour-dim {
+  position: fixed; inset: 0; pointer-events: none; background: rgba(4, 6, 12, 0.68);
+  opacity: 0; transition: opacity 0.18s ease-out; will-change: opacity;
+}
+.tour-dim.is-on { opacity: 1; }
 .tour-spot {
   position: fixed; left: 50%; top: 50%; width: 0; height: 0;
   border-radius: 16px; pointer-events: none;
-  box-shadow: 0 0 0 200vmax rgba(4, 6, 12, 0.68);
-  transition: left var(--spring-time) var(--spring), top var(--spring-time) var(--spring),
-    width var(--spring-time) var(--spring), height var(--spring-time) var(--spring);
+  box-shadow: 0 0 0 120vmax rgba(4, 6, 12, 0.68);
+  opacity: 0; transition: opacity 0.26s ease-out; will-change: opacity;
 }
-.tour[data-mode='target'] .tour-spot::after {
+.tour-spot.is-open { opacity: 1; }
+.tour-spot.is-target::after {
   content: ''; position: absolute; inset: -3px; border-radius: inherit;
   border: 2px solid var(--accent);
   animation: tour-pulse 1.8s ease-in-out infinite;
@@ -2059,21 +2068,26 @@ dialog.sheet > .sheet-head { position: sticky; top: 0; z-index: 2; background: v
 .tour-coach {
   position: fixed; left: 16px; right: 16px; max-width: 26rem; margin: 0 auto;
   display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px 12px; z-index: 2;
+  will-change: transform;
   padding: 14px 14px 12px;
   border-radius: var(--radius-lg); border: 1px solid var(--border-strong);
   background: var(--surface); color: var(--ink); box-shadow: var(--shadow);
-  transition: top var(--spring-time) var(--spring);
+  transition: translate var(--spring-time) var(--spring), transform var(--spring-time) var(--spring), opacity 0.16s ease-out;
 }
 .tour-coach.is-entering { animation: tour-in 0.26s ease-out both; }
+/* A change of view (2.22): the card and Pico step out while it is drawn. */
+.tour.is-changing .tour-coach, .tour.is-changing .tour-pico { opacity: 0; }
 @keyframes tour-in { from { opacity: 0; transform: translateY(6px) scale(0.98); } }
 /* Pico (2.21): large, behind the card (which hides his lower half), placed
    by app.js at its top edge on the side of the target; he runs along it,
    and rises and sinks with the card as it moves. */
 .tour-pico {
   position: fixed; left: 0; top: 0; z-index: 1; width: 7rem; height: 7rem;
-  transition: left 0.75s cubic-bezier(0.3, 0.7, 0.35, 1), top var(--spring-time) var(--spring);
+  transform-origin: 0 0;
+  transition: translate var(--spring-time) var(--spring), scale var(--spring-time) var(--spring),
+    transform var(--spring-time) var(--spring), opacity 0.2s ease-out;
+  will-change: transform;
 }
-.tour-pico.is-placing { transition: none; }
 /* While the tour runs the page has room at its end, so a target near the
    bottom of a short page can still be lifted under the app bar, with the
    card and Pico below it (2.21: Pico grew, and a short page left no room). */
@@ -2084,19 +2098,16 @@ html.is-touring body { padding-bottom: calc(64px + var(--safe-b) + 70vh); }
 .tour-text p:last-child { font-size: 0.88rem; line-height: 1.45; color: var(--ink-2); }
 /* Pico's words, appearing as he says them (pico.js times his beak to them). */
 .tour-text .tw { animation: tw-in 0.34s ease-out both; }
+/* Held while the card is away in a change of scene (2.22): they come with it. */
+.tour-text .is-held .tw { animation-play-state: paused; }
 @keyframes tw-in { from { opacity: 0; } }
 .tour-dots { grid-column: 1 / -1; display: flex; justify-content: center; gap: 5px; margin-top: 4px; }
 .tour-dots i { width: 6px; height: 6px; border-radius: 999px; background: var(--border-strong); transition: width 0.2s, background 0.2s; }
 .tour-dots i.is-on { width: 16px; background: var(--accent); }
 .tour-foot { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; }
 .tour-foot .btn { min-height: 40px; }
-.tour[data-mode='center'] .tour-coach {
-  top: 50%; transform: translateY(-42%);
-  grid-template-columns: minmax(0, 1fr); text-align: center;
-}
-.tour[data-mode='center'] .tour-coach.is-entering { animation-name: tour-in-center; }
-@keyframes tour-in-center { from { opacity: 0; transform: translateY(-40%) scale(0.97); } }
-.tour[data-mode='center'] .tour-pico { width: 9.5rem; height: 9.5rem; }
+.tour[data-mode='center'] .tour-coach { grid-template-columns: minmax(0, 1fr); text-align: center; }
+.tour-pico.is-big { width: 9.5rem; height: 9.5rem; }   /* on his own: the first and last stops */
 .tour[data-mode='center'] .tour-text { align-items: center; }
 
 /* ── Pico peeking over a ledge (2.15; over a ledge since 2.18) ──
@@ -2147,7 +2158,7 @@ html.is-touring body { padding-bottom: calc(64px + var(--safe-b) + 70vh); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tour-spot, .tour-coach, .tour-pico, .palette-card { transition: none; }
-  .tour[data-mode='target'] .tour-spot::after, .tour-coach.is-entering,
+  .tour-spot, .tour-dim, .tour-coach, .tour-pico, .palette-card { transition: none; }
+  .tour-spot.is-target::after, .tour-coach.is-entering,
   .pico-cheer, .pico-cheer.is-leaving { animation: none; }
 }

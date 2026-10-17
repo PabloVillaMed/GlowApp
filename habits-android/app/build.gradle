@@ -29,8 +29,8 @@ android {
     applicationId 'com.pablo.glowapp'
     minSdk 24
     targetSdk 36
-    versionCode 24
-    versionName '2.21'
+    versionCode 25
+    versionName '2.22'
   }
 
   /* Voice notes are played natively straight from the APK with openFd(),

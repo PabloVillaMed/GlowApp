@@ -19,7 +19,7 @@
   <!-- The typeface (2.19), asked for at once rather than when the stylesheet
        first needs it, so the first screen is drawn in it. -->
   <link rel="preload" href="fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="styles.css?v=2.21">
+  <link rel="stylesheet" href="styles.css?v=2.22">
   <script>
     /* The saved theme and palette, resolved as applyTheme() in app.js resolves
        them, before anything paints: until app.js ran, a light theme opened on
@@ -42,7 +42,7 @@
       }
     })();
   </script>
-  <script src="i18n.js?v=2.21"></script>
+  <script src="i18n.js?v=2.22"></script>
 </head>
 <body>
   <!-- Launch screen. The mark draws itself, then a phrase lands under it.
@@ -882,6 +882,8 @@
   <!-- Pico's tour (2.13). One stop at a time: the spotlight frames what is
        being explained and the coach says what it is for. -->
   <div class="tour" id="tour" hidden>
+    <!-- The plain dim the highlight closes into between stops (2.22). -->
+    <div class="tour-dim" id="tourDim" aria-hidden="true"></div>
     <div class="tour-spot" id="tourSpot" aria-hidden="true"></div>
     <!-- Pico stands behind the coach card, his upper half over its edge (2.21). -->
     <div class="tour-pico" id="tourPico" aria-hidden="true"></div>
@@ -1050,13 +1052,13 @@
     </symbol>
   </svg>
 
-  <script src="sounds.js?v=2.21"></script>
-  <script src="pico-voice.js?v=2.21"></script>
-  <script src="pico.js?v=2.21"></script>
-  <script src="select.js?v=2.21"></script>
-  <script src="emoji-picker.js?v=2.21"></script>
-  <script src="charts.js?v=2.21"></script>
-  <script src="characters.js?v=2.21"></script>
-  <script src="app.js?v=2.21"></script>
+  <script src="sounds.js?v=2.22"></script>
+  <script src="pico-voice.js?v=2.22"></script>
+  <script src="pico.js?v=2.22"></script>
+  <script src="select.js?v=2.22"></script>
+  <script src="emoji-picker.js?v=2.22"></script>
+  <script src="charts.js?v=2.22"></script>
+  <script src="characters.js?v=2.22"></script>
+  <script src="app.js?v=2.22"></script>
 </body>
 </html>

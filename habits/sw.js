@@ -3,21 +3,21 @@
    activate. */
 /* Bump together with the ?v= query in index.html: the two must agree or the
    precache stores URLs the page never asks for. */
-const CACHE = 'glow-v23';
+const CACHE = 'glow-v24';
 
 const SHELL = [
   './index.html',
-  './styles.css?v=2.21',
-  './sounds.js?v=2.21',
-  './pico-voice.js?v=2.21',
-  './pico.js?v=2.21',
-  './select.js?v=2.21',
-  './emoji-picker.js?v=2.21',
+  './styles.css?v=2.22',
+  './sounds.js?v=2.22',
+  './pico-voice.js?v=2.22',
+  './pico.js?v=2.22',
+  './select.js?v=2.22',
+  './emoji-picker.js?v=2.22',
   './emoji-data.js',
-  './i18n.js?v=2.21',
-  './charts.js?v=2.21',
-  './characters.js?v=2.21',
-  './app.js?v=2.21',
+  './i18n.js?v=2.22',
+  './charts.js?v=2.22',
+  './characters.js?v=2.22',
+  './app.js?v=2.22',
   './fonts/figtree-latin.woff2',
   './manifest.webmanifest',
   './icons/icon-192.png',
