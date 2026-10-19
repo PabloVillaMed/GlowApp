@@ -6,8 +6,8 @@ truth — edit the app there, rebuild, and the APK picks the changes up.
 
 ## The built APK
 
-`GlowApp-2.22.apk` sits at the repository root, with the earlier releases
-`GlowApp-2.21.apk`, `GlowApp-2.20.apk`, `GlowApp-2.19.apk`,
+`GlowApp-2.23.apk` sits at the repository root, with the earlier releases
+`GlowApp-2.22.apk`, `GlowApp-2.21.apk`, `GlowApp-2.20.apk`, `GlowApp-2.19.apk`,
 `GlowApp-2.18.apk`, `GlowApp-2.17.apk`, `GlowApp-2.16.apk`,
 `GlowApp-2.15.apk`, `GlowApp-2.14.apk`, `GlowApp-2.13.apk`,
 `GlowApp-2.12.apk`, `GlowApp-2.11.apk` and `GlowApp-2.10.apk` kept next
@@ -140,6 +140,11 @@ cd habits-android
 committed. The build needs JDK 17 and an SDK with platform 36 and build-tools
 36.1.0, driven by Gradle 8.7 and Android Gradle Plugin 8.6.1 (which predates
 API 36 but builds against it; `gradle.properties` silences its notice).
+Gradle 8.7 cannot run on a newer JDK: if an IDE offers to "upgrade" the
+wrapper to Gradle 9 because its own Java is newer, decline — AGP 8.6.1 does
+not build on Gradle 9. Point the IDE's Gradle at JDK 17 instead (in VS Code,
+`java.import.gradle.java.home`). Moving to Gradle 9 means moving AGP with it,
+as a change of its own.
 
 The voice notes in `../habits/voices` are generated, not hand-made: see
 `../tools/voices/make-voices.js`. They are stored uncompressed in the APK

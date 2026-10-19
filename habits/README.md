@@ -609,12 +609,15 @@ interface ships complete in Spanish and English (`i18n.js` holds every string;
 the two tables are kept at full key parity) and starts in Spanish. The theme
 follows the system by default and can be pinned to light or dark.
 
-Since 2.13 the colours come in eight palettes, under **Ajustes → Apariencia**:
-Clásica, Eléctrica, Pastel, Ultra oscura, Bosque, Atardecer, Océano and Alto
-contraste. Each is a block of colour tokens in `styles.css` keyed by
-`data-palette` on the root, in a light and a dark version (Ultra oscura is dark
-only: while it is chosen the theme resolves to dark and the theme setting
-waits, disabled; the app-bar toggle leaves it for classic in light). The
+Since 2.13 the colours come in palettes, under **Ajustes → Apariencia**:
+Clásica, Eléctrica, Pastel, Ultra oscura, Bosque, Atardecer, Océano, Alto
+contraste and, since 2.23, Halloween (a violet night with a pumpkin accent).
+Each is a block of colour tokens in `styles.css` keyed by `data-palette` on
+the root, in a light and a dark version (Ultra oscura and Halloween are dark
+only: while one is chosen the theme resolves to dark and the theme setting
+waits, disabled, under a note that names the palette; the app-bar toggle
+leaves it for classic in light). On a phone the picker has two columns, so
+the ninth card, alone on its row, takes the whole row. The
 picker's cards carry `data-palette` too, so each previews its palette with the
 very same tokens. The inline script in `index.html` applies the saved palette
 before the first paint and gives the browser bar the palette's own `--bg`; the

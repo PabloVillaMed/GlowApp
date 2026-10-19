@@ -20,9 +20,10 @@
   const DENSITIES = ['small', 'default', 'large'];
 
   /* Colour palettes (2.13): each is a set of tokens in styles.css keyed by
-     data-palette on the root. Ultra oscura exists only in dark. */
-  const PALETTES = ['classic', 'electric', 'pastel', 'ultra', 'forest', 'sunset', 'ocean', 'contrast'];
-  const DARK_ONLY_PALETTES = ['ultra'];
+     data-palette on the root. Ultra oscura and Halloween (2.23) exist only in
+     dark; the head script in index.html keeps the same list. */
+  const PALETTES = ['classic', 'electric', 'pastel', 'ultra', 'forest', 'sunset', 'ocean', 'contrast', 'halloween'];
+  const DARK_ONLY_PALETTES = ['ultra', 'halloween'];
 
   const EMOJIS = [
     '🧘', '💪', '🏃', '🚶', '🚴', '🏋️', '🧠', '📓', '📖', '💧',
@@ -3224,6 +3225,8 @@
       $('.pc-name', card).textContent = t(paletteKey(id));
       $('.pc-note', card).textContent = DARK_ONLY_PALETTES.includes(id) ? t('palDarkOnly') : '';
     });
+    // Names the dark-only palette that holds the theme (applyTheme shows it).
+    $('#themeLockedHint').textContent = t('paletteThemeLocked', t(paletteKey(current)));
   }
 
   function pickPalette(id) {
@@ -5761,7 +5764,7 @@
     });
     $('#themeToggle').addEventListener('click', () => {
       if (paletteIsDarkOnly()) {
-        // Ultra oscura has no light side, so asking for light leaves it for classic.
+        // A dark-only palette has no light side, so asking for light leaves it for classic.
         state.palette = 'classic';
         state.theme = 'light';
         toast(t('paletteBackToLight'));

@@ -19,7 +19,7 @@
   <!-- The typeface (2.19), asked for at once rather than when the stylesheet
        first needs it, so the first screen is drawn in it. -->
   <link rel="preload" href="fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="styles.css?v=2.22">
+  <link rel="stylesheet" href="styles.css?v=2.23">
   <script>
     /* The saved theme and palette, resolved as applyTheme() in app.js resolves
        them, before anything paints: until app.js ran, a light theme opened on
@@ -32,7 +32,8 @@
         var palette = typeof saved.palette === 'string' ? saved.palette : 'classic';
         var theme = saved.theme || 'system';
         if (theme === 'system') theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        if (palette === 'ultra') theme = 'dark';      // Ultra oscura has no light side
+        // Ultra oscura and Halloween have no light side (DARK_ONLY_PALETTES in app.js).
+        if (palette === 'ultra' || palette === 'halloween') theme = 'dark';
         root.setAttribute('data-palette', palette);
         root.setAttribute('data-theme', theme);
         var bg = getComputedStyle(root).getPropertyValue('--bg').trim();
@@ -42,7 +43,7 @@
       }
     })();
   </script>
-  <script src="i18n.js?v=2.22"></script>
+  <script src="i18n.js?v=2.23"></script>
 </head>
 <body>
   <!-- Launch screen. The mark draws itself, then a phrase lands under it.
@@ -421,7 +422,7 @@
               <option value="light" data-i18n="themeLight">Claro</option>
             </select>
           </div>
-          <p class="muted small" id="themeLockedHint" hidden data-i18n="paletteThemeLocked"></p>
+          <p class="muted small" id="themeLockedHint" hidden></p>
           <div class="setting-row setting-row-stack" id="paletteField">
             <span class="setting-label" id="paletteLabel" data-i18n="paletteLabel">Paleta de colores</span>
             <div class="palette-grid" id="paletteGrid" role="radiogroup" aria-labelledby="paletteLabel"></div>
@@ -1052,13 +1053,13 @@
     </symbol>
   </svg>
 
-  <script src="sounds.js?v=2.22"></script>
-  <script src="pico-voice.js?v=2.22"></script>
-  <script src="pico.js?v=2.22"></script>
-  <script src="select.js?v=2.22"></script>
-  <script src="emoji-picker.js?v=2.22"></script>
-  <script src="charts.js?v=2.22"></script>
-  <script src="characters.js?v=2.22"></script>
-  <script src="app.js?v=2.22"></script>
+  <script src="sounds.js?v=2.23"></script>
+  <script src="pico-voice.js?v=2.23"></script>
+  <script src="pico.js?v=2.23"></script>
+  <script src="select.js?v=2.23"></script>
+  <script src="emoji-picker.js?v=2.23"></script>
+  <script src="charts.js?v=2.23"></script>
+  <script src="characters.js?v=2.23"></script>
+  <script src="app.js?v=2.23"></script>
 </body>
 </html>

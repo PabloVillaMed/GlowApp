@@ -502,7 +502,7 @@
       installHintInstalled: 'Ya está instalada. Se abre sin conexión.',
       installHintIOS: 'En iPhone: toca Compartir y luego «Añadir a pantalla de inicio».',
       installHintOther: 'Tu navegador instala apps desde su propio menú (busca «Instalar» o «Añadir a pantalla de inicio»).',
-      version: 'GlowApp v2.22 · sin conexión',
+      version: 'GlowApp v2.23 · sin conexión',
       storageFmt: (n) => n + ' días con registro guardados en este dispositivo.',
       updateReady: 'Hay una versión nueva.',
       reload: 'Actualizar',
@@ -642,8 +642,10 @@
       palSunset: 'Atardecer',
       palOcean: 'Océano',
       palContrast: 'Alto contraste',
+      palHalloween: 'Halloween',
       palDarkOnly: 'Siempre oscura',
-      paletteThemeLocked: 'Ultra oscura siempre va en oscuro. Elige otra paleta para volver a usar el tema.',
+      /* name: the dark-only palette chosen (Ultra oscura, Halloween). */
+      paletteThemeLocked: (name) => name + ' siempre va en oscuro. Elige otra paleta para volver a usar el tema.',
       paletteBackToLight: 'Paleta Clásica, en claro',
 
       /* Pico, the guide, and his tour (2.13) */
@@ -1179,7 +1181,7 @@
       installHintInstalled: 'Already installed. It opens offline.',
       installHintIOS: 'On iPhone: tap Share, then "Add to Home Screen".',
       installHintOther: 'Your browser installs apps from its own menu (look for "Install" or "Add to Home Screen").',
-      version: 'GlowApp v2.22 · offline',
+      version: 'GlowApp v2.23 · offline',
       storageFmt: (n) => n + ' logged days stored on this device.',
       updateReady: 'A new version is ready.',
       reload: 'Update',
@@ -1318,8 +1320,9 @@
       palSunset: 'Sunset',
       palOcean: 'Ocean',
       palContrast: 'High contrast',
+      palHalloween: 'Halloween',
       palDarkOnly: 'Always dark',
-      paletteThemeLocked: 'Ultra dark is always dark. Pick another palette to use the theme again.',
+      paletteThemeLocked: (name) => name + ' is always dark. Pick another palette to use the theme again.',
       paletteBackToLight: 'Classic palette, light',
 
       /* Pico, the guide, and his tour (2.13) */

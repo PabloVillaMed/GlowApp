@@ -118,8 +118,9 @@
 
 /* ── Palettes (2.13) ──────────────────────────────────────────────────
    Classic is the two blocks above. Every other palette restates each colour
-   token for dark and for light (Ultra oscura is dark only: the app resolves
-   the theme to dark while it is chosen), and so does each card of the picker
+   token for dark and for light (Ultra oscura and Halloween are dark only: the
+   app resolves the theme to dark while one is chosen), and so does each card
+   of the picker
    in Ajustes, which previews its palette with the very same tokens.
    The habit colours keep their family per slot in every palette — s1 blue,
    s2 orange, s3 teal, s4 amber, s5 pink, s6 green, s7 violet, s8 red — so a
@@ -352,6 +353,25 @@
   --seq-3: #759EE9; --seq-4: #4B77CC; --seq-5: #2C4F94;
   --grid: #D6D6D6; --axis: #8C8C8C; --muted-ink: #4D4D4D;
   --shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+}
+
+/* Halloween (2.23), dark only like Ultra oscura: a moonless night with a
+   violet cast, candle-white text and a pumpkin accent (dark ink on it); the
+   heat map ripens in pumpkin. Pico keeps his own violet, which stands out on
+   it. Same checks as every other palette. */
+:root[data-palette='halloween'],
+.palette-card[data-palette='halloween'] {
+  --bg: #0E0A14; --surface: #18111F; --surface-2: #1F1628; --surface-3: #291D34;
+  --ink: #FBF1E6; --ink-2: #C4B2C6; --ink-3: #95839C;
+  --border: rgba(251, 241, 230, 0.09); --border-strong: rgba(251, 241, 230, 0.17);
+  --accent: #FF8A1E; --accent-ink: #170C02; --accent-soft: rgba(255, 138, 30, 0.15);
+  --good: #4E9A22; --danger: #F0656F; --danger-soft: rgba(240, 101, 111, 0.14);
+  --s1: #3184E0; --s2: #F75600; --s3: #04AA9D; --s4: #B28004;
+  --s5: #D837A0; --s6: #357A3A; --s7: #874FCB; --s8: #B14F43;
+  --seq-0: #291D34; --seq-1: #6E3701; --seq-2: #964D03;
+  --seq-3: #BE6616; --seq-4: #DA8C53; --seq-5: #EDB792;
+  --grid: #271C30; --axis: #382A43; --muted-ink: #9C8AA2;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
 }
 
 /* ── Size scale ───────────────────────────────────────────────────────
@@ -1944,7 +1964,12 @@ dialog.sheet > .sheet-head { position: sticky; top: 0; z-index: 2; background: v
    get, in the current light or dark. The ring around the chosen one is in
    its own accent, which is the app's accent once it is chosen. */
 .palette-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-@media (min-width: 560px) { .palette-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+/* Two columns: a last card alone on its row takes the whole row (2.23). */
+.palette-grid > .palette-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+@media (min-width: 560px) {
+  .palette-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .palette-grid > .palette-card:last-child:nth-child(odd) { grid-column: auto; }
+}
 .palette-card {
   display: flex; flex-direction: column; gap: 8px; min-width: 0;
   padding: 9px; text-align: left;
