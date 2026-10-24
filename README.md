@@ -15,7 +15,10 @@ purple crow, as a guide.
 
 ## Try it
 
-- **In the browser:** <https://hobby-col-web.vercel.app/habits/>
+- **In the browser:** <https://glowapp-pablovillamed.vercel.app/habits/>
+  (the earlier address, hobby-col-web.vercel.app, still serves the same app;
+  data saved in a browser stays with the address it was saved at, so move it
+  with a backup from Ajustes if you switch).
 - **On Android:** download `GlowApp-2.26.apk` from the
   [latest release](https://github.com/PabloVillaMed/GlowApp/releases/latest)
   (Android 7.0 or newer); it is also at the repository root, with
