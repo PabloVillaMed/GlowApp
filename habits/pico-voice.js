@@ -248,6 +248,14 @@
       const end = hum(ctx, out, t, { from: r(250, 0.04), to: r(300, 0.04), dur: 0.3, gain: 0.075 });
       return chirp(ctx, out, end - 0.05, { from: r(520, 0.04), to: r(760, 0.04), dur: 0.09, gain: 0.045 });
     },
+    // "Hmph" (2.26): two short low hums, the second lower, for a habit
+    // unticked. Displeased, not cross: soft and over quickly.
+    // Plain triangle notes, no filter: a filter's tail cut at a different
+    // moment each time would make two "hmph"s with the same luck differ.
+    grumble: (ctx, out, t, r) => {
+      chirp(ctx, out, t, { from: r(340, 0.03), to: r(300, 0.03), dur: 0.12, gain: 0.07, type: 'triangle' });
+      return chirp(ctx, out, t + 0.16, { from: r(290, 0.03), to: r(215, 0.03), dur: 0.22, gain: 0.066, type: 'triangle' });
+    },
     nod: (ctx, out, t, r) => {
       hum(ctx, out, t, { from: r(430, 0.03), to: r(420, 0.03), dur: 0.09, gain: 0.068 });
       return hum(ctx, out, t + 0.12, { from: r(520, 0.03), to: r(560, 0.03), dur: 0.12, gain: 0.068 });

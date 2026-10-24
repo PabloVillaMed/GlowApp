@@ -13,6 +13,8 @@ import android.graphics.Insets;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.print.PrintAttributes;
+import android.print.PrintManager;
 import android.provider.Settings;
 import android.view.View;
 import android.view.WindowInsets;
@@ -501,6 +503,22 @@ public class MainActivity extends Activity {
           pendingSave = null;
           tellFileSaved("failed");
         }
+      });
+      return true;
+    }
+
+    /**
+     * Opens Android's print screen on the page as it prints (its print
+     * stylesheet shows only the month's report), where "Save as PDF" makes
+     * the file (2.25). Nothing leaves the phone unless the user sends it on.
+     */
+    @JavascriptInterface
+    public boolean printPage(String title) {
+      final String job = title == null || title.trim().isEmpty() ? "GlowApp" : title.trim();
+      runOnUiThread(() -> {
+        final PrintManager printer = (PrintManager) getSystemService(PRINT_SERVICE);
+        if (printer == null || webView == null) return;
+        printer.print(job, webView.createPrintDocumentAdapter(job), new PrintAttributes.Builder().build());
       });
       return true;
     }

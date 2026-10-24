@@ -80,6 +80,36 @@
         android:visibility="gone" />
   </LinearLayout>
 
+  <!-- Today's mood, a tap a face, and the energy, which opens a small window
+       with the slider (2.26). Hidden on a widget too short for it. -->
+  <LinearLayout
+      android:id="@+id/w_mood"
+      android:layout_width="match_parent"
+      android:layout_height="40dp"
+      android:layout_marginTop="6dp"
+      android:orientation="horizontal"
+      android:gravity="center_vertical"
+      android:visibility="gone">
+    <TextView android:id="@+id/w_m1" style="@style/WidgetFace" />
+    <TextView android:id="@+id/w_m2" style="@style/WidgetFace" />
+    <TextView android:id="@+id/w_m3" style="@style/WidgetFace" />
+    <TextView android:id="@+id/w_m4" style="@style/WidgetFace" />
+    <TextView android:id="@+id/w_m5" style="@style/WidgetFace" />
+    <TextView
+        android:id="@+id/w_energy"
+        android:layout_width="wrap_content"
+        android:layout_height="34dp"
+        android:layout_marginStart="6dp"
+        android:background="@drawable/widget_pill_energy"
+        android:gravity="center"
+        android:maxLines="1"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp"
+        android:textColor="@color/widget_ink"
+        android:textSize="12.5sp"
+        android:textStyle="bold" />
+  </LinearLayout>
+
   <!-- Scrolls. The faded edges hint that there is more above or below. -->
   <ListView
       android:id="@+id/w_list"

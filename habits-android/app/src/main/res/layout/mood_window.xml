@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The widget's mood and energy window (2.26): the five faces and the energy
+     slider with its − and +, as on Today. Opened from the widget's energy
+     button, over the home screen; the app stays closed. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="20dp"
+    android:paddingEnd="20dp"
+    android:paddingTop="20dp"
+    android:paddingBottom="14dp">
+
+  <TextView
+      android:id="@+id/m_title"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:textColor="@color/widget_ink"
+      android:textSize="18sp"
+      android:textStyle="bold" />
+
+  <LinearLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="12dp"
+      android:orientation="horizontal">
+    <TextView android:id="@+id/m_face1" style="@style/MoodFace" />
+    <TextView android:id="@+id/m_face2" style="@style/MoodFace" />
+    <TextView android:id="@+id/m_face3" style="@style/MoodFace" />
+    <TextView android:id="@+id/m_face4" style="@style/MoodFace" />
+    <TextView android:id="@+id/m_face5" style="@style/MoodFace" />
+  </LinearLayout>
+
+  <TextView
+      android:id="@+id/m_label"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="4dp"
+      android:gravity="center"
+      android:textColor="@color/widget_muted"
+      android:textSize="13sp" />
+
+  <LinearLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="16dp"
+      android:orientation="horizontal">
+    <TextView
+        android:id="@+id/m_energy_label"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:textColor="@color/widget_muted"
+        android:textSize="14sp" />
+    <TextView
+        android:id="@+id/m_energy_value"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textColor="@color/widget_ink"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+  </LinearLayout>
+
+  <LinearLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="8dp"
+      android:orientation="horizontal"
+      android:gravity="center_vertical">
+    <TextView
+        android:id="@+id/m_less"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="@drawable/widget_pill_energy"
+        android:gravity="center"
+        android:text="−"
+        android:textColor="@color/widget_ink"
+        android:textSize="20sp" />
+    <SeekBar
+        android:id="@+id/m_energy"
+        android:layout_width="0dp"
+        android:layout_height="44dp"
+        android:layout_weight="1"
+        android:max="100"
+        android:progressTint="@color/widget_accent"
+        android:thumbTint="@color/widget_accent"
+        android:progressBackgroundTint="@color/widget_track" />
+    <TextView
+        android:id="@+id/m_more"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="@drawable/widget_pill_energy"
+        android:gravity="center"
+        android:text="+"
+        android:textColor="@color/widget_ink"
+        android:textSize="20sp" />
+  </LinearLayout>
+
+  <TextView
+      android:id="@+id/m_close"
+      android:layout_width="wrap_content"
+      android:layout_height="44dp"
+      android:layout_gravity="end"
+      android:layout_marginTop="10dp"
+      android:background="@drawable/widget_row_press"
+      android:gravity="center"
+      android:paddingStart="16dp"
+      android:paddingEnd="16dp"
+      android:textColor="@color/widget_accent"
+      android:textSize="15sp"
+      android:textStyle="bold" />
+</LinearLayout>

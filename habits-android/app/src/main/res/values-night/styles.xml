@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <style name="MoodWindow" parent="@android:style/Theme.Material.Dialog.NoActionBar">
+    <item name="android:windowBackground">@drawable/mood_window</item>
+    <item name="android:windowMinWidthMajor">88%</item>
+    <item name="android:windowMinWidthMinor">92%</item>
+    <item name="android:colorAccent">@color/widget_accent</item>
+    <item name="android:textColorPrimary">@color/widget_ink</item>
+  </style>
+</resources>

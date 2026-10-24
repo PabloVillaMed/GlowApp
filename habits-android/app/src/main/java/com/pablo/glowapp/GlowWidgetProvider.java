@@ -8,11 +8,16 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.ColorStateList;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Bundle;
 import android.view.View;
 import android.widget.RemoteViews;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
@@ -35,6 +40,12 @@ public class GlowWidgetProvider extends AppWidgetProvider {
 
   @Override
   public void onUpdate(Context context, AppWidgetManager manager, int[] widgetIds) {
+    refresh(context);
+  }
+
+  /** Resized: the mood row comes or goes with the room there is (2.26). */
+  @Override
+  public void onAppWidgetOptionsChanged(Context context, AppWidgetManager manager, int widgetId, Bundle options) {
     refresh(context);
   }
 
@@ -88,6 +99,7 @@ public class GlowWidgetProvider extends AppWidgetProvider {
 
     views.setOnClickPendingIntent(R.id.w_header, openApp(context, "today"));
     views.setViewVisibility(R.id.w_streak, View.GONE);
+    views.setViewVisibility(R.id.w_mood, View.GONE);
 
     // The rows. One service intent per widget and day: the system keeps one
     // list adapter per distinct intent, so a new day starts a fresh one.
@@ -118,8 +130,9 @@ public class GlowWidgetProvider extends AppWidgetProvider {
       views.setTextViewText(R.id.w_message, day.ui("stale", context.getString(R.string.widget_empty)));
       return views;
     }
+    fillMood(context, views, widgetId, day);
     if (dueCount == 0) {
-      views.setTextViewText(R.id.w_sub, "");
+      views.setTextViewText(R.id.w_sub, day.sick ? day.ui("sick", "") : "");
       views.setTextViewText(R.id.w_message, day.ui("free", ""));
       return views;
     }
@@ -131,6 +144,63 @@ public class GlowWidgetProvider extends AppWidgetProvider {
       views.setTextViewText(R.id.w_streak, "🔥 " + best);
     }
     return views;
+  }
+
+  private static final int[] FACES = { R.id.w_m1, R.id.w_m2, R.id.w_m3, R.id.w_m4, R.id.w_m5 };
+  static final String[] DEFAULT_FACES = { "😞", "🙁", "😐", "🙂", "😄" };
+
+  /**
+   * Today's mood (2.26): five faces, a tap sets it without opening anything,
+   * the chosen one on a soft disc; then the energy, whose button opens a
+   * small window with the slider. Only on a widget tall enough for a row.
+   */
+  private static void fillMood(Context context, RemoteViews views, int widgetId, GlowDay day) {
+    if (!roomForMood(context, widgetId)) return;
+    views.setViewVisibility(R.id.w_mood, View.VISIBLE);
+    final JSONObject mood = GlowStore.moodOf(context, day.date);
+    final int score = mood == null ? 0 : mood.optInt("score");
+    final JSONArray names = day.ui.optJSONArray("moods");
+    for (int i = 0; i < FACES.length; i++) {
+      views.setTextViewText(FACES[i], face(day, i));
+      views.setInt(FACES[i], "setBackgroundResource", score == i + 1 ? R.drawable.widget_face_on : R.drawable.widget_face);
+      final String name = names != null && names.length() == 5 ? names.optString(i) : face(day, i);
+      views.setContentDescription(FACES[i], score == i + 1 ? day.ui("isDone", "%s ✓").replace("%s", name) : name);
+      views.setOnClickPendingIntent(FACES[i], moodIntent(context, i + 1));
+    }
+    final String energy = day.ui("energy", context.getString(R.string.energy));
+    final String value = mood == null ? "–" : mood.optInt("energyPct", 50) + "%";
+    views.setTextViewText(R.id.w_energy, "⚡ " + value);
+    views.setContentDescription(R.id.w_energy, energy + " " + value);
+    views.setOnClickPendingIntent(R.id.w_energy, PendingIntent.getActivity(context, 7,
+        new Intent(context, MoodActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), ReminderScheduler.flags()));
+  }
+
+  /** A face as the app draws it, from the page's list; the same five without it. */
+  static String face(GlowDay day, int index) {
+    final JSONArray faces = day.ui.optJSONArray("moodEmoji");
+    return faces != null && faces.length() == 5 ? faces.optString(index) : DEFAULT_FACES[index];
+  }
+
+  /**
+   * Room for the mood row: with it, the header (50dp), the row (46dp) and the
+   * padding leave the list one full habit row only from about 180dp, the
+   * widget's own default height. The height in use is the largest one in
+   * portrait and the smallest in landscape; a launcher that does not say
+   * gets the row.
+   */
+  static boolean roomForMood(Context context, int widgetId) {
+    final Bundle options = AppWidgetManager.getInstance(context).getAppWidgetOptions(widgetId);
+    if (options == null) return true;
+    final boolean landscape = context.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+    final int height = options.getInt(landscape ? AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT : AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT);
+    return height == 0 || height >= 176;
+  }
+
+  private static PendingIntent moodIntent(Context context, int score) {
+    final Intent intent = new Intent(context, WidgetActionReceiver.class)
+        .setAction(WidgetActionReceiver.ACTION_MOOD)
+        .putExtra(WidgetActionReceiver.EXTRA_SCORE, score);
+    return PendingIntent.getBroadcast(context, 100 + score, intent, ReminderScheduler.flags());
   }
 
   /** One habit's row, for GlowWidgetService. */
@@ -206,7 +276,8 @@ public class GlowWidgetProvider extends AppWidgetProvider {
   private static String progressLine(GlowDay day, int done, int due) {
     final org.json.JSONArray phrases = day.ui.optJSONArray("progress");
     final int step = done >= due ? 4 : done == 0 ? 0 : done * 2 < due ? 1 : done * 4 < due * 3 ? 2 : 3;
-    final String phrase = phrases != null && phrases.length() == 5 ? phrases.optString(step) : "";
+    String phrase = phrases != null && phrases.length() == 5 ? phrases.optString(step) : "";
+    if (day.sick) phrase = day.ui("sick", phrase);          // a sick day says so (2.26)
     return (phrase.isEmpty() ? "" : phrase + "  ·  ") + done + "/" + due;
   }
 

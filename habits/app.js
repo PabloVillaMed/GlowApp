@@ -206,6 +206,39 @@
     if (typeof state.lastBackup !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(state.lastBackup)) state.lastBackup = null;
     state.tourPromoDismissed = state.tourPromoDismissed === true;
     state.moreCharts = state.moreCharts === true;
+    // The Plus preview's switch (2.24): absent until it is first moved, so a
+    // record nobody touched stays exactly as 2.23 wrote it. Only the keys
+    // there are coerced; keys a later version adds are kept.
+    if (state.labs !== undefined) {
+      if (!state.labs || typeof state.labs !== 'object' || Array.isArray(state.labs)) delete state.labs;
+      else ['plus', 'insights'].forEach((k) => { if (k in state.labs) state.labs[k] = state.labs[k] === true; });
+    }
+    // Pico's wardrobe (2.24): absent until a hat is first put on. A hat this
+    // version does not know is kept (a later one may draw it), not worn.
+    if (state.wardrobe !== undefined) {
+      if (!state.wardrobe || typeof state.wardrobe !== 'object' || Array.isArray(state.wardrobe)) delete state.wardrobe;
+      else if (typeof state.wardrobe.hat !== 'string') state.wardrobe.hat = null;
+    }
+    // Routines (2.25): absent until the first is saved. Each keeps whatever
+    // else a later version stored in it; a step's minutes are whole, 0 to 60.
+    if (state.routines !== undefined) {
+      if (!Array.isArray(state.routines)) delete state.routines;
+      else {
+        state.routines = state.routines.filter((r) => r && typeof r === 'object' && typeof r.id === 'string');
+        state.routines.forEach((r) => {
+          if (typeof r.name !== 'string' || !r.name.trim()) r.name = t('routineNameDefault');
+          r.steps = (Array.isArray(r.steps) ? r.steps : []).filter((s) => s && typeof s === 'object' && typeof s.habitId === 'string')
+            .map((s) => Object.assign({}, s, { minutes: Math.max(0, Math.min(60, Math.round(Number(s.minutes) || 0))) }));
+        });
+      }
+    }
+    // The guided program (2.25): absent until first started, null once left;
+    // the dates its seven steps were done, in order. Other keys are kept.
+    if (state.program !== undefined && state.program !== null) {
+      const p = state.program;
+      if (typeof p !== 'object' || Array.isArray(p) || !Array.isArray(p.done)) delete state.program;
+      else p.done = p.done.filter((d) => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)).sort().slice(0, 7);
+    }
     state.showExcellence = state.showExcellence !== false;   // read by 2.20 only: since 2.21 it is always on Today
     state.excellenceSeen = state.excellenceSeen === true;
     const known = state.achievements;
@@ -237,7 +270,24 @@
       // Which of your bot's lines this habit plays (2.11): line ids, or absent for its own.
       if (habit.botPick !== undefined && !(Array.isArray(habit.botPick) &&
           habit.botPick.every((id) => typeof id === 'string'))) delete habit.botPick;
+      // Essential (2.26): true, or absent.
+      if (habit.essential !== undefined && habit.essential !== true) delete habit.essential;
     });
+    // Sick days (2.26): absent until first turned on. Each period a start,
+    // an end (null while it lasts) and the habits kept; in order of start,
+    // only the last one left open. Other keys a later version adds are kept.
+    if (state.sick !== undefined) {
+      const key = (k) => typeof k === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(k);
+      if (!state.sick || typeof state.sick !== 'object' || Array.isArray(state.sick)) delete state.sick;
+      else {
+        const periods = (Array.isArray(state.sick.periods) ? state.sick.periods : [])
+          .filter((p) => p && typeof p === 'object' && key(p.from) && (p.to === null || key(p.to)) && (p.to === null || p.to >= p.from))
+          .map((p) => Object.assign({}, p, { keep: Array.isArray(p.keep) ? p.keep.filter((id) => typeof id === 'string') : [] }))
+          .sort((a, b) => (a.from < b.from ? -1 : a.from > b.from ? 1 : 0));
+        periods.forEach((p, i) => { if (p.to === null && i < periods.length - 1) p.to = periods[i + 1].from > p.from ? keyOf(addDays(parseKey(periods[i + 1].from), -1)) : p.from; });
+        state.sick.periods = periods;
+      }
+    }
     // Until 2.9 each habit had one recorded line, h-<habit>; it is now the first of three.
     state.chat.forEach((message) => {
       if (message.voice) message.voice = GLOW_CAST.upgradeVoicePath(message.voice);
@@ -322,6 +372,16 @@
     return 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   }
 
+  /* The Plus preview (2.24): one switch in Ajustes for everything planned for
+     GlowApp Plus. Off, the app is the free app as it was: nothing of the
+     preview shows, nothing of it counts in any number, Pico wears no hat. On,
+     all of it is back as it was left, since its data is kept while off.
+     Every part of the preview asks here, and nowhere else. Until the master
+     switch, the discoveries had a switch of their own (labs.insights): a
+     record with that on and no master switch yet reads as the preview on. */
+  const plusPreviewOn = () => !!(state.labs && (state.labs.plus === true ||
+    (state.labs.plus === undefined && state.labs.insights === true)));
+
   /* ── Habit model helpers ───────────────────────────────────────────── */
   const activeHabits = () => state.habits.filter((h) => !h.archived);
 
@@ -334,10 +394,76 @@
   const colorVar = (h) => 'var(--s' + (h.colorIndex || 1) + ')';
 
   function isScheduled(habit, key) {
+    if (!onSchedule(habit, key)) return false;
+    // A sick day (2.26) asks only for the habits kept for it; one done anyway still counts.
+    if (state.sick && sickExcused(habit.id, key) && !isComplete(habit, key)) return false;
+    return true;
+  }
+  // Its own schedule alone, sick days aside: 'daily' and 'times' are open every day.
+  function onSchedule(habit, key) {
     if (habit.createdAt && key < habit.createdAt) return false;
     const s = habit.schedule || { kind: 'daily' };
-    if (s.kind === 'days') return (s.days || []).includes(parseKey(key).getDay());
-    return true; // 'daily' and 'times' are both open every day
+    return !(s.kind === 'days' && !(s.days || []).includes(parseKey(key).getDay()));
+  }
+
+  /* ── Sick days (2.26) ──────────────────────────────────────────────────
+     "Estoy enfermo" on Today: from that day until it is turned off, a day
+     asks only for the habits kept for it (those marked essential, as
+     adjusted when it was turned on). The rest are not due on those days:
+     they break no streak, lower no percentage, raise no reminder, and one
+     done anyway still counts. Stored as state.sick = { periods: [{ from,
+     to, keep }] }, `to` null while it lasts; written the first time it is
+     turned on. Turned off, today is an ordinary day again. */
+  const sickPeriods = () => (state.sick && Array.isArray(state.sick.periods) ? state.sick.periods : []);
+  function sickPeriodOf(key) {
+    const list = sickPeriods();
+    for (let i = list.length - 1; i >= 0; i--) {
+      const p = list[i];
+      if (key >= p.from && (p.to === null || key <= p.to)) return p;
+    }
+    return null;
+  }
+  const sickExcused = (habitId, key) => {
+    const p = sickPeriodOf(key);
+    return !!p && !p.keep.includes(habitId);
+  };
+  // Habits ticked or unticked on Today on a sick day, as "date|id" (see renderHabitList).
+  const sickTouched = new Set();
+  const touchOnSickDay = (habit) => { if (state.sick && sickPeriodOf(selectedDate)) sickTouched.add(selectedDate + '|' + habit.id); };
+  // The period under way, if there is one (begun by today: one dated later,
+  // from a phone whose clock ran ahead, is not under way yet).
+  const sickNow = () => {
+    const list = sickPeriods();
+    const p = list[list.length - 1];
+    return p && p.to === null && p.from <= todayKey() ? p : null;
+  };
+  /* Who is kept, from today on. A period begun before today ends yesterday
+     and a new one carries on with the new list, so the days already past
+     keep the rules they had: keeping a habit on day four does not make days
+     one to three missed, nor letting one go excuse them. */
+  function setSickKeep(keep) {
+    const now = sickNow();
+    if (!now) return;
+    const same = keep.length === now.keep.length && keep.every((id) => now.keep.includes(id));
+    if (same) return;
+    const today = todayKey();
+    if (now.from >= today) { now.keep = keep; return; }
+    now.to = keyOf(addDays(parseKey(today), -1));
+    state.sick.periods.push(Object.assign({}, now, { from: today, to: null, keep: keep }));
+  }
+  // Periods that follow one another day by day read as one illness.
+  function sickSpell(period) {
+    const list = sickPeriods();
+    let from = period.from;
+    let to = period.to;
+    for (let moved = true; moved;) {
+      moved = false;
+      for (const p of list) {
+        if (p.to !== null && keyOf(addDays(parseKey(p.to), 1)) === from) { from = p.from; moved = true; }
+        if (to !== null && keyOf(addDays(parseKey(to), 1)) === p.from) { to = p.to; moved = true; }
+      }
+    }
+    return { from, to };
   }
   const targetOf = (habit) => (habit.type === 'quantity' ? Math.max(1, habit.target || 1) : 1);
   const valueOf = (habit, key) => (state.entries[habit.id] && state.entries[habit.id][key]) || 0;
@@ -392,18 +518,34 @@
       let done = 0;
       for (let i = 0; i < 7; i++) {
         const key = keyOf(addDays(cursor, i));
-        if (key > todayKey()) break;
+        if (key > todayKey()) continue;
         if (habit.createdAt && key < habit.createdAt) continue;
         if (isComplete(habit, key)) done++;
       }
       const weekEnd = keyOf(addDays(cursor, 6));
       if (habit.createdAt && weekEnd < habit.createdAt) break;
-      if (done >= quota) count++;
+      const need = weekNeed(habit, quota, cursor);
+      if (need === 0) { /* a week spent ill: neutral */ } else if (done >= need) count++;
       else if (!isCurrentWeek) break;    // the week in progress can still be met
       isCurrentWeek = false;
       cursor = addDays(cursor, -7);
     }
     return { count: count, unit: 'weeks' };
+  }
+
+  /* A weekly quota in a week with sick days (2.26): its share of the quota,
+     rounded up, for the days it was not excused (a sick day it was not kept
+     for and not done anyway, later days of the week included); 0 for a week
+     spent ill throughout, which neither counts nor breaks a run. One rule for
+     the streak, the shell's base, the best run and excellence. */
+  function weekNeed(habit, quota, weekStart) {
+    if (!state.sick) return quota;
+    let excused = 0;
+    for (let i = 0; i < 7; i++) {
+      const key = keyOf(addDays(weekStart, i));
+      if (sickExcused(habit.id, key) && !isComplete(habit, key)) excused++;
+    }
+    return excused ? Math.ceil((quota * (7 - excused)) / 7) : quota;
   }
 
   const streakLabel = (streak) => t(streak.unit === 'weeks' ? 'streakWeeks' : 'streakDays', streak.count);
@@ -1085,9 +1227,43 @@
      cheer instead. Returns whether he came. */
   let peekBusy = false;
   let peekLast = 0;
+  let peekVisit = 0;                   // the visit on screen; a later one's timers win
+  let peekAct = null;                  // what that visit came to do
   function picoPeek(near, opts) {
     const o = Object.assign({ side: 'left', at: 'beside', act: 'wink', hold: 2100 }, opts);
-    if (reducedMotion.matches || peekBusy || Date.now() - peekLast < 4000) return false;
+    // A frown (2.26) answers an untick at once: if he is already up (winking
+    // at the tick just undone) he changes face where he is, and it is not
+    // held back by the pause between visits. A tick made again while he
+    // frowns turns him back to his wink, the same way.
+    const takeOver = o.act === 'frown' || (o.act === 'wink' && peekAct === 'frown');
+    if (takeOver && peekBusy && !reducedMotion.matches && !$('#picoPeek').hidden) {
+      const box = $('#picoPeek');
+      const art = $('#picoPeekArt');
+      const visit = ++peekVisit;
+      peekAct = o.act;
+      box.classList.remove('is-out');                 // already ducking: up again
+      box.classList.add('is-in');
+      if (o.act === 'frown') {
+        Pico.pose(art, 'peekFrown');
+        if (near && near.isConnected) {
+          const a = art.getBoundingClientRect();
+          const r = near.getBoundingClientRect();
+          const dx = r.left + r.width / 2 - (a.left + a.width / 2);
+          const dy = r.top + r.height / 2 - (a.top + a.height * 0.37);
+          const length = Math.hypot(dx, dy) || 1;
+          Pico.look(art, dx / length, dy / length);   // at the habit unticked
+        }
+        picoVoice('grumble', 60);
+      } else {
+        Pico.pose(art, 'peek');
+        Pico.look(art, 0, 0.1);
+        Pico.gesture(art, 'wink');
+        picoVoice('wink', 200);
+      }
+      peekLater(visit, o.hold);
+      return true;
+    }
+    if (reducedMotion.matches || peekBusy || (o.act !== 'frown' && Date.now() - peekLast < 4000)) return false;
     if (!near || !near.isConnected || !$('#tour').hidden || $('dialog[open]')) return false;
     const box = $('#picoPeek');
     const art = $('#picoPeekArt');
@@ -1135,33 +1311,64 @@
     Pico.look(art, dx / length, dy / length);
     box.hidden = false;
     requestAnimationFrame(() => requestAnimationFrame(() => box.classList.add('is-in')));
-    // Once he is up:
+    // Once he is up (each step only while this visit is still his):
+    const visit = ++peekVisit;
+    peekAct = o.act;
+    const at = (ms, fn) => setTimeout(() => { if (visit === peekVisit) fn(); }, ms);
     if (o.act === 'wink') {
-      setTimeout(() => Pico.look(art, 0, 0.1), 460);             // from the habit to you
-      setTimeout(() => Pico.gesture(art, 'wink'), 540);
-      picoVoice('wink', 740);                                   // as the eye shuts
+      at(460, () => Pico.look(art, 0, 0.1));                    // from the habit to you
+      at(540, () => Pico.gesture(art, 'wink'));
+      at(740, () => picoVoice('wink'));                         // as the eye shuts
     } else if (o.act === 'wave') {
-      setTimeout(() => Pico.pose(art, 'peekWave'), 440);
-      picoVoice('hello', 480);
+      at(440, () => Pico.pose(art, 'peekWave'));
+      at(480, () => picoVoice('hello'));
     } else if (o.act === 'point' || o.act === 'think') {
-      setTimeout(() => {
+      at(440, () => {
         Pico.pose(art, o.act);
         Pico.point(art, Math.atan2(dy, dx) * 180 / Math.PI - tilt);   // in his own, tilted frame
-      }, 440);
-      picoVoice(o.act === 'point' ? 'curious' : 'think', 520);
+      });
+      at(520, () => picoVoice(o.act === 'point' ? 'curious' : 'think'));
     } else if (o.act === 'nod') {
-      setTimeout(() => Pico.gesture(art, 'nod'), 440);
-      picoVoice('nod', 460);
-      setTimeout(() => Pico.pose(art, 'peekGlad'), 1050);
+      at(440, () => Pico.gesture(art, 'nod'));
+      at(460, () => picoVoice('nod'));
+      at(1050, () => Pico.pose(art, 'peekGlad'));
+    } else if (o.act === 'frown') {
+      at(380, () => Pico.pose(art, 'peekFrown'));               // looking at the habit, displeased
+      at(420, () => picoVoice('grumble'));
     }
-    setTimeout(() => { box.classList.remove('is-in'); box.classList.add('is-out'); }, o.hold);
+    peekLater(visit, o.hold);
+    return true;
+  }
+
+  // He ducks back down after `hold`, unless a later visit has taken over.
+  function peekLater(visit, hold) {
+    const box = $('#picoPeek');
     setTimeout(() => {
+      if (visit !== peekVisit) return;
+      box.classList.remove('is-in');
+      box.classList.add('is-out');
+    }, hold);
+    setTimeout(() => {
+      if (visit !== peekVisit) return;
       box.hidden = true;
       box.classList.remove('is-out');
-      Pico.unmount(art);
+      Pico.unmount($('#picoPeekArt'));
       peekBusy = false;
-    }, o.hold + 400);
-    return true;
+      peekAct = null;
+    }, hold + 400);
+  }
+
+  // Sends him back down now (a frown that the day's cheer replaces).
+  function endPeek() {
+    if (peekBusy) peekLater(++peekVisit, 0);
+  }
+
+  /* A habit Pico saw done is unticked (2.26): he comes up and frowns at it.
+     From Today's tick and its − (a counted habit falling short again). */
+  function picoFrown(habit) {
+    const row = $$('#habitList .habit-row').find((node) => node.dataset.habitId === habit.id);
+    hidePicoCheer();
+    if (row) picoPeek(row, { act: 'frown', hold: 2000 });
   }
 
   /* Pico's voice (2.19): a sound when he does something — a chirp, a caw,
@@ -1282,6 +1489,7 @@
   }
 
   function holdStep(habit, delta) {
+    touchOnSickDay(habit);
     const before = valueOf(habit, selectedDate);
     const wasComplete = isComplete(habit, selectedDate);
     setValue(habit, selectedDate, before + delta);
@@ -1317,6 +1525,7 @@
       celebrate(habit, wasComplete, { sounded: crossed });   // holdStep already sounded the crossing
       renderProgressIfVisible();
     }
+    if (wasComplete && !isComplete(habit, selectedDate)) picoFrown(habit);   // fell short again (2.26)
   }
 
   function startHold(habit, delta, btn, evt) {
@@ -1348,6 +1557,7 @@
   }
 
   function bump(habit, delta) {
+    touchOnSickDay(habit);
     const wasComplete = isComplete(habit, selectedDate);
     const before = valueOf(habit, selectedDate);
     setValue(habit, selectedDate, before + delta);
@@ -1358,6 +1568,7 @@
     }
     renderToday();
     celebrate(habit, wasComplete);
+    if (wasComplete && !isComplete(habit, selectedDate)) picoFrown(habit);
     renderProgressIfVisible();
   }
 
@@ -1411,10 +1622,12 @@
       'aria-label': habitName(habit) + ' — ' + t('doneToday'),
     });
     check.addEventListener('click', () => {
+      touchOnSickDay(habit);
       setValue(habit, selectedDate, complete ? 0 : 1);
       if (complete) Sounds.play('uncomplete');   // celebrate() sounds the other way
       renderToday();
       celebrate(habit, complete);
+      if (complete) picoFrown(habit);            // unticked: he frowns (2.26)
       renderProgressIfVisible();
     });
     return check;
@@ -1424,7 +1637,9 @@
     const list = $('#habitList');
     const all = activeHabits();
     const due = habitsFor(selectedDate);
-    const shown = showAllToday ? all : due;
+    // A sick day's excused habit ticked or unticked here keeps its row, so an
+    // untick does not take it away from under the finger (2.26).
+    const shown = showAllToday ? all : all.filter((h) => due.includes(h) || sickTouched.has(selectedDate + '|' + h.id));
     list.innerHTML = '';
     $('#todayEmpty').hidden = shown.length > 0;
     perchPico('#todayEmptyPico', !shown.length);
@@ -1527,6 +1742,87 @@
     renderBody();
     renderHabitList();
     renderExcellence();
+    renderSick();
+    renderProgramToday();              // the Plus preview's, or nothing
+  }
+
+  /* Sick days on Today (2.26): the button in the mood card while today is
+     an ordinary day; the card while the day shown is a sick one, with its
+     buttons only for today. */
+  function renderSick() {
+    const isToday = selectedDate === todayKey();
+    const period = sickPeriodOf(selectedDate);
+    $('#btnSick').hidden = !isToday || !!period;
+    const card = $('#sickCard');
+    card.hidden = !period;
+    if (!period) return;
+    // What still counts that day: the habits kept that are on their schedule.
+    const kept = activeHabits().filter((h) => period.keep.includes(h.id) && onSchedule(h, selectedDate));
+    const spell = sickSpell(period);
+    const long = { day: 'numeric', month: 'long' };
+    $('#sickSince').textContent = spell.to === null ? t('sickSinceFmt', { date: fmtDate(spell.from, long) })
+      : t('sickRangeFmt', { from: fmtDate(spell.from, long), to: fmtDate(spell.to, long) });
+    $('#sickText').textContent = !isToday ? t('sickPast')
+      : kept.length ? t('sickKeptFmt', { n: kept.length, list: listOf(kept.map((h) => t('insQuote', GlowEmoji.text(h.emoji) + ' ' + habitName(h)))) })
+      : t('sickNone');
+    $('#sickActions').hidden = !isToday || period !== sickNow();
+  }
+
+  // Which habits to keep: those marked essential, or the ones kept so far.
+  function openSick() {
+    const now = sickNow();
+    const keep = now ? now.keep : activeHabits().filter((h) => h.essential === true).map((h) => h.id);
+    const list = $('#sickKeepList');
+    list.textContent = '';
+    activeHabits().forEach((h) => {
+      const label = document.createElement('label');
+      label.className = 'check-line';
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.value = h.id;
+      box.checked = keep.includes(h.id);
+      const name = document.createElement('span');
+      name.textContent = GlowEmoji.text(h.emoji) + ' ' + habitName(h);
+      label.append(box, name);
+      list.appendChild(label);
+    });
+    $('#sickKeepNone').hidden = activeHabits().length > 0;
+    $('#btnSickSave').textContent = t(now ? 'save' : 'sickStart');
+    Sounds.play('tick');
+    $('#sickDialog').showModal();
+  }
+
+  function saveSick() {
+    const keep = $$('#sickKeepList input').filter((box) => box.checked).map((box) => box.value);
+    const now = sickNow();
+    if (now) setSickKeep(keep);
+    else {
+      const today = todayKey();
+      if (!state.sick || !Array.isArray(state.sick.periods)) state.sick = Object.assign({}, state.sick, { periods: [] });
+      // One left open with a later start (a clock that ran ahead) gives way to today's.
+      state.sick.periods = state.sick.periods.filter((p) => !(p.to === null && p.from > today));
+      state.sick.periods.push({ from: today, to: null, keep: keep });
+    }
+    save();
+    $('#sickDialog').close();
+    Sounds.play('tick');
+    renderAll();
+    toast(t(now ? 'sickSaved' : 'sickStarted'));
+    $('#btnSickKeep').focus();               // its opener, "Estoy enfermo", is gone
+  }
+
+  // Better: today is an ordinary day again (a period begun today is undone).
+  function sickOff() {
+    const now = sickNow();
+    if (!now) return;
+    const today = todayKey();
+    if (now.from >= today) state.sick.periods.splice(state.sick.periods.indexOf(now), 1);
+    else now.to = keyOf(addDays(parseKey(today), -1));
+    save();
+    Sounds.play('complete');
+    renderAll();
+    toast(t('sickEnded'));
+    $('#btnSick').focus();                   // the card, and the button pressed, are gone
   }
 
   /* ── Habits view ───────────────────────────────────────────────────── */
@@ -1543,6 +1839,24 @@
     { key: 'hbFloss', desc: 'dsFloss', emoji: '🧵', colorIndex: 3, category: 'health', type: 'binary', schedule: { kind: 'daily' } },
     { key: 'hbNoFap', desc: 'dsNoFap', emoji: '🛡️', colorIndex: 8, category: 'mental', type: 'binary', schedule: { kind: 'daily' } },
   ];
+
+  // A starter made into a habit of one's own (also the guided program's, 2.25).
+  const presetHabit = (preset, id) => ({
+    id,
+    name: t(preset.key),
+    nameKey: preset.key,
+    description: preset.desc ? t(preset.desc) : '',
+    descKey: preset.desc || '',
+    emoji: preset.emoji,
+    colorIndex: preset.colorIndex,
+    category: preset.category,
+    type: preset.type,
+    target: preset.target || 1,
+    unit: preset.unitKey ? t(preset.unitKey) : '',
+    schedule: JSON.parse(JSON.stringify(preset.schedule)),
+    createdAt: todayKey(),
+    archived: false,
+  });
 
   function renderPresets() {
     const grid = $('#presetGrid');
@@ -1590,22 +1904,7 @@
       chip.appendChild(document.createTextNode(t(preset.key)));
       chip.addEventListener('click', () => {
         const id = uid();
-        state.habits.push({
-          id,
-          name: t(preset.key),
-          nameKey: preset.key,
-          description: preset.desc ? t(preset.desc) : '',
-          descKey: preset.desc || '',
-          emoji: preset.emoji,
-          colorIndex: preset.colorIndex,
-          category: preset.category,
-          type: preset.type,
-          target: preset.target || 1,
-          unit: preset.unitKey ? t(preset.unitKey) : '',
-          schedule: JSON.parse(JSON.stringify(preset.schedule)),
-          createdAt: todayKey(),
-          archived: false,
-        });
+        state.habits.push(presetHabit(preset, id));
         save();
         renderHabitsView();
         renderToday();
@@ -1836,6 +2135,8 @@
     const archList = $('#archiveList');
     archList.innerHTML = '';
     archived.forEach((h) => archList.appendChild(manageRow(h, true)));
+    renderRoutines();                          // the Plus preview's, or nothing
+    renderProgramCard();
   }
 
   /* ── Habit editor ──────────────────────────────────────────────────── */
@@ -1974,6 +2275,8 @@
     $('#fUnit').value = draft.unit;
     $('#fTimes').value = draft.schedule.times || 3;
     $('#fCategory').value = draft.category;
+    draft.essential = !!(existing && existing.essential === true);
+    $('#fEssential').checked = draft.essential;
     $('#formError').hidden = true;
     $('#btnDeleteHabit').hidden = !existing;
 
@@ -2081,6 +2384,7 @@
     draft.target = parseInt($('#fTarget').value, 10) || 0;
     draft.unit = $('#fUnit').value.trim();
     draft.category = $('#fCategory').value;
+    draft.essential = $('#fEssential').checked;
     draft.reminders = cleanTimes(shell
       ? $$('#reminderList input').map((input) => input.value)
       : draft.reminders);
@@ -2189,14 +2493,26 @@
     };
     if (voiceNote) payload.voiceNote = voiceNote;
     if (draft.botPick) payload.botPick = draft.botPick.slice();
+    if (draft.essential) payload.essential = true;      // absent unless set (2.26)
+    const wasEssential = !!(existing && existing.essential === true);
 
     let added = null;
     if (existing) {
       Object.assign(existing, payload);
       if (!voiceNote) delete existing.voiceNote;
+      if (!draft.essential) delete existing.essential;
     } else {
       added = uid();
       state.habits.push(Object.assign({ id: added, createdAt: todayKey(), archived: false }, payload));
+    }
+    // While sick, marking a habit essential here keeps it from now on, and
+    // unmarking it lets it go.
+    const sickPeriod = sickNow();
+    const savedId = existing ? existing.id : added;
+    if (sickPeriod && draft.essential !== wasEssential) {
+      const keep = sickPeriod.keep.filter((id) => id !== savedId);
+      if (draft.essential) keep.push(savedId);
+      setSickKeep(keep);
     }
     save();
     if (previousNote && (!voiceNote || voiceNote.id !== previousNote)) deleteNoteFile(previousNote);
@@ -2388,13 +2704,18 @@
 
   /* Average mood on days the habit was completed versus days it was not.
      Needs at least two days on each side before it says anything. */
+  /* A day to compare a habit's mood on: due, and not a sick day it was
+     excused from (2.26). Such a day counts only when done, so it would add
+     a sick day's low mood to the "done" side alone. */
+  const comparable = (habit, key) => isScheduled(habit, key) && !(state.sick && sickExcused(habit.id, key));
+
   function renderCorrelation(days) {
     const groups = [];
     activeHabits().forEach((habit) => {
       let doneSum = 0, doneN = 0, missSum = 0, missN = 0;
       days.forEach((key) => {
         const mood = state.moods[key];
-        if (!mood || !mood.score || !isScheduled(habit, key)) return;
+        if (!mood || !mood.score || !comparable(habit, key)) return;
         if (isComplete(habit, key)) { doneSum += mood.score; doneN++; }
         else { missSum += mood.score; missN++; }
       });
@@ -2561,7 +2882,9 @@
         if (isComplete(habit, key)) w.done++;
       });
       weeks.forEach((w) => {
-        if (w.done >= quota) { run++; of++; best = Math.max(best, run); }
+        const need = weekNeed(habit, quota, parseKey(w.key));    // a sick week: its share, or neutral (2.26)
+        if (need === 0) return;
+        if (w.done >= need) { run++; of++; best = Math.max(best, run); }
         else if (!w.cut && !w.open) { run = 0; of++; }
       });
       return { best: best, of: of, unit: 'weeks' };
@@ -2663,21 +2986,32 @@
         log: state.entries[h.id] || {}, target: targetOf(h), since: h.createdAt || '' };
     });
     const quotaDone = new Map();
+    const sickOn = sickPeriods().length > 0;
     const firstDow = parseKey(from).getDay();
     const days = lastNDays(dayDiff(today, from) + 1).map((key, i) => {
       const dow = (firstDow + i) % 7;
       const idx = (dow - state.weekStart + 7) % 7;                    // day of the week, from its start
       if (idx === 0) quotaDone.clear();
+      // A weekly quota shortened by the week's sick days, as its streak counts it (2.26).
+      if (sickOn && (idx === 0 || i === 0)) {
+        const weekStart = addDays(parseKey(key), -idx);
+        plans.forEach((p) => { if (p.kind === 'times') p.weekQuota = weekNeed(p.habit, p.quota, weekStart); });
+      }
       const left = 7 - idx;                                           // this day to the week's end
       let due = 0;
       let done = 0;
+      const sick = sickOn ? sickPeriodOf(key) : null;
       for (const p of plans) {
         if (key < p.since) continue;
         const complete = (p.log[key] || 0) >= p.target;
+        if (sick && !complete && !sick.keep.includes(p.habit.id)) continue;   // excused on a sick day (2.26)
         if (p.kind === 'times') {
           const before = quotaDone.get(p.habit.id) || 0;
           if (complete) { due++; done++; quotaDone.set(p.habit.id, before + 1); }
-          else if (p.quota - before > 0 && p.quota - before >= left) due++;
+          else {
+            const quota = sickOn ? p.weekQuota : p.quota;
+            if (quota - before > 0 && quota - before >= left) due++;
+          }
           continue;
         }
         if (p.kind === 'days' && !p.days.includes(dow)) continue;
@@ -3089,6 +3423,890 @@
     $('#achievementsDialog').showModal();
   }
 
+  /* ── Pico's wardrobe (2.24) ────────────────────────────────────────────
+     Hats drawn in pico.js, worn by every Pico in the app once one is put
+     on. Optional: until someone puts a hat on him nothing is stored, and
+     Pico without one is the Pico of 2.23. Some hats are free from the
+     start, some are earned with an achievement (earnedOf: once earned, for
+     good), and some belong to GlowApp Plus. */
+  const WARDROBE = [
+    { id: 'beanie', tier: 'free' },
+    { id: 'birthday', tier: 'free' },
+    { id: 'cap', tier: 'free' },
+    { id: 'flowers', tier: 'free' },
+    { id: 'explorer', tier: 'earned', by: 'streak7' },
+    { id: 'vueltiao', tier: 'earned', by: 'active30' },
+    { id: 'beret', tier: 'earned', by: 'mood7' },
+    { id: 'graduation', tier: 'earned', by: 'done100' },
+    { id: 'crown', tier: 'earned', by: 'perfectWeek' },
+    { id: 'witch', tier: 'plus' },
+    { id: 'santa', tier: 'plus' },
+    { id: 'tophat', tier: 'plus' },
+    { id: 'chef', tier: 'plus' },
+  ];
+  /* GlowApp Plus is not available. Google Play Billing is not integrated
+     and there is no account or server, so nothing can vouch for a purchase:
+     until something does, nothing is Plus. It is never read from glow.v1
+     (or anything else the page can write), since an edited or restored
+     backup would then unlock it. Plus hats can be tried on, not worn. */
+  const plusActive = () => false;
+
+  const hatItem = (id) => WARDROBE.find((w) => w.id === id) || null;
+  const hatName = (id) => t(id ? 'hat' + id.charAt(0).toUpperCase() + id.slice(1) : 'hatNone');
+  // The choice saved, which may be a hat this version does not know (kept).
+  const storedHat = () => (state.wardrobe && typeof state.wardrobe.hat === 'string' ? state.wardrobe.hat : null);
+  /* The hat he wears: the one chosen, when it is one this version draws and
+     may be worn now. A Plus hat waits, kept, until Plus is active; an earned
+     one was earned when it was put on, and achievements stay earned. */
+  function wornHat() {
+    if (!plusPreviewOn()) return null;     // the free app's Pico: no hat (the choice is kept)
+    const item = hatItem(storedHat());
+    if (!item || !Pico.HATS.includes(item.id)) return null;
+    return item.tier === 'plus' && !plusActive() ? null : item.id;
+  }
+  function canWear(item, earned) {
+    if (!item || item.tier === 'free') return true;
+    if (item.tier === 'earned') return earned.has(item.by);
+    return plusActive();
+  }
+
+  function applyWardrobe() {
+    Pico.wear(wornHat());
+    $('#wardrobeCurrent').textContent = hatName(wornHat());
+  }
+
+  let wardrobe = null;                 // while the sheet is open: { preview, earned, p }
+  // The "no hat" tile: the top of his head and his crest, in his own purple.
+  const HAT_NONE_ICON = '<svg class="hat-icon hat-none" viewBox="25 0 70 36" aria-hidden="true" focusable="false"><path d="M38 36 C38 27 47 20 60 20 C73 20 82 27 82 36 Z"/><path d="M55 24 C53 16 56 10 61 7 C60 13 61 18 63 23 Z"/><path d="M60 23 C62 15 67 12 72 12 C68 16 66 20 66 25 Z"/></svg>';
+
+  function openWardrobe() {
+    const p = progressOf();
+    wardrobe = { preview: wornHat(), earned: earnedOf(p), p };
+    renderWardrobeGrid();
+    renderWardrobeStage();
+    $('#wardrobeMoves').hidden = reducedMotion.matches;      // nothing would move
+    $('#wardrobeDialog').showModal();
+    Pico.mount($('#wardrobePico'), 'idle', { hat: wardrobe.preview });
+  }
+
+  /* One of his gestures, on the wardrobe's stage (2.25), with what he has
+     on: tipping it, a dance, a bow, a shrug, a cheer. */
+  function playMove(move) {
+    if (!wardrobe || reducedMotion.matches) return;
+    const host = $('#wardrobePico');
+    if (move === 'cheer') Pico.pose(host, 'cheer');
+    else {
+      Pico.pose(host, 'idle');
+      Pico.gesture(host, move);
+    }
+    picoVoice({ tip: 'hello', dance: 'cheer', bow: 'nod', shrug: 'curious', cheer: 'cheer' }[move], 200);
+  }
+
+  function renderWardrobeGrid() {
+    const grid = $('#wardrobeGrid');
+    grid.innerHTML = '';
+    [null].concat(WARDROBE).forEach((item) => {
+      const id = item ? item.id : null;
+      const tile = button('hat-tile', null, { 'data-hat': id || 'none', 'aria-pressed': 'false' });
+      const art = document.createElement('span');
+      art.className = 'hat-tile-art';
+      art.setAttribute('aria-hidden', 'true');
+      art.innerHTML = id ? Pico.hatSvg(id) : HAT_NONE_ICON;
+      const name = document.createElement('span');
+      name.className = 'hat-tile-name';
+      name.textContent = hatName(id);
+      const tier = document.createElement('span');
+      tier.className = 'hat-tile-tier';
+      tile.append(art, name, tier);
+      tile.addEventListener('click', () => previewHat(id));
+      grid.appendChild(tile);
+    });
+    markWardrobeGrid();
+  }
+
+  function markWardrobeGrid() {
+    const worn = wornHat();
+    $$('#wardrobeGrid .hat-tile').forEach((tile) => {
+      const id = tile.dataset.hat === 'none' ? null : tile.dataset.hat;
+      const item = hatItem(id);
+      const on = !!id && id === worn;
+      tile.setAttribute('aria-pressed', String(id === wardrobe.preview));
+      tile.classList.toggle('is-worn', on);
+      tile.classList.toggle('is-locked', !canWear(item, wardrobe.earned));
+      $('.hat-tile-tier', tile).textContent = on ? t('hatWornMark')
+        : item ? t({ free: 'tierFree', earned: 'tierEarned', plus: 'tierPlus' }[item.tier]) : '';
+    });
+  }
+
+  function renderWardrobeStage() {
+    const id = wardrobe.preview;
+    const item = hatItem(id);
+    const worn = wornHat();
+    $('#wardrobeName').textContent = hatName(id);
+    let status;
+    if (!item) status = t('wardrobeNoneNote');
+    else if (item.tier === 'free') status = t('wardrobeFreeNote');
+    else if (item.tier === 'earned') {
+      const a = ACHIEVEMENTS.find((x) => x.id === item.by);
+      const name = t(achievementKey(a.id));
+      status = wardrobe.earned.has(a.id) ? t('wardrobeEarnedGotFmt', name)
+        : t('wardrobeEarnedFmt', { name, desc: t(achievementKey(a.id) + 'Desc'), n: Math.min(a.of(wardrobe.p), a.goal), goal: a.goal });
+    } else status = t('wardrobePlusNote');
+    if (id === 'vueltiao') status = t('hatVueltiaoDesc') + ' ' + status;
+    $('#wardrobeStatus').textContent = status;
+    // One button: put on what is tried on, or take off what he wears.
+    const wear = $('#btnWear');
+    const takeOff = !!worn && (id === worn || id === null);
+    // A locked hat's button says why, rather than looking ready and doing nothing.
+    const locked = !takeOff && !!item && !canWear(item, wardrobe.earned);
+    wear.textContent = t(takeOff ? 'wardrobeTakeOff' : !locked ? 'wardrobeWear' : item.tier === 'plus' ? 'wardrobeWithPlus' : 'wardrobeNotYet');
+    wear.disabled = !takeOff && (id === null || id === worn || locked);
+    // A Plus hat chosen before stays chosen while it cannot be worn: said, not hidden.
+    const kept = hatItem(storedHat());
+    const waiting = kept && kept.tier === 'plus' && !plusActive();
+    $('#wardrobeKept').hidden = !waiting;
+    if (waiting) $('#wardrobeKept').textContent = t('wardrobeKeptFmt', hatName(kept.id));
+    markWardrobeGrid();
+  }
+
+  /* Trying one on: it drops onto his head and he looks up at it. Nothing is
+     saved until it is put on. */
+  function previewHat(id) {
+    if (!wardrobe || id === wardrobe.preview) return;
+    wardrobe.preview = id;
+    const host = $('#wardrobePico');
+    Pico.hat(host, id, id ? 'drop' : null);
+    if (id) {
+      Pico.gesture(host, 'admire');
+      picoVoice('curious', 260);
+    }
+    Sounds.play('tick');
+    renderWardrobeStage();
+  }
+
+  function wearPreviewed() {
+    if (!wardrobe) return;
+    const id = wardrobe.preview;
+    const worn = wornHat();
+    const host = $('#wardrobePico');
+    if (worn && (id === worn || id === null)) {
+      state.wardrobe = Object.assign({}, state.wardrobe, { hat: null });
+      save();
+      applyWardrobe();
+      wardrobe.preview = null;
+      Pico.hat(host, null);
+      toast(t('wardrobeOff'));
+    } else {
+      // A locked hat is never put on, whatever the button says.
+      if (id === null || !canWear(hatItem(id), wardrobe.earned)) return;
+      state.wardrobe = Object.assign({}, state.wardrobe, { hat: id });
+      save();
+      applyWardrobe();
+      // He hops and the hat settles on his head.
+      Pico.hat(host, id, 'settle');
+      Pico.gesture(host, 'hop');
+      picoVoice('hello', 160);
+      toast(t('wardrobeOnFmt', hatName(id)));
+    }
+    Sounds.play('tick');
+    renderWardrobeStage();
+  }
+
+  /* ── Guided routines (2.25, a Plus preview) ───────────────────────────
+     Habits chained in the order they are done (the morning, the evening)
+     and gone through step by step, with a timer on the steps that have one
+     and Pico for company. Nothing is ever marked by itself: a step is marked
+     only when "Hecho" is tapped, through setValue as a tap on Today would;
+     a timer that runs out only says so. Stored as state.routines, written
+     when the first routine is saved; with the preview off the card goes and
+     the routines wait, untouched. A step whose habit was deleted or
+     archived is passed over. */
+  const MAX_STEP_MINUTES = 60;
+  const routines = () => (Array.isArray(state.routines) ? state.routines : []);
+  const routineSteps = (r) => r.steps.map((s) => ({ habit: habitById(s.habitId), minutes: s.minutes }))
+    .filter((s) => s.habit && !s.habit.archived);
+  // A timed habit's own minutes, as a first guess for its step.
+  const defaultMinutes = (h) => (h.type === 'quantity' && /^min/.test(h.unit || '') ? Math.min(MAX_STEP_MINUTES, Math.max(1, h.target || 1)) : 0);
+
+  function renderRoutines() {
+    const card = $('#routinesCard');
+    card.hidden = !plusPreviewOn();
+    if (card.hidden) return;
+    const list = $('#routineList');
+    list.textContent = '';
+    routines().forEach((r) => {
+      const steps = routineSteps(r);
+      const li = document.createElement('li');
+      li.className = 'routine-item';
+      li.dataset.routineId = r.id;
+      const text = document.createElement('div');
+      text.className = 'routine-item-text';
+      const name = document.createElement('span');
+      name.className = 'routine-item-name';
+      name.textContent = r.name;
+      const meta = document.createElement('span');
+      meta.className = 'routine-item-meta';
+      meta.textContent = t('routineMetaFmt', { steps: steps.length, minutes: steps.reduce((sum, s) => sum + s.minutes, 0) });
+      text.append(name, meta);
+      const play = button('btn btn-primary btn-sm', t('routinePlay'), { 'data-action': 'play-routine' });
+      play.disabled = steps.length === 0;
+      play.addEventListener('click', () => openPlayer(r.id));
+      const edit = button('btn btn-sm', t('routineEdit'), { 'data-action': 'edit-routine' });
+      edit.addEventListener('click', () => openRoutineEditor(r.id));
+      li.append(text, play, edit);
+      list.appendChild(li);
+    });
+    $('#routinesEmpty').hidden = routines().length > 0;
+  }
+
+  let routineDraft = null;
+  // A step the editor shows: its habit is there and not archived.
+  const stepShown = (s) => { const h = habitById(s.habitId); return !!h && !h.archived; };
+
+  /* The editor works on the steps it shows. A step whose habit is archived
+     is not shown and keeps its place when the routine is saved (back in it
+     if the habit comes back); one whose habit was deleted is dropped. */
+  function openRoutineEditor(id) {
+    const existing = routines().find((r) => r.id === id);
+    const all = existing ? existing.steps.map((s) => Object.assign({}, s)) : [];
+    routineDraft = { id: existing ? existing.id : null, steps: all.filter(stepShown), original: all };
+    $('#routineDialogTitle').textContent = t(existing ? 'routineDialogEdit' : 'routineDialogNew');
+    $('#routineName').value = existing ? existing.name : '';
+    $('#routineName').placeholder = t('routineNameDefault');
+    $('#btnDeleteRoutine').hidden = !existing;
+    renderRoutineDraft();
+    $('#routineDialog').showModal();
+  }
+
+  /* The steps, each with its time and a way up, down or out; then the
+     habits not in it yet, a tap each to add. focusKey puts the focus back
+     on the control just used, since the list is drawn again. */
+  function renderRoutineDraft(focusKey) {
+    const steps = routineDraft.steps;
+    const ol = $('#routineSteps');
+    ol.textContent = '';
+    steps.forEach((s, i) => {
+      const h = habitById(s.habitId);
+      const li = document.createElement('li');
+      li.className = 'routine-step';
+      const name = document.createElement('span');
+      name.className = 'routine-step-name';
+      name.textContent = (i + 1) + '. ' + GlowEmoji.text(h.emoji) + ' ' + habitName(h);
+      const tools = document.createElement('span');
+      tools.className = 'routine-step-tools';
+      // Each control is named by its action and its step ("up-2"); after it
+      // acts, the focus goes to the control named `then` (where the step went).
+      const control = (cls, label, aria, name, then, disabled, act) => {
+        const b = button(cls, label, { 'aria-label': aria, 'data-focus': name });
+        b.disabled = disabled;
+        b.addEventListener('click', () => { act(); renderRoutineDraft(then); });
+        return b;
+      };
+      tools.append(
+        control('icon-btn', '↑', t('routineMoveUp'), 'up-' + i, 'up-' + (i - 1), i === 0, () => { steps.splice(i - 1, 0, steps.splice(i, 1)[0]); }),
+        control('icon-btn', '↓', t('routineMoveDown'), 'down-' + i, 'down-' + (i + 1), i === steps.length - 1, () => { steps.splice(i + 1, 0, steps.splice(i, 1)[0]); }),
+        control('icon-btn', '×', t('routineRemove'), 'remove-' + i, 'name', false, () => { steps.splice(i, 1); }),
+      );
+      const time = document.createElement('div');
+      time.className = 'routine-step-time';
+      const out = document.createElement('output');
+      out.textContent = s.minutes ? t('routineMinFmt', s.minutes) : t('routineNoTime');
+      time.append(
+        control('btn btn-sm', '−', t('routineLess'), 'less-' + i, 'less-' + i, s.minutes <= 0, () => { s.minutes = Math.max(0, s.minutes - (s.minutes > 10 ? 5 : 1)); }),
+        out,
+        control('btn btn-sm', '+', t('routineMore'), 'more-' + i, 'more-' + i, s.minutes >= MAX_STEP_MINUTES, () => { s.minutes = Math.min(MAX_STEP_MINUTES, s.minutes + (s.minutes >= 10 ? 5 : 1)); }),
+      );
+      li.append(name, tools, time);
+      ol.appendChild(li);
+    });
+    const add = $('#routineAdd');
+    add.textContent = '';
+    const inIt = new Set(steps.map((s) => s.habitId));
+    activeHabits().filter((h) => !inIt.has(h.id)).forEach((h) => {
+      const chip = button('preset-chip', null, { 'data-habit-id': h.id });
+      const icon = document.createElement('span');
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = GlowEmoji.text(h.emoji);
+      chip.append(icon, document.createTextNode(habitName(h)));
+      chip.addEventListener('click', () => {
+        steps.push({ habitId: h.id, minutes: defaultMinutes(h) });
+        Sounds.play('tick');
+        renderRoutineDraft();
+      });
+      add.appendChild(chip);
+    });
+    if (!activeHabits().length) {
+      const none = document.createElement('p');
+      none.className = 'muted small';
+      none.textContent = t('routineNoHabits');
+      add.appendChild(none);
+    }
+    $('#btnSaveRoutine').disabled = !steps.length;
+    if (focusKey) {
+      const back = ol.querySelector('[data-focus="' + focusKey + '"]');
+      // A control that just became disabled (− at no time, ↑ at the top)
+      // hands the focus to the first one still enabled in its step.
+      const target = back && !back.disabled ? back : back && [...back.closest('li').querySelectorAll('button')].find((b) => !b.disabled);
+      if (target) target.focus();
+      else if (focusKey === 'name') $('#routineName').focus();
+    }
+  }
+
+  function saveRoutine() {
+    const shown = routineDraft.steps;
+    if (!shown.length) return;
+    // The steps shown, in their new order, into the places shown steps had;
+    // an archived habit's step stays where it was; new ones go at the end.
+    const steps = [];
+    let k = 0;
+    routineDraft.original.forEach((s) => {
+      if (!stepShown(s)) { if (habitById(s.habitId)) steps.push(s); }
+      else if (k < shown.length) steps.push(shown[k++]);
+    });
+    while (k < shown.length) steps.push(shown[k++]);
+    const name = $('#routineName').value.trim().slice(0, 40) || t('routineNameDefault');
+    const list = routines().slice();
+    const at = routineDraft.id ? list.findIndex((r) => r.id === routineDraft.id) : -1;
+    if (at >= 0) list[at] = Object.assign({}, list[at], { name, steps });
+    else list.push({ id: 'r' + uid().slice(1), name, steps });
+    state.routines = list;
+    save();
+    $('#routineDialog').close();
+    renderRoutines();
+    Sounds.play('complete');
+    toast(t('routineSaved'));
+  }
+
+  async function deleteRoutine() {
+    if (!routineDraft || !routineDraft.id) return;
+    const sure = await confirmDialog(t('routineDeleteTitle'), t('routineDeleteBody'), t('routineDelete'));
+    if (!sure) return;
+    state.routines = routines().filter((r) => r.id !== routineDraft.id);
+    save();
+    $('#routineDialog').close();
+    renderRoutines();
+  }
+
+  /* The player. The time left is worked out from the clock (the moment it
+     ends), not counted down, so a slow phone or a page that went to the
+     background still shows it right; the clock face is redrawn four times a
+     second only while a timer runs, and stops with the sheet. */
+  let player = null;
+  const clockFace = (ms) => {
+    const secs = Math.ceil(ms / 1000);
+    return String(Math.floor(secs / 60)).padStart(2, '0') + ':' + String(secs % 60).padStart(2, '0');
+  };
+  const timeLeft = () => (player.endsAt ? Math.max(0, player.endsAt - Date.now()) : player.left);
+
+  function openPlayer(id) {
+    const r = routines().find((x) => x.id === id);
+    const steps = r ? routineSteps(r) : [];
+    if (!steps.length) return;
+    player = { steps, at: 0, done: 0, endsAt: null, left: steps[0].minutes * 60000, timer: 0 };
+    $('#playerTitle').textContent = r.name;
+    $('#playerNote').textContent = '';
+    $('#routinePlayer').showModal();
+    Pico.mount($('#playerPico'), 'idle');
+    renderPlayer();
+  }
+
+  function renderPlayer() {
+    const p = player;
+    if (!p) return;
+    const finished = p.at >= p.steps.length;
+    $('#playerActions').hidden = finished;
+    $('#btnPlayerClose').hidden = !finished;
+    if (finished) {
+      $('#playerStep').textContent = '';
+      $('#playerHabit').textContent = t('playerEndFmt', { done: p.done, of: p.steps.length });
+      $('#playerTimer').hidden = true;
+      $('#btnPlayerTimer').hidden = true;
+      return;
+    }
+    const s = p.steps[p.at];
+    $('#playerStep').textContent = t('playerStepFmt', { at: p.at + 1, of: p.steps.length });
+    $('#playerHabit').textContent = GlowEmoji.text(s.habit.emoji) + ' ' + habitName(s.habit);
+    const timed = s.minutes > 0;
+    $('#playerTimer').hidden = !timed;
+    $('#btnPlayerTimer').hidden = !timed;
+    if (!timed) return;
+    const left = timeLeft();
+    $('#playerTimer').textContent = clockFace(left);
+    const started = left < s.minutes * 60000;
+    $('#btnPlayerTimer').textContent = t(p.endsAt ? 'playerPause' : started ? 'playerResume' : 'playerStartTimer');
+    $('#btnPlayerTimer').disabled = left <= 0;
+  }
+
+  function toggleTimer() {
+    const p = player;
+    if (!p) return;
+    if (p.endsAt) {
+      p.left = timeLeft();
+      p.endsAt = null;
+      clearTimeout(p.timer);
+    } else if (p.left > 0) {
+      p.endsAt = Date.now() + p.left;
+      clearTimeout(p.timer);
+      tickPlayer();
+    }
+    Sounds.play('tick');
+    renderPlayer();
+  }
+
+  function tickPlayer() {
+    const p = player;
+    if (!p || !p.endsAt) return;
+    const left = timeLeft();
+    $('#playerTimer').textContent = clockFace(left);
+    if (left > 0) {
+      p.timer = setTimeout(tickPlayer, 250);
+      return;
+    }
+    // Time's up: said, sounded, never marked.
+    p.endsAt = null;
+    p.left = 0;
+    Sounds.play('lift');
+    buzz([0, 40, 80, 40]);
+    Pico.gesture($('#playerPico'), 'hop');
+    $('#playerNote').textContent = t('playerTimeUp');
+    renderPlayer();
+  }
+
+  function stepDone() {
+    const p = player;
+    if (!p || p.at >= p.steps.length) return;
+    const h = p.steps[p.at].habit;
+    const key = todayKey();
+    const already = isComplete(h, key);
+    if (!already) setValue(h, key, Math.max(valueOf(h, key), targetOf(h)));
+    p.done++;
+    buzz(15);
+    Sounds.play('complete');
+    Pico.gesture($('#playerPico'), 'nod');
+    nextStep(already ? t('playerAlready') : '');
+  }
+
+  function nextStep(note) {
+    const p = player;
+    clearTimeout(p.timer);
+    p.endsAt = null;
+    p.at++;
+    $('#playerNote').textContent = note || '';
+    if (p.at < p.steps.length) {
+      p.left = p.steps[p.at].minutes * 60000;
+    } else {
+      Pico.pose($('#playerPico'), 'cheer');
+      picoVoice('cheer', 300);
+      Sounds.play('celebrate');
+    }
+    renderPlayer();
+  }
+
+  /* ── The guided program (2.25, a Plus preview) ─────────────────────────
+     One for now, a week long: a small step a day, each a suggestion with a
+     way to act on it. "Listo por hoy" moves the program on and marks no
+     habit. The next step opens the next day, never sooner, and waits as long
+     as it takes: missing a day loses nothing. The habits it helps add are
+     ordinary ones, the person's own, and stay as they are if the program is
+     left or the preview turned off. state.program keeps the date each step
+     was done; it is written when the program is first started. */
+  const PROGRAM_STEPS = [
+    { action: 'add' }, { action: 'habits' }, { action: 'mood' }, { action: 'routine' },
+    { action: 'progress' }, { action: 'habits' }, { action: null },
+  ];
+  // Step 1's small habits, from the starters.
+  const PROGRAM_STARTERS = ['presetWater', 'presetWalk', 'presetGratitude'];
+  const programState = () => (state.program && Array.isArray(state.program.done) ? state.program : null);
+
+  // Where the program stands: the step to do today, or, with today's done,
+  // the one that opens tomorrow (waiting), or finished.
+  function programNow() {
+    const p = programState();
+    if (!p) return null;
+    const done = p.done.length;
+    if (done >= PROGRAM_STEPS.length) return { p, finished: true };
+    return { p, finished: false, step: done + 1, waiting: done > 0 && p.done[done - 1] >= todayKey() };
+  }
+  const programTitle = (n) => t('programS' + n + 'Title');
+  const programDate = (key) => fmtDate(key, { day: 'numeric', month: 'long' });
+
+  function renderProgramCard() {
+    const card = $('#programCard');
+    card.hidden = !plusPreviewOn();
+    if (card.hidden) return;
+    const now = programNow();
+    const status = $('#programStatus');
+    const go = $('#btnProgramGo');
+    $('#btnProgramLeave').hidden = !now || now.finished;
+    if (!now) {
+      status.textContent = t('programAbout');
+      go.textContent = t('programStart');
+    } else if (now.finished) {
+      status.textContent = t('programFinishedFmt', { date: programDate(now.p.done[now.p.done.length - 1]) });
+      go.textContent = t('programAgain');
+    } else {
+      status.textContent = now.waiting ? t('programWaitFmt', { day: now.step })
+        : t('programDayFmt', { day: now.step, of: PROGRAM_STEPS.length }) + ' · ' + programTitle(now.step);
+      go.textContent = t('programOpen');
+    }
+  }
+
+  // On Today, only while today's step is still to do (and today is shown).
+  function renderProgramToday() {
+    const btn = $('#programToday');
+    const now = plusPreviewOn() && selectedDate === todayKey() ? programNow() : null;
+    btn.hidden = !now || now.finished || now.waiting;
+    if (btn.hidden) return;
+    $('#programTodayDay').textContent = t('programTodayFmt', { day: now.step, of: PROGRAM_STEPS.length });
+    $('#programTodayTitle').textContent = programTitle(now.step);
+  }
+
+  function startProgram() {
+    state.program = { id: 'week1', startedAt: todayKey(), done: [] };
+    save();
+    Sounds.play('tick');
+    renderProgramCard();
+    renderToday();
+    openProgramStep();
+  }
+
+  async function leaveProgram() {
+    const sure = await confirmDialog(t('programLeaveTitle'), t('programLeaveBody'), t('programLeave'));
+    if (!sure) return;
+    state.program = null;
+    save();
+    renderProgramCard();
+    renderToday();
+  }
+
+  // The day's step; with today's done, that one again, to come back to.
+  function openProgramStep() {
+    const now = programNow();
+    if (!now || now.finished) return;
+    const n = now.waiting ? now.step - 1 : now.step;
+    $('#programStepDay').textContent = t('programDayFmt', { day: n, of: PROGRAM_STEPS.length });
+    $('#programStepTitle').textContent = programTitle(n);
+    $('#programStepBody').textContent = t('programS' + n + 'Body');
+    $('#programStepNote').textContent = now.waiting ? t('programWaitFmt', { day: now.step }) : '';
+    $('#btnProgramDone').hidden = now.waiting;
+    renderProgramAction(PROGRAM_STEPS[n - 1].action);
+    const dlg = $('#programDialog');
+    if (!dlg.open) dlg.showModal();
+    const art = $('#programPico');
+    if (!art.firstChild) Pico.mount(art, 'wave');
+  }
+
+  function renderProgramAction(action) {
+    const host = $('#programStepAction');
+    host.textContent = '';
+    if (action === 'add') {
+      // Already had, by its key or its name (the catalogue's "Beber agua",
+      // one typed by hand): not offered twice.
+      const names = new Set(activeHabits().map((h) => habitName(h).trim().toLowerCase()));
+      PROGRAM_STARTERS.forEach((key) => {
+        const preset = PRESETS.find((p) => p.key === key);
+        const owned = activeHabits().some((h) => h.nameKey === key) || names.has(t(preset.key).trim().toLowerCase());
+        const chip = button('preset-chip', null, { 'data-preset': key });
+        const icon = document.createElement('span');
+        icon.setAttribute('aria-hidden', 'true');
+        icon.textContent = GlowEmoji.text(preset.emoji);
+        chip.append(icon, document.createTextNode(owned ? t('programAdded') + ': ' + t(preset.key) : t(preset.key)));
+        chip.disabled = owned;
+        chip.addEventListener('click', () => {
+          state.habits.push(presetHabit(preset, uid()));
+          save();
+          Sounds.play('complete');
+          Pico.gesture($('#programPico'), 'nod');
+          renderHabitsView();
+          renderToday();
+          renderProgramAction('add');
+          $('#programStepNote').textContent = t('habitSaved');
+          const next = $('#programStepAction .preset-chip:not(:disabled)') || $('#btnProgramDone');
+          if (next && !next.hidden) next.focus();
+        });
+        host.appendChild(chip);
+      });
+      return;
+    }
+    const go = { habits: 'programGoHabits', mood: 'programGoMood', routine: 'programGoRoutine', progress: 'programGoProgress' }[action];
+    if (!go) return;
+    const btn = button('btn btn-sm', null, { 'data-go': action });
+    btn.textContent = t(go);
+    btn.addEventListener('click', () => {
+      $('#programDialog').close();
+      if (action === 'mood') { goToMood(); return; }
+      setView(action === 'progress' ? 'progress' : 'habits');
+      if (action === 'routine') openRoutineEditor(null);
+    });
+    host.appendChild(btn);
+  }
+
+  // Today, at its mood card, the first face ready to be chosen.
+  function goToMood() {
+    selectedDate = todayKey();
+    setView('today');
+    const card = $('.mood-card');
+    if (card) card.scrollIntoView({ block: 'center', behavior: reducedMotion.matches ? 'auto' : 'smooth' });
+    const first = $('#moodScale .mood-btn');
+    if (first) first.focus({ preventScroll: true });
+  }
+
+  function programStepDone() {
+    const now = programNow();
+    if (!now || now.finished || now.waiting) return;
+    state.program.done = now.p.done.concat(todayKey());
+    save();
+    buzz(15);
+    $('#btnProgramDone').hidden = true;
+    if (state.program.done.length >= PROGRAM_STEPS.length) {
+      $('#programStepNote').textContent = t('programFinishedFmt', { date: programDate(todayKey()) });
+      Pico.pose($('#programPico'), 'cheer');
+      picoVoice('cheer', 300);
+      Sounds.play('celebrate');
+    } else {
+      $('#programStepNote').textContent = t('programWaitFmt', { day: state.program.done.length + 1 });
+      Pico.gesture($('#programPico'), 'nod');
+      Sounds.play('complete');
+    }
+    renderProgramCard();
+    renderToday();
+  }
+
+  /* ── The month's report (2.25, a Plus preview) ─────────────────────────
+     Made only when asked for, after saying what it holds, and never stored:
+     one month on a sheet of paper, the same that prints. Its numbers follow
+     the charts' rules (an unfinished today counts in none of them). The
+     Android app prints through NativeShell.printPage, Android's print
+     screen, which saves it as a PDF; a browser through its own. While the
+     report is shown, html.is-printing makes printing show only it. */
+  let reportOpts = null;
+  const monthLabel = (id) => parseKey(id + '-01').toLocaleDateString(I18N.locale(), { month: 'long', year: 'numeric' });
+
+  // The months with something in them, this one first, a year at most.
+  function reportMonths() {
+    let first = todayKey();
+    const consider = (k) => { if (typeof k === 'string' && k < first) first = k; };
+    state.habits.forEach((h) => consider(h.createdAt));
+    Object.keys(state.entries).forEach((id) => Object.keys(state.entries[id] || {}).forEach(consider));
+    Object.keys(state.moods).forEach(consider);
+    Object.keys(state.body.weights).forEach(consider);
+    const stop = first.slice(0, 7);
+    const out = [];
+    const d = parseKey(todayKey());
+    let y = d.getFullYear();
+    let m = d.getMonth();
+    for (let i = 0; i < 12; i++) {
+      const id = y + '-' + String(m + 1).padStart(2, '0');
+      out.push(id);
+      if (id <= stop) break;
+      if (--m < 0) { m = 11; y--; }
+    }
+    return out;
+  }
+
+  function openReport() {
+    const select = $('#reportMonth');
+    select.textContent = '';
+    reportMonths().forEach((id) => {
+      const option = document.createElement('option');
+      option.value = id;
+      option.textContent = sentenceCase(monthLabel(id));
+      select.appendChild(option);
+    });
+    showReportSetup();
+    Sounds.play('tick');
+    $('#reportDialog').showModal();
+  }
+
+  function showReportSetup() {
+    document.documentElement.classList.remove('is-printing');
+    $('#printArea').textContent = '';
+    $('#reportPaper').textContent = '';
+    $('#reportSetup').hidden = false;
+    $('#reportView').hidden = true;
+  }
+
+  function makeReport() {
+    reportOpts = {
+      month: $('#reportMonth').value,
+      mood: $('#reportIncMood').checked,
+      weight: $('#reportIncWeight').checked,
+      insights: $('#reportIncInsights').checked,
+    };
+    // Made twice, not copied: each Pico has a clip path of its own.
+    $('#reportPaper').replaceChildren(buildReport(reportOpts));
+    $('#printArea').replaceChildren(buildReport(reportOpts));
+    document.documentElement.classList.add('is-printing');
+    $('#reportSetup').hidden = true;
+    $('#reportView').hidden = false;
+    Sounds.play('tick');
+    $('#btnReportPrint').focus({ preventScroll: true });
+    $('#reportDialog').scrollTop = 0;          // the report from its top
+  }
+
+  function printReport() {
+    if (!reportOpts) return;
+    const title = 'GlowApp - ' + t('reportHeadFmt', { month: monthLabel(reportOpts.month) });
+    if (shell && typeof shell.printPage === 'function') {
+      try { if (shell.printPage(title)) return; } catch (err) { /* the browser's way, below */ }
+    }
+    const before = document.title;
+    document.title = title;                    // a browser names the PDF after it
+    window.addEventListener('afterprint', () => { document.title = before; }, { once: true });
+    window.print();
+  }
+
+  function buildReport(opts) {
+    const el = (tag, cls, text) => {
+      const node = document.createElement(tag);
+      if (cls) node.className = cls;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    };
+    const today = todayKey();
+    const firstKey = opts.month + '-01';
+    const [y, m] = opts.month.split('-').map(Number);
+    let lastKey = opts.month + '-' + String(new Date(y, m, 0).getDate()).padStart(2, '0');
+    if (lastKey > today) lastKey = today;
+    const days = lastNDays(dayDiff(lastKey, firstKey) + 1, lastKey);
+    const long = { day: 'numeric', month: 'long' };
+    const root = el('article', 'report');
+    root.setAttribute('lang', I18N.getLang());
+
+    const top = el('header', 'report-top');
+    const art = el('span', 'report-pico');
+    art.setAttribute('aria-hidden', 'true');
+    art.innerHTML = Pico.svg('happy');
+    const heading = el('div');
+    heading.append(el('h1', null, t('reportHeadFmt', { month: monthLabel(opts.month) })),
+      el('p', null, t('reportMadeFmt', { from: fmtDate(firstKey, long), to: fmtDate(lastKey, long), made: fmtDate(today, { day: 'numeric', month: 'long', year: 'numeric' }) })));
+    top.append(art, heading);
+    root.appendChild(top);
+    const parts = [t('reportPartHabits')];
+    if (opts.mood) parts.push(t('reportPartMood'));
+    if (opts.weight) parts.push(t('reportPartWeight'));
+    if (opts.insights) parts.push(t('reportPartInsights'));
+    root.appendChild(el('p', 'report-holds-line', t('reportHoldsFmt', { list: listOf(parts) })));
+
+    // Each day once, by the charts' rules.
+    const settled = days.map((key) => ({ key, s: settledStats(key) }));
+    const due = settled.reduce((sum, d) => sum + d.s.due, 0);
+    const done = settled.reduce((sum, d) => sum + d.s.done, 0);
+    const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+    const v = excellenceOf();
+    const facts = el('dl', 'report-facts');
+    const fact = (label, value) => facts.append(el('dt', null, label), el('dd', null, value));
+    root.appendChild(el('h2', null, t('reportSummary')));
+    if (due) {
+      fact(t('reportDone'), t('reportDoneFmt', { done, due, pct: pct(done, due) }));
+      fact(t('reportPerfect'), String(settled.filter((d) => d.s.due > 0 && d.s.done === d.s.due).length));
+      fact(t('reportExcellent'), String(v ? days.filter((key) => { const d = v.byKey.get(key); return !!(d && d.excellent); }).length : 0));
+      root.appendChild(facts);
+    } else {
+      root.appendChild(el('p', null, t('reportNone')));
+    }
+
+    // Each habit due in the month: its days done, and for a counted one its total.
+    const rows = activeHabits().map((h) => {
+      let hDue = 0;
+      let hDone = 0;
+      let total = 0;
+      days.forEach((key) => {
+        total += valueOf(h, key);
+        if (!isScheduled(h, key)) return;
+        const complete = isComplete(h, key);
+        if (key === today && !complete) return;
+        hDue++;
+        if (complete) hDone++;
+      });
+      return { h, due: hDue, done: hDone, total };
+    }).filter((r) => r.due > 0);
+    if (rows.length) {
+      const table = el('table');
+      const head = el('tr');
+      head.append(el('th', null, t('reportHabit')), el('th', 'num', t('reportDays')), el('th', 'num', '%'), el('th', 'num', t('reportTotal')));
+      table.appendChild(el('thead')).appendChild(head);
+      const body = table.appendChild(el('tbody'));
+      rows.forEach((r) => {
+        const tr = el('tr');
+        tr.append(el('td', null, GlowEmoji.text(r.h.emoji) + ' ' + habitName(r.h)),
+          el('td', 'num', r.done + '/' + r.due), el('td', 'num', pct(r.done, r.due) + ' %'),
+          el('td', 'num', r.h.type === 'quantity' ? r.total + (r.h.unit ? ' ' + r.h.unit : '') : ''));
+        body.appendChild(tr);
+      });
+      root.appendChild(el('h2', null, t('reportHabitsCol')));
+      root.appendChild(table);
+    }
+
+    // Week by week, seven days at a time from the 1st.
+    const moodOf = (key) => { const x = state.moods[key]; return x && x.score ? x : null; };
+    const avg = (list) => (list.length ? list.reduce((a, b) => a + b, 0) / list.length : null);
+    const weeks = el('table');
+    const wHead = el('tr');
+    wHead.append(el('th', null, t('reportWeek')), el('th', 'num', t('reportHabitsCol')));
+    if (opts.mood) wHead.append(el('th', 'num', t('reportMood')), el('th', 'num', t('reportEnergy')));
+    weeks.appendChild(el('thead')).appendChild(wHead);
+    const wBody = weeks.appendChild(el('tbody'));
+    for (let i = 0; i < settled.length; i += 7) {
+      const chunk = settled.slice(i, i + 7);
+      const a = chunk[0].key;
+      const b = chunk[chunk.length - 1].key;
+      const cDue = chunk.reduce((s, d) => s + d.s.due, 0);
+      const cDone = chunk.reduce((s, d) => s + d.s.done, 0);
+      const tr = el('tr');
+      tr.append(el('td', null, fmtDate(a, { day: 'numeric' }) + '–' + fmtDate(b, { day: 'numeric', month: 'short' })),
+        el('td', 'num', cDue ? pct(cDone, cDue) + ' %' : '–'));
+      if (opts.mood) {
+        const moods = chunk.map((d) => moodOf(d.key)).filter(Boolean);
+        const mood = avg(moods.map((x) => x.score));
+        const energy = avg(moods.filter((x) => Number.isFinite(x.energyPct)).map((x) => energyPctOf(x)));
+        tr.append(el('td', 'num', mood === null ? '–' : oneDecimal().format(mood)), el('td', 'num', energy === null ? '–' : Math.round(energy) + ' %'));
+      }
+      wBody.appendChild(tr);
+    }
+    root.appendChild(el('h2', null, t('reportWeeks')));
+    root.appendChild(weeks);
+
+    if (opts.mood) {
+      const moods = days.map(moodOf).filter(Boolean);
+      const energies = moods.filter((x) => Number.isFinite(x.energyPct)).map((x) => energyPctOf(x));
+      root.appendChild(el('h2', null, t('reportPartMood').charAt(0).toUpperCase() + t('reportPartMood').slice(1)));
+      if (!moods.length) root.appendChild(el('p', null, t('reportNoMood')));
+      else {
+        const list = el('dl', 'report-facts');
+        list.append(el('dt', null, t('reportMood')), el('dd', null, t('reportMoodAvgFmt', { avg: oneDecimal().format(avg(moods.map((x) => x.score))), n: moods.length })));
+        if (energies.length) list.append(el('dt', null, t('reportEnergy')), el('dd', null, t('reportEnergyAvgFmt', { avg: Math.round(avg(energies)), n: energies.length })));
+        root.appendChild(list);
+      }
+    }
+
+    if (opts.weight) {
+      const keys = Object.keys(state.body.weights).filter((k) => k >= firstKey && k <= lastKey && Number.isFinite(state.body.weights[k])).sort();
+      root.appendChild(el('h2', null, t('reportWeight')));
+      if (!keys.length) root.appendChild(el('p', null, t('reportNoWeight')));
+      else {
+        const w = (k) => state.body.weights[k];
+        const a = keys[0];
+        const b = keys[keys.length - 1];
+        root.appendChild(el('p', null, keys.length === 1 ? t('reportWeightOne', { value: fmtWeight(w(a)), date: fmtDate(a, long) })
+          : t('reportWeightFmt', { first: fmtWeight(w(a)), firstDate: fmtDate(a, long), last: fmtWeight(w(b)), lastDate: fmtDate(b, long), change: fmtWeightChange(w(b) - w(a)) })));
+      }
+    }
+
+    if (opts.insights) {
+      const r = currentInsights();
+      const short = { day: 'numeric', month: 'short' };
+      root.appendChild(el('h2', null, t('reportInsights')));
+      root.appendChild(el('p', 'report-holds-line', t('insightsPeriodFmt', { from: fmtDate(r.period.from, short), to: fmtDate(r.period.to, short) })));
+      const ul = el('ul');
+      insightLines(r).forEach((line) => ul.appendChild(el('li', null, line)));
+      root.appendChild(ul);
+      if (r.findings.length) root.appendChild(el('p', 'report-holds-line', t('insightsNote')));
+    }
+    root.appendChild(el('p', 'report-foot', t('reportFooter')));
+    return root;
+  }
+
   function renderTable(days) {
     const head = $('#dataTableHead');
     const body = $('#dataTableBody');
@@ -3128,7 +4346,104 @@
     renderHeatmap(days);
     renderCorrelation(days);
     renderMoreCharts(days);
+    renderInsights();
     renderTable(days);
+  }
+
+  /* ── Pico's discoveries (2.24, a Plus preview) ────────────────────────
+     Only with the Plus preview on. Worked out from the records each time by
+     insights.js, with the app's own rules for when a habit is due and done,
+     and never stored. Always the last twelve weeks, whatever range the charts
+     above show. */
+  const insightsOn = () => plusPreviewOn();
+  // One number formatter per language, made once ("4,0" / "4.0").
+  const decimalFormats = {};
+  const oneDecimal = () => decimalFormats[I18N.locale()] ||
+    (decimalFormats[I18N.locale()] = new Intl.NumberFormat(I18N.locale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
+
+  // The last result, while the data and the day stay the same (coming back
+  // to Progress, or a change of language, only rewords it).
+  let insightsCache = null;
+
+  function currentInsights() {
+    const stamp = dataRev + '|' + todayKey();
+    if (!insightsCache || insightsCache.stamp !== stamp) insightsCache = { stamp, r: computeInsights() };
+    return insightsCache.r;
+  }
+
+  function renderInsights() {
+    const card = $('#insightsCard');
+    card.hidden = !insightsOn();
+    if (card.hidden) return;
+    renderInsightLines(currentInsights());
+  }
+
+  function computeInsights() {
+    return GlowInsights.compute({
+      days: lastNDays(GlowInsights.WINDOW + 2),       // each day of the window, and the day before it
+      habits: activeHabits(),
+      scheduled: comparable,                     // sick days it was excused from left out (2.26)
+      complete: isComplete,
+      settled: settledStats,
+      mood: (key) => {
+        const m = state.moods[key];
+        if (!m || !m.score) return null;
+        return { score: m.score, energyPct: Number.isFinite(m.energyPct) ? energyPctOf(m) : null };
+      },
+      dow: (key) => parseKey(key).getDay(),
+    });
+  }
+
+  // What the card says, line by line (and the month's report, 2.25).
+  function insightLines(r) {
+    const lines = [];
+    if (r.week) lines.push(t('insightsWeekFmt', { now: Math.round(r.week.rate * 100), before: Math.round(r.week.prevRate * 100) }));
+    r.findings.forEach((f) => lines.push(insightSentence(f)));
+    if (!r.enough) lines.push(t('insightsNeedFmt', { have: r.moodDays, need: r.needDays }));
+    else if (!r.findings.length) lines.push(t('insightsNone'));
+    return lines;
+  }
+
+  function renderInsightLines(r) {
+    const short = { day: 'numeric', month: 'short' };
+    const lines = insightLines(r);
+    $('#insightsPeriod').textContent = t('insightsPeriodFmt', { from: fmtDate(r.period.from, short), to: fmtDate(r.period.to, short) });
+    const list = $('#insightsList');
+    list.textContent = '';
+    lines.forEach((text) => {
+      const li = document.createElement('li');
+      li.textContent = text;
+      list.appendChild(li);
+    });
+    $('#insightsNote').hidden = !r.findings.length;
+    const art = $('#insightsPico');
+    if (!art.firstChild) Pico.mount(art, 'think');
+  }
+
+  /* One finding of insights.js in words: what went with what, both numbers
+     and the days each rests on. Never why. */
+  function insightSentence(f) {
+    const quoted = f.habitIds.map((id) => { const h = habitById(id); return t('insQuote', GlowEmoji.text(h.emoji) + ' ' + habitName(h)); });
+    const value = (x) => (f.measure === 'mood' ? oneDecimal().format(x) : String(Math.round(f.measure === 'done' ? x * 100 : x)));
+    const args = {
+      habit: quoted[0], list: listOf(quoted), up: f.diff > 0, a: value(f.yes.mean), b: value(f.no.mean), nA: f.yes.n, nB: f.no.n,
+      day: f.weekday === undefined ? '' : t('insWeekdays')[f.weekday],
+    };
+    const measure = f.measure === 'mood' ? 'Mood' : f.measure === 'energy' ? 'Energy' : '';
+    const key = { same: 'insSame', next: 'insNext', combo: 'insCombo', moodNext: 'insMoodNext', weekday: 'insWeekday' }[f.kind];
+    return t(key + measure + 'Fmt', args);
+  }
+
+  /* The switch, and everything that shows or hides with it outside the
+     views (which ask plusPreviewOn() as they draw): the wardrobe's row in
+     Ajustes and the hat every Pico wears. */
+  function applyLabs() {
+    const on = plusPreviewOn();
+    const box = $('#labsPlus');
+    box.checked = on;
+    $('#labsPlusState').textContent = t(on ? 'labsOn' : 'labsOff');
+    $('#wardrobeRow').hidden = !on;
+    applyWardrobe();
   }
 
   function renderProgressIfVisible() {
@@ -3282,6 +4597,8 @@
     $('#langSelect').value = state.lang;
     $('#weekStart').value = String(state.weekStart);
     applySound();                     // its label is translated
+    applyLabs();                      // and so is this one's
+    applyWardrobe();                  // and the hat's name (a restore lands here too)
     if (emojiPicker) emojiPicker.relabel();
     fillCategorySelect();
     buildLayoutPickers();
@@ -3370,8 +4687,9 @@
           const day = keyOf(addDays(cursor, i));
           if (!(habit.createdAt && day < habit.createdAt) && isComplete(habit, day)) done++;
         }
-        if (done < quota) break;
-        count++;
+        const need = weekNeed(habit, quota, cursor);   // as weeklyStreak() (2.26)
+        if (done < need) break;
+        if (need > 0) count++;
         cursor = addDays(cursor, -7);
       }
       return count;
@@ -3406,7 +4724,18 @@
         if (v) values[h.id] = v;
       });
       days[key] = { due: habits.filter((h) => isScheduled(h, key)).map((h) => h.id), values: values };
+      // A sick day (2.26): marked, with the habits excused from it, which a
+      // weekly quota is shortened by in the shell as it is here.
+      if (sickPeriodOf(key)) {
+        days[key].sick = true;
+        days[key].rest = habits.filter((h) => sickExcused(h.id, key) && !isComplete(h, key)).map((h) => h.id);
+        // Every habit excused that day, done or not: a widget untick moves one back to `rest`.
+        days[key].excused = habits.filter((h) => sickExcused(h.id, key)).map((h) => h.id);
+      }
     }
+    // Today's mood and energy (2.26), for the widget's faces and its energy window.
+    const mood = state.moods[today];
+    if (mood && mood.score) days[today].mood = { score: mood.score, energyPct: energyPctOf(mood) };
 
     const cast = currentCast();
     const lines = cast ? castLines(cast.id) : null;
@@ -3482,6 +4811,17 @@
         plainTitle: t('ntfPlainTitle'),
         plainBody: t('ntfPlainBody'),
         doneReply: t('chatDoneReply', '%s'),
+        // The widget's mood row and its energy window (2.26).
+        moodTitle: t('moodTitle'),
+        moods: MOODS.map((score) => t('mood' + score)),
+        moodEmoji: MOODS.map((score) => MOOD_EMOJI[score]),
+        energy: t('moodEnergy'),
+        energyLevels: [t('energyLow'), t('energyMid'), t('energyHigh')],
+        energyLess: t('energyLess'),
+        energyMore: t('energyMore'),
+        moodFirst: t('wgMoodFirst'),
+        close: t('close'),
+        sick: t('wgSick'),
       },
     };
   }
@@ -3510,9 +4850,28 @@
 
     let changed = false;
     actions.forEach((action) => {
+      const key = action.date || todayKey();
+      // The widget's mood and energy (2.26), as the faces and the slider on Today write them.
+      if (action.kind === 'mood') {
+        const score = Number(action.score);
+        if (!MOODS.includes(score)) return;
+        state.moods[key] = Object.assign({ energy: 3, note: '' }, state.moods[key], { score: score });
+        save();
+        changed = true;
+        return;
+      }
+      if (action.kind === 'energy') {
+        const entry = state.moods[key];
+        if (!entry || !entry.score || !Number.isFinite(Number(action.pct))) return;   // energy goes with a mood
+        const value = Math.max(0, Math.min(100, Math.round(Number(action.pct))));
+        entry.energyPct = value;
+        entry.energy = 1 + Math.round(value / 25);
+        save();
+        changed = true;
+        return;
+      }
       const habit = habitById(action.habitId);
       if (!habit || habit.archived) return;
-      const key = action.date || todayKey();
       if (action.action === 'toggle') {
         setValue(habit, key, isComplete(habit, key) ? 0 : targetOf(habit));
         changed = true;
@@ -5503,7 +6862,8 @@
       const bmi = kg ? bmiOf(kg) : null;
       rows.push([key]
         .concat(habits.map((h) => {
-          if (!isScheduled(h, key)) return '';
+          // Not due: blank; a sick day's excused habit shows what was logged anyway (2.26).
+          if (!isScheduled(h, key) && !(onSchedule(h, key) && valueOf(h, key))) return '';
           const value = valueOf(h, key);
           return h.type === 'quantity' ? num(value) : value >= 1 ? t('csvYes') : t('csvNo');
         }))
@@ -5652,6 +7012,58 @@
     $$('#achievementsDialog [data-close]').forEach((btn) => {
       btn.addEventListener('click', () => $('#achievementsDialog').close());
     });
+    // Pico's wardrobe (2.24), from Ajustes. Its Pico goes when it closes.
+    $('#btnWardrobe').addEventListener('click', () => { Sounds.play('tick'); openWardrobe(); });
+    $('#btnWear').addEventListener('click', wearPreviewed);
+    $$('#wardrobeMoves [data-move]').forEach((btn) => btn.addEventListener('click', () => playMove(btn.dataset.move)));
+    // Routines (2.25): the editor and the player. Closing the player stops its
+    // clock and lets its Pico go.
+    $('#btnNewRoutine').addEventListener('click', () => { Sounds.play('tick'); openRoutineEditor(null); });
+    $('#btnSaveRoutine').addEventListener('click', saveRoutine);
+    $('#btnDeleteRoutine').addEventListener('click', deleteRoutine);
+    $$('#routineDialog [data-close]').forEach((btn) => btn.addEventListener('click', () => $('#routineDialog').close()));
+    $('#btnPlayerTimer').addEventListener('click', toggleTimer);
+    $('#btnStepDone').addEventListener('click', stepDone);
+    $('#btnStepSkip').addEventListener('click', () => { Sounds.play('tick'); nextStep(''); });
+    $('#btnPlayerClose').addEventListener('click', () => $('#routinePlayer').close());
+    $$('#routinePlayer [data-close]').forEach((btn) => btn.addEventListener('click', () => $('#routinePlayer').close()));
+    $('#routinePlayer').addEventListener('close', () => {
+      if (player) clearTimeout(player.timer);
+      player = null;
+      Pico.unmount($('#playerPico'));
+      renderAll();                             // what "Hecho" marked shows everywhere
+    });
+    // The guided program (2.25): from its card in Hábitos or its step on Today.
+    // Sick days (2.26), from Today.
+    $('#btnSick').addEventListener('click', openSick);
+    $('#btnSickKeep').addEventListener('click', openSick);
+    $('#btnSickOff').addEventListener('click', sickOff);
+    $('#btnSickSave').addEventListener('click', saveSick);
+    $$('#sickDialog [data-close]').forEach((btn) => btn.addEventListener('click', () => $('#sickDialog').close()));
+    $('#btnProgramGo').addEventListener('click', () => {
+      const now = programNow();
+      if (!now || now.finished) startProgram();
+      else { Sounds.play('tick'); openProgramStep(); }
+    });
+    $('#programToday').addEventListener('click', () => { Sounds.play('tick'); openProgramStep(); });
+    $('#btnProgramLeave').addEventListener('click', leaveProgram);
+    $('#btnProgramDone').addEventListener('click', programStepDone);
+    $$('#programDialog [data-close]').forEach((btn) => btn.addEventListener('click', () => $('#programDialog').close()));
+    $('#programDialog').addEventListener('close', () => Pico.unmount($('#programPico')));
+    // The month's report (2.25): nothing of it stays once it closes.
+    $('#btnReport').addEventListener('click', openReport);
+    $('#btnReportMake').addEventListener('click', makeReport);
+    $('#btnReportPrint').addEventListener('click', printReport);
+    $('#btnReportBack').addEventListener('click', () => { Sounds.play('tick'); showReportSetup(); $('#btnReportMake').focus(); });
+    $$('#reportDialog [data-close]').forEach((btn) => btn.addEventListener('click', () => $('#reportDialog').close()));
+    $('#reportDialog').addEventListener('close', () => { showReportSetup(); reportOpts = null; });
+    $$('#wardrobeDialog [data-close]').forEach((btn) => {
+      btn.addEventListener('click', () => $('#wardrobeDialog').close());
+    });
+    $('#wardrobeDialog').addEventListener('close', () => {
+      Pico.unmount($('#wardrobePico'));
+      wardrobe = null;
+    });
     // More charts (2.19): remembered, so they stay open for whoever wants them.
     $('#btnMoreCharts').addEventListener('click', () => {
       state.moreCharts = state.moreCharts !== true;
@@ -5783,6 +7195,14 @@
       save();
       applySound();
       if (state.sound) Sounds.play('tick');   // let them hear what they just turned on
+    });
+    // The Plus preview, on or off: everything of it shows or goes at once.
+    // Off deletes nothing: what was made with it waits for it to come back.
+    $('#labsPlus').addEventListener('change', (evt) => {
+      state.labs = Object.assign({}, state.labs, { plus: evt.target.checked });
+      save();
+      applyLabs();
+      renderAll();
     });
     $('#weekStart').addEventListener('change', (evt) => {
       state.weekStart = Number(evt.target.value);
@@ -6978,6 +8398,7 @@
   /* Pico hops up when the day completes, in place of the plain toast. */
   let cheerTimer = null;
   function picoCheer(linesKey, voice) {
+    if (peekAct === 'frown') endPeek();
     const box = $('#picoCheer');
     const lines = t(linesKey || 'picoCheers');
     Pico.mount($('#picoCheerArt'), 'cheer');
@@ -7008,12 +8429,14 @@
     if (window.GlowSelect) GlowSelect.enhanceAll(document);
     load();
     const migrated = normalizeState();
+    applyWardrobe();           // his hat, before any Pico is drawn
     wire();
     const linked = linkCatalogueKeys();
     const reconciled = reconcileVoiceNotes();
     if (linked || migrated || reconciled) save();
     applyTheme();
     applySound();
+    applyLabs();
     applyBackupNote();
     applyLayout();
     applyPendingFromShell();   // ticks made from the widget while the app was closed

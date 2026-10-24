@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The energy window over the home screen (2.26), in the widget's colours. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+  <solid android:color="@color/widget_bg" />
+  <corners android:radius="24dp" />
+</shape>

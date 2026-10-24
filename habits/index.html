@@ -19,7 +19,7 @@
   <!-- The typeface (2.19), asked for at once rather than when the stylesheet
        first needs it, so the first screen is drawn in it. -->
   <link rel="preload" href="fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="stylesheet" href="styles.css?v=2.23">
+  <link rel="stylesheet" href="styles.css?v=2.26">
   <script>
     /* The saved theme and palette, resolved as applyTheme() in app.js resolves
        them, before anything paints: until app.js ran, a light theme opened on
@@ -43,7 +43,7 @@
       }
     })();
   </script>
-  <script src="i18n.js?v=2.23"></script>
+  <script src="i18n.js?v=2.26"></script>
 </head>
 <body>
   <!-- Launch screen. The mark draws itself, then a phrase lands under it.
@@ -189,6 +189,32 @@
           </div>
         </div>
 
+        <!-- Sick days (2.26): while it lasts, only the habits kept count. -->
+        <section class="card sick-card" id="sickCard" hidden aria-labelledby="sickTitle">
+          <div class="sick-head">
+            <span class="sick-emoji" aria-hidden="true">🤒</span>
+            <div>
+              <h3 id="sickTitle" data-i18n="sickTitle">Modo enfermo</h3>
+              <p class="muted small" id="sickSince"></p>
+            </div>
+          </div>
+          <p class="sick-text" id="sickText"></p>
+          <div class="button-row" id="sickActions">
+            <button type="button" class="btn btn-sm" id="btnSickKeep" aria-haspopup="dialog" data-i18n="sickKeep">Elegir esenciales</button>
+            <button type="button" class="btn btn-sm btn-primary" id="btnSickOff" data-i18n="sickOff">Ya estoy mejor</button>
+          </div>
+        </section>
+
+        <!-- The guided program's step for today (2.25, a Plus preview): only
+             with it on, a program under way, and today's step still to do. -->
+        <button type="button" class="card program-today" id="programToday" hidden aria-haspopup="dialog">
+          <span class="program-today-text">
+            <span class="program-today-day" id="programTodayDay"></span>
+            <strong class="program-today-title" id="programTodayTitle"></strong>
+          </span>
+          <svg class="program-today-go" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+
         <section class="card mood-card" aria-labelledby="moodHeading">
           <div class="card-head">
             <h3 id="moodHeading" data-i18n="moodTitle">¿Cómo te sientes?</h3>
@@ -213,6 +239,10 @@
               <textarea id="moodNote" rows="2" maxlength="500" data-i18n-placeholder="moodNotePlaceholder"></textarea>
             </label>
           </div>
+          <!-- Sick days (2.26): today only asks for what is essential. -->
+          <button type="button" class="sick-chip" id="btnSick" hidden aria-haspopup="dialog">
+            <span aria-hidden="true">🤒</span> <span data-i18n="sickOn">Estoy enfermo</span>
+          </button>
         </section>
 
         <!-- Weight and BMI (2.12): the latest weigh-in, its BMI, and how it moved. -->
@@ -263,6 +293,29 @@
             <span aria-hidden="true">+</span> <span data-i18n="addHabit">Nuevo hábito</span>
           </button>
         </div>
+        <!-- Guided routines (2.25, a Plus preview): only with it on. -->
+        <section class="card routines-card" id="routinesCard" hidden aria-labelledby="routinesTitle">
+          <div class="routines-head">
+            <h3 id="routinesTitle" data-i18n="routinesTitle">Rutinas</h3>
+            <span class="insights-tag" data-i18n="insightsTag">Vista previa de Plus</span>
+          </div>
+          <p class="muted small" id="routinesEmpty" data-i18n="routinesEmpty"></p>
+          <ul class="routine-list" id="routineList"></ul>
+          <button type="button" class="btn btn-sm" id="btnNewRoutine" data-i18n="routineNew">+ Nueva rutina</button>
+        </section>
+        <!-- The guided program (2.25, a Plus preview): a first one, a week long. -->
+        <section class="card routines-card program-card" id="programCard" hidden aria-labelledby="programsTitle">
+          <div class="routines-head">
+            <h3 id="programsTitle" data-i18n="programsTitle">Programa guiado</h3>
+            <span class="insights-tag" data-i18n="insightsTag">Vista previa de Plus</span>
+          </div>
+          <p class="program-name" data-i18n="programName">Siete días, un paso a la vez</p>
+          <p class="muted small" id="programStatus"></p>
+          <div class="button-row">
+            <button type="button" class="btn btn-primary btn-sm" id="btnProgramGo"></button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btnProgramLeave" hidden data-i18n="programLeave">Dejar el programa</button>
+          </div>
+        </section>
         <ul class="manage-list" id="manageList"></ul>
         <div class="empty-state" id="habitsEmpty" hidden>
           <div class="empty-pico" id="habitsEmptyPico" aria-hidden="true"></div>
@@ -388,6 +441,21 @@
           </figure>
         </div>
 
+        <!-- Pico's discoveries (2.24, a Plus preview), only while switched on in Ajustes. -->
+        <section class="card insights-card" id="insightsCard" hidden aria-labelledby="insightsTitle">
+          <div class="insights-head">
+            <span class="insights-pico" id="insightsPico" aria-hidden="true"></span>
+            <div>
+              <h3 id="insightsTitle" data-i18n="insightsTitle">Descubrimientos de Pico</h3>
+              <span class="insights-tag" data-i18n="insightsTag">Vista previa de Plus</span>
+            </div>
+          </div>
+          <p class="chart-sub" id="insightsPeriod"></p>
+          <ul class="insights-list" id="insightsList"></ul>
+          <p class="muted small" id="insightsNote" data-i18n="insightsNote">Son coincidencias en tus registros, no causas.</p>
+          <button type="button" class="btn btn-sm insights-report" id="btnReport" aria-haspopup="dialog" data-i18n="reportOpen">Informe del mes</button>
+        </section>
+
         <details class="card table-card" id="tableCard">
           <summary data-i18n="viewTable">Ver como tabla</summary>
           <div class="table-scroll">
@@ -426,6 +494,13 @@
           <div class="setting-row setting-row-stack" id="paletteField">
             <span class="setting-label" id="paletteLabel" data-i18n="paletteLabel">Paleta de colores</span>
             <div class="palette-grid" id="paletteGrid" role="radiogroup" aria-labelledby="paletteLabel"></div>
+          </div>
+          <!-- Pico's wardrobe (2.24), a part of the Plus preview: shown only with it on. -->
+          <div class="setting-row" id="wardrobeRow" hidden>
+            <span class="setting-label" id="wardrobeLabel" data-i18n="wardrobeTitle">Armario de Pico</span>
+            <button type="button" class="btn btn-sm" id="btnWardrobe" aria-describedby="wardrobeLabel">
+              <span id="wardrobeCurrent">Sin gorro</span>
+            </button>
           </div>
           <div class="setting-row setting-row-stack">
             <label for="layoutSelect" data-i18n="setLayout">Diseño de Hoy</label>
@@ -539,6 +614,18 @@
           <p class="muted small" data-i18n="bodyNote"></p>
         </section>
 
+        <section class="card setting-group" aria-labelledby="setLabs">
+          <h3 id="setLabs" data-i18n="setLabs">Funciones en prueba</h3>
+          <div class="setting-row">
+            <label for="labsPlus" data-i18n="labsPlus">Vista previa de Plus</label>
+            <label class="switch-inline">
+              <input type="checkbox" id="labsPlus">
+              <span id="labsPlusState"></span>
+            </label>
+          </div>
+          <p class="muted small" data-i18n="labsPlusNote"></p>
+        </section>
+
         <section class="card setting-group" aria-labelledby="setApp">
           <h3 id="setApp" data-i18n="setApp">Aplicación</h3>
           <div class="button-row">
@@ -649,6 +736,17 @@
           <span class="field-label" data-i18n="fieldTimesPerWeek">Veces por semana</span>
           <input type="number" id="fTimes" min="1" max="7" step="1" value="3" inputmode="numeric">
         </label>
+
+        <!-- Essential (2.26): kept on the days marked as sick. -->
+        <div class="setting-row essential-row">
+          <label for="fEssential" class="essential-text">
+            <span data-i18n="fieldEssential">Esencial</span>
+            <span class="field-hint" data-i18n="fieldEssentialHint">Se mantiene los días que estás enfermo.</span>
+          </label>
+          <label class="switch-inline">
+            <input type="checkbox" id="fEssential">
+          </label>
+        </div>
 
         <!-- Reminders need the Android shell to schedule an alarm, so this is
              revealed only when the native bridge is present. -->
@@ -787,6 +885,160 @@
     </div>
   </dialog>
 
+  <!-- Pico's wardrobe (2.24): try a hat on him, put it on, take it off. -->
+  <dialog class="sheet" id="wardrobeDialog" aria-labelledby="wardrobeTitle">
+    <header class="sheet-head">
+      <h2 id="wardrobeTitle" data-i18n="wardrobeTitle">Armario de Pico</h2>
+      <button type="button" class="icon-btn" data-close data-i18n-label="close" aria-label="Cerrar">
+        <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20"><use href="#i-close"></use></svg>
+      </button>
+    </header>
+    <!-- Pico, what he has on and the button stay in view (2.25): only the
+         gestures and the hats below scroll, so trying on a hat far down the
+         list is still seen happening. -->
+    <div class="wardrobe-top">
+      <div class="wardrobe-stage">
+        <span class="wardrobe-pico" id="wardrobePico" aria-hidden="true"></span>
+      </div>
+      <div class="wardrobe-info" aria-live="polite">
+        <p class="wardrobe-name" id="wardrobeName"></p>
+        <p class="muted small" id="wardrobeStatus"></p>
+      </div>
+      <button type="button" class="btn btn-primary wardrobe-wear" id="btnWear">Ponérselo</button>
+      <p class="muted small" id="wardrobeKept" hidden></p>
+    </div>
+    <div class="sheet-body wardrobe-scroll">
+      <!-- His gestures (2.25): to see a hat move with him. Hidden under reduced motion. -->
+      <div class="wardrobe-moves" id="wardrobeMoves" role="group" aria-label="Gestos" data-i18n-label="movesLabel">
+        <button type="button" class="btn btn-sm" data-move="tip" data-i18n="moveTip">Saludar</button>
+        <button type="button" class="btn btn-sm" data-move="dance" data-i18n="moveDance">Bailar</button>
+        <button type="button" class="btn btn-sm" data-move="bow" data-i18n="moveBow">Reverencia</button>
+        <button type="button" class="btn btn-sm" data-move="shrug" data-i18n="moveShrug">No sé</button>
+        <button type="button" class="btn btn-sm" data-move="cheer" data-i18n="moveCheer">Celebrar</button>
+      </div>
+      <div class="wardrobe-grid" id="wardrobeGrid" role="group" aria-labelledby="wardrobeTitle"></div>
+      <p class="muted small" data-i18n="wardrobeIntro"></p>
+    </div>
+  </dialog>
+
+  <!-- A routine, made or changed (2.25). -->
+  <dialog class="sheet" id="routineDialog" aria-labelledby="routineDialogTitle">
+    <header class="sheet-head">
+      <h2 id="routineDialogTitle"></h2>
+      <button type="button" class="icon-btn" data-close data-i18n-label="close" aria-label="Cerrar">
+        <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20"><use href="#i-close"></use></svg>
+      </button>
+    </header>
+    <div class="sheet-body">
+      <label class="field">
+        <span class="field-label" data-i18n="routineName">Nombre</span>
+        <input type="text" id="routineName" maxlength="40" autocomplete="off">
+      </label>
+      <p class="muted small" data-i18n="routineStepsHint"></p>
+      <ol class="routine-steps" id="routineSteps"></ol>
+      <div class="preset-grid routine-add" id="routineAdd"></div>
+      <div class="button-row">
+        <button type="button" class="btn btn-primary" id="btnSaveRoutine" data-i18n="save">Guardar</button>
+        <button type="button" class="btn btn-danger ghost" id="btnDeleteRoutine" hidden data-i18n="routineDelete">Borrar rutina</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- A routine, step by step (2.25). Nothing is marked unless "Hecho" is tapped. -->
+  <dialog class="sheet routine-player" id="routinePlayer" aria-labelledby="playerTitle">
+    <header class="sheet-head">
+      <h2 id="playerTitle"></h2>
+      <button type="button" class="icon-btn" data-close data-i18n-label="close" aria-label="Cerrar">
+        <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20"><use href="#i-close"></use></svg>
+      </button>
+    </header>
+    <div class="sheet-body player-body">
+      <p class="muted small" id="playerStep"></p>
+      <span class="player-pico" id="playerPico" aria-hidden="true"></span>
+      <p class="player-habit" id="playerHabit"></p>
+      <p class="player-timer" id="playerTimer"></p>
+      <button type="button" class="btn" id="btnPlayerTimer"></button>
+      <p class="muted small player-note" id="playerNote" aria-live="polite"></p>
+      <div class="button-row player-actions" id="playerActions">
+        <button type="button" class="btn btn-primary" id="btnStepDone" data-i18n="playerDone">Hecho</button>
+        <button type="button" class="btn" id="btnStepSkip" data-i18n="playerSkip">Saltar</button>
+      </div>
+      <button type="button" class="btn btn-primary" id="btnPlayerClose" hidden data-i18n="playerClose">Cerrar</button>
+    </div>
+  </dialog>
+
+  <!-- Sick days (2.26): which habits still count while it lasts. -->
+  <dialog class="sheet" id="sickDialog" aria-labelledby="sickDialogTitle">
+    <header class="sheet-head">
+      <h2 id="sickDialogTitle" data-i18n="sickDialogTitle">¿Te sientes mal?</h2>
+      <button type="button" class="icon-btn" data-close data-i18n-label="close" aria-label="Cerrar">
+        <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20"><use href="#i-close"></use></svg>
+      </button>
+    </header>
+    <div class="sheet-body">
+      <p class="muted small" data-i18n="sickDialogBody"></p>
+      <fieldset class="report-holds">
+        <legend class="field-label" data-i18n="sickKeepLabel">Mantener mientras estés enfermo</legend>
+        <div class="sick-keep" id="sickKeepList"></div>
+        <p class="muted small" id="sickKeepNone" hidden data-i18n="sickKeepNone"></p>
+      </fieldset>
+      <p class="field-hint" data-i18n="sickKeepHint"></p>
+      <button type="button" class="btn btn-primary" id="btnSickSave"></button>
+    </div>
+  </dialog>
+
+  <!-- The guided program's step of the day (2.25). It suggests; "Listo por
+       hoy" only moves the program on, it marks no habit. -->
+  <dialog class="sheet program-sheet" id="programDialog" aria-labelledby="programStepTitle">
+    <header class="sheet-head">
+      <p class="program-step-day" id="programStepDay"></p>
+      <button type="button" class="icon-btn" data-close data-i18n-label="close" aria-label="Cerrar">
+        <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20"><use href="#i-close"></use></svg>
+      </button>
+    </header>
+    <div class="sheet-body program-body">
+      <span class="program-pico" id="programPico" aria-hidden="true"></span>
+      <h2 id="programStepTitle"></h2>
+      <p class="program-step-text" id="programStepBody"></p>
+      <div class="preset-grid program-step-action" id="programStepAction"></div>
+      <p class="muted small" id="programStepNote" aria-live="polite"></p>
+      <button type="button" class="btn btn-primary" id="btnProgramDone" data-i18n="programDone">Listo por hoy</button>
+    </div>
+  </dialog>
+
+  <!-- The month's report (2.25): first what it holds, then the report itself. -->
+  <dialog class="sheet report-sheet" id="reportDialog" aria-labelledby="reportDialogTitle">
+    <header class="sheet-head">
+      <h2 id="reportDialogTitle" data-i18n="reportTitle">Informe del mes</h2>
+      <button type="button" class="icon-btn" data-close data-i18n-label="close" aria-label="Cerrar">
+        <svg viewBox="0 0 24 24" aria-hidden="true" width="20" height="20"><use href="#i-close"></use></svg>
+      </button>
+    </header>
+    <div class="sheet-body" id="reportSetup">
+      <p class="muted small" data-i18n="reportIntro"></p>
+      <label class="field">
+        <span class="field-label" data-i18n="reportMonth">Mes</span>
+        <select id="reportMonth"></select>
+      </label>
+      <fieldset class="report-holds">
+        <legend class="field-label" data-i18n="reportHolds">Qué incluye</legend>
+        <p class="small" data-i18n="reportHabitsAlways"></p>
+        <label class="check-line"><input type="checkbox" id="reportIncMood" checked> <span data-i18n="reportIncMood"></span></label>
+        <label class="check-line"><input type="checkbox" id="reportIncWeight" checked> <span data-i18n="reportIncWeight"></span></label>
+        <label class="check-line"><input type="checkbox" id="reportIncInsights" checked> <span data-i18n="reportIncInsights"></span></label>
+        <p class="muted small" data-i18n="reportNotIncluded"></p>
+      </fieldset>
+      <button type="button" class="btn btn-primary" id="btnReportMake" data-i18n="reportMake">Crear informe</button>
+    </div>
+    <div class="sheet-body" id="reportView" hidden>
+      <div class="report-paper" id="reportPaper"></div>
+      <div class="button-row">
+        <button type="button" class="btn btn-primary" id="btnReportPrint" data-i18n="reportPrint">Guardar como PDF o imprimir</button>
+        <button type="button" class="btn" id="btnReportBack" data-i18n="reportBack">Cambiar</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- A habit's actions, from its row in Hábitos (2.21). -->
   <dialog class="sheet action-sheet" id="habitActions" aria-labelledby="habitActionsTitle">
     <header class="sheet-head">
@@ -868,6 +1120,10 @@
   </div>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <!-- What prints (2.25): a copy of the month's report, put here only while
+       it is open; on screen it never shows. -->
+  <div class="print-area" id="printArea" aria-hidden="true"></div>
 
   <!-- Pico peeking in when a habit is done (2.15). -->
   <div class="pico-peek" id="picoPeek" aria-hidden="true" hidden>
@@ -1053,13 +1309,14 @@
     </symbol>
   </svg>
 
-  <script src="sounds.js?v=2.23"></script>
-  <script src="pico-voice.js?v=2.23"></script>
-  <script src="pico.js?v=2.23"></script>
-  <script src="select.js?v=2.23"></script>
-  <script src="emoji-picker.js?v=2.23"></script>
-  <script src="charts.js?v=2.23"></script>
-  <script src="characters.js?v=2.23"></script>
-  <script src="app.js?v=2.23"></script>
+  <script src="sounds.js?v=2.26"></script>
+  <script src="pico-voice.js?v=2.26"></script>
+  <script src="pico.js?v=2.26"></script>
+  <script src="select.js?v=2.26"></script>
+  <script src="emoji-picker.js?v=2.26"></script>
+  <script src="charts.js?v=2.26"></script>
+  <script src="insights.js?v=2.26"></script>
+  <script src="characters.js?v=2.26"></script>
+  <script src="app.js?v=2.26"></script>
 </body>
 </html>

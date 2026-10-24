@@ -75,6 +75,57 @@ form, keys included. It is also `discreet`: a character's reminder for it uses
 only its own three lines, which never say what it is about, and none of the
 generic ones, which name the habit — a reminder shows on the lock screen.
 
+## Sick days (2.26)
+
+**Estoy enfermo**, under the faces of "¿Cómo te sientes?" on Today, opens a
+sheet with every habit; the ones marked **Esencial** in their editor come
+ticked, and the list can be adjusted for this time. Turned on, from that day
+until **Ya estoy mejor**, each day asks only for the habits kept:
+- Today shows only them, and its ring counts only them; so does the day's
+  excellence (70 % of the habits kept).
+- The others are simply not due those days: they break no daily streak and
+  lower no percentage, chart or level, and their reminders do not ring. One
+  done anyway still counts, in your favour.
+- A weekly quota ("3 veces por semana") asks, in a week with sick days, for
+  its share of the quota (rounded up); a week spent ill throughout neither
+  counts nor breaks the run.
+
+While it lasts a card on Today says since when and what still counts that
+day (the habits kept that are on their schedule), with **Elegir esenciales**
+and **Ya estoy mejor**. Better makes today an ordinary day again (a period
+begun today is undone); the days before stay sick days, and a past one says
+so, from when to when, when chosen in the strip. Changing who is kept (from
+the card, or with an editor's **Esencial** switch) applies from today on: the
+period so far ends yesterday and a new one carries on, so keeping a habit on
+the fourth day never turns the first three into misses, nor does letting one
+go excuse them. A habit ticked or unticked on Today on a sick day keeps its
+row there for the session, so an untick does not take it from under the
+finger. Free, part of the base app.
+
+The charts follow: Progress's best runs and the levels count a week with sick
+days against its share of the quota, and the mood comparisons ("Ánimo y
+hábitos", Pico's discoveries) leave out the sick days a habit was excused
+from, done or not, so an illness's low moods do not land on one side alone.
+The table still shows what was logged on such a day.
+
+**Storage.** `state.sick = { periods: [{ from, to, keep }] }`, `to` null while
+it lasts, written the first time it is turned on; a habit's `essential: true`
+only once set. Everything is worked out through `isScheduled()`, so the
+widget's list, the shell's streaks and the reminders follow by themselves:
+the snapshot marks sick days (`sick`), the habits excused (`excused`) and
+those of them not done (`rest`), which the shell shortens a weekly quota by
+as the app does; a widget untick moves a habit from `due` to `rest` the
+same way.
+
+## Pico frowns at an untick (2.26)
+
+A habit he saw done and that is unticked (its tick on Today, or the − that
+takes a counted habit back below its target) brings him up over the tab bar,
+displeased: the inner corners of his lids down, heavier lids, no smile, his
+crest laid back, a small shake of the head and a low "hmph". Disappointed,
+never angry, and only for a moment. Unticked while he is still up winking at
+the tick, the same Pico changes face. Not under reduced motion.
+
 ## Excellence (2.20; on Today only, at 70%, since 2.21)
 
 Aristotle held that we become just by doing just acts: excellence is not an
@@ -366,6 +417,66 @@ silent whenever the app's sounds are off or the page is hidden. Before the
 first touch a phone keeps the audio suspended; he waits rather than queue a
 sound that would burst out later.
 
+### His wardrobe (2.24; more hats and gestures in 2.25)
+
+Part of the Plus preview (see "The Plus preview" below): **Ajustes →
+Apariencia → Armario de Pico** shows only while it is on. The sheet keeps
+Pico large on a little stage at the top, with the hat's name and the
+button, and scrolls the tiles under it: no hat, and thirteen hats.
+- **Free:** a knitted beanie, a birthday hat, a cap and a crown of flowers.
+- **Earned with an achievement** (once earned, for good): an explorer hat
+  with "Una semana entera" (a 7-day streak), one inspired by the sombrero
+  vueltiao with "Constancia" (30 days with something done), a beret with
+  "Te conoces" (mood logged on 7 days), a graduation cap with "Cien" (100
+  habits done) and a crown with "Semana perfecta" (7 perfect days in a row).
+- **GlowApp Plus:** a witch hat, a Christmas hat, a top hat and a chef's hat.
+
+Tapping a tile tries the hat on: it is lowered onto his head and he looks
+up at it. Nothing is saved until **Ponérselo**: then he hops, the hat
+settles, and every Pico in the app wears it, from the tour to his peeks.
+The same button takes it off. A locked hat can be tried on; its button is
+dimmed and says why it cannot be put on ("Aún por ganar", "Llega con Plus").
+
+**Gestures (2.25).** Under the stage, five buttons play a gesture with the
+hat on: **Saludar** (he tips the brim), **Bailar**, **Reverencia**, **No sé**
+(a shrug) and **Celebrar** (the hat bounces). Each is a short spring
+animation on the compositor, none loops, and under reduced motion the row
+is not shown. While a hat is worn his crest is hidden under it.
+
+**Plus is not available.** Nothing in the app grants it: there is no Google
+Play Billing, no account and no server, so `plusActive()` in `app.js` is
+false. It is never read from `glow.v1`, which an edited or restored backup
+could rewrite. A Plus hat saved as the choice (a backup from the future, an
+edited file) is not worn, is kept, and the sheet says so. Nothing is deleted.
+
+**Storage.** `state.wardrobe = { hat }`, absent until a hat is first put on,
+so a record nobody touched stays as 2.23 wrote it. A hat id this version
+does not draw is kept rather than dropped. Backups carry it like any other
+setting.
+
+**Drawing (`pico.js`).** Each hat is a flat layer at the end of `.pk-all`:
+no outline, its own colours (`.pk-hat-*` in `styles.css`, for dark and
+light themes). It never reaches below y 32 nor above y 1 of his 120-unit
+box, so it is clear of his eyes, whose whites start at y 38, and inside the
+window he peeks from. Being inside `.pk-all`, it leans, hops and squashes
+with him. Two springs of its own (`hatY`, `hatRot`), present only on a Pico
+wearing one, give it weight:
+- it floats a little at the top of a hop and lands after him, so a cheer's
+  hops bounce it gently;
+- his wave tips its brim;
+- running, the air pushes it back;
+- `admire` is the look up at a hat being tried on.
+
+His crest folds away under it, and its idle ruffle is skipped, since nobody
+would see it. Without a hat nothing changes: the same drawing, the same
+springs, the same loop. Everything runs in the one existing loop, so there
+is no animation when he is off screen and none under reduced motion, where
+a hat is simply there.
+
+`Pico.wear(id)` dresses every Pico on the page and the next ones;
+`Pico.hat(host, id, 'drop' | 'settle')` dresses one, as the wardrobe does;
+`Pico.hatSvg(id)` draws a hat alone for the tiles.
+
 ## Reminders from a character (Android app)
 
 Inside the Android app, reminders can come from one of three original
@@ -581,6 +692,106 @@ make one message. All that is stored is what was already announced
 lost to an undo and won back is not news twice — and whoever had the app
 before 2.19 starts with what they had already earned, quietly.
 
+### The Plus preview (2.24; one switch since 2.25)
+
+**Ajustes → Funciones en prueba** has one switch, off unless turned on,
+labelled a preview of GlowApp Plus: free while the test lasts, part of Plus
+once Plus exists. It brings in everything below. Off, GlowApp is 2.23 as
+it was: no new card, row or Pico hat anywhere, and nothing new written.
+Turning it off deletes nothing: routines, the program's progress and the
+hat chosen wait in `glow.v1` and come back as they were when it is turned
+on again. It is saved as `state.labs.plus`, only once it is first moved; a
+2.24 record with `labs.insights` on reads as on.
+
+**Plus is not available.** Nothing in the app grants it: there is no Google
+Play Billing, no account and no server, so `plusActive()` is false and the
+Plus hats can be tried on, never worn. The switch is a preference, not a
+purchase.
+
+### Pico's discoveries (2.24; more of them in 2.25)
+
+A card under the charts in Progress describes what the last twelve weeks
+of records show, in plain sentences:
+- this week's completion against the four weeks before;
+- **same day:** mood, or energy, on days a habit was done and on days it
+  was not;
+- **the next day:** mood or energy the day after doing a habit, against
+  the day after not doing it;
+- **together:** two or three habits done on the same day, and the mood or
+  energy the next day ("El día después de cumplir «Caminar» y «Leer», tu
+  energía suele estar más alta…"); a combination is only told when it beats
+  each habit alone and every habit in it adds something;
+- **mood, then habits:** how much gets done the day after a good or a low
+  mood;
+- **weekdays:** a day of the week clearly above or below the rest.
+
+Every comparison is a Student t-test (pooled variance) with an exact p
+value, and all of them together, often hundreds, go through a
+Benjamini–Hochberg false-discovery cut at 5 %, so that looking at many
+pairs does not turn chance into findings. A difference must also be large
+enough to matter (half a point of mood, ten of energy). On records with no
+pattern in them, fewer than 2 % of cases show any finding at all. The card
+shows four at most, two of a kind.
+
+It never says a habit caused anything, and gives no advice. Each sentence
+gives both numbers and the days behind each, and the card ends with "Son
+coincidencias en tus registros, no causas." Nothing is compared on thin
+data: a group needs seven days (six for a combination), and the card needs
+21 days with a mood in the twelve weeks; below that it says how many there
+are. Today is left out, since the day is not over. Energy counts only on
+days the slider was moved (`energyPct`).
+
+`insights.js` is pure: the app hands in its own rules (`isScheduled`,
+`isComplete`, `settledStats`). It is worked out when the data or the day
+changes and never stored. The free charts ("Ánimo y hábitos", by weekday,
+trend, streaks), the CSV table and the backup are unchanged.
+
+### Guided routines (2.25)
+
+A **Rutinas** card at the top of Hábitos chains habits in the order they
+are done (the morning, the evening). The editor adds habits by tapping
+them, moves them up and down, and gives a step a timer of up to 60 minutes
+(a habit counted in minutes starts with its own target). **Empezar** goes
+through it step by step with Pico: **Hecho** marks the habit for today
+exactly as a tap on Today would (with its streaks and excellence), and
+**Saltar** leaves it as it was. The timer works from the clock, so a slow
+or backgrounded page still shows the right time; when it runs out it says
+so, with a sound and a buzz, and marks nothing. A step whose habit was
+deleted or archived is passed over. Stored as `state.routines`, written
+when the first is saved; deleting a routine leaves its habits and their
+records alone.
+
+### The guided program (2.25)
+
+A first program, **Siete días, un paso a la vez**, from its card in
+Hábitos: a small step a day for a week (something small, a set moment, the
+mood, chaining two habits, looking at the week, making things easier, a
+week done). Each step suggests one thing and offers a way to do it (a
+starter habit to add, Today's mood, the routine editor, Progress). **Listo
+por hoy** moves the program on and marks no habit; the next step opens the
+next day and waits as long as it takes, so missing a day loses nothing.
+While today's step is still to do, Today shows it in one line. It is
+voluntary and can be left at any time; the habits it helped add are
+ordinary habits and stay as they are. It promises nothing about health.
+Stored as `state.program` (`{ id, startedAt, done: [the date of each
+step] }`), written when it is first started, `null` once left.
+
+### The month's report (2.25)
+
+**Informe del mes**, at the foot of the discoveries card, makes a one-page
+summary of a month (this one or one of the eleven before it with data),
+only when asked for. Before making it the sheet says what it holds: the
+habits always (each one's days due and done, and a counted habit's total;
+the month's summary with full days and days of excellence; week by week),
+and, ticked unless unticked, mood and energy averages, the month's first
+and last weigh-in, and the discoveries. Notes and voice notes are never in
+it. Its numbers follow the charts' rules: an unfinished today counts in
+none of them. **Guardar como PDF o imprimir** opens Android's print screen
+in the app (`NativeShell.printPage`), where "Guardar como PDF" makes the
+file, or the browser's own print elsewhere. Only the report prints, dark on
+white whatever the theme; printing anything else is as before. Nothing of
+it is stored.
+
 ## Dropdowns
 
 Since 2.18 the app draws its own dropdowns (`select.js`). Android's WebView
@@ -706,7 +917,8 @@ because every asset already comes from the APK.
 | `emoji-data.js` | Every standard emoji, its group, names and tones — generated, loaded on demand |
 | `sounds.js` | The small synthesised interface sounds |
 | `pico-voice.js` | Pico's voice: synthesised caws, chirps, clicks and trills, no words |
-| `pico.js` | Pico, the guide: his drawing and the calls that pose him |
+| `pico.js` | Pico, the guide: his drawing, his hats and the calls that pose him |
+| `insights.js` | Pico's discoveries (2.24; combinations and the next day since 2.25), a Plus preview: patterns described from the records, never stored |
 | `select.js` | The app's own dropdowns, in place of Android's plain list |
 | `i18n.js` | Spanish and English string tables |
 | `sw.js` | Service worker: precached shell, offline fallback |

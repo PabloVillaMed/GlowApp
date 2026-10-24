@@ -43,13 +43,16 @@ final class GlowDay {
   /** Strings the page sent in the app's language; empty when there is no snapshot. */
   final JSONObject ui;
   final String lang;
+  /** A day marked sick in the app (2.26): only the habits kept are due. */
+  final boolean sick;
 
-  private GlowDay(String date, State state, List<Habit> due, JSONObject ui, String lang) {
+  private GlowDay(String date, State state, List<Habit> due, JSONObject ui, String lang, boolean sick) {
     this.date = date;
     this.state = state;
     this.due = due;
     this.ui = ui;
     this.lang = lang;
+    this.sick = sick;
   }
 
   int doneCount() {
@@ -70,12 +73,12 @@ final class GlowDay {
   static GlowDay from(JSONObject snapshot, String date) {
     final List<Habit> none = Collections.emptyList();
     if (!GlowStore.isCurrent(snapshot)) {
-      return new GlowDay(date, State.NO_DATA, none, new JSONObject(), "es");
+      return new GlowDay(date, State.NO_DATA, none, new JSONObject(), "es", false);
     }
     final JSONObject ui = snapshot.optJSONObject("ui") == null ? new JSONObject() : snapshot.optJSONObject("ui");
     final String lang = snapshot.optString("lang", "es");
     final JSONObject day = GlowStore.dayOf(snapshot, date);
-    if (day == null) return new GlowDay(date, State.STALE, none, ui, lang);
+    if (day == null) return new GlowDay(date, State.STALE, none, ui, lang, false);
 
     final JSONArray dueIds = day.optJSONArray("due");
     final JSONObject values = day.optJSONObject("values");
@@ -100,7 +103,7 @@ final class GlowDay {
         due.add(habit);
       }
     }
-    return new GlowDay(date, State.READY, due, ui, lang);
+    return new GlowDay(date, State.READY, due, ui, lang, day.optBoolean("sick"));
   }
 
   /**
@@ -138,13 +141,20 @@ final class GlowDay {
     int count = 0;
     for (String week = thisWeek; week.compareTo(firstWeek) >= 0; week = GlowStore.addDays(week, -7)) {
       int done = 0;
+      int excused = 0;
       for (int i = 0; i < 7; i++) {
         final String d = GlowStore.addDays(week, i);
-        if (d.compareTo(today) > 0) break;
         final JSONObject day = days.optJSONObject(d);
+        // A sick day it was not kept for (2.26), however far into the week.
+        if (day != null && contains(day.optJSONArray("rest"), id)) excused++;
+        if (d.compareTo(today) > 0) continue;
         if (day != null && valueOf(day, id) >= target) done++;
       }
-      if (done >= weekly) count++;
+      // As the app counts it: a week with sick days asks for its share of the
+      // quota, and one spent ill throughout neither counts nor breaks the run.
+      final int need = excused == 0 ? weekly : (int) Math.ceil(weekly * (7 - excused) / 7.0);
+      if (need == 0) continue;
+      if (done >= need) count++;
       else if (!week.equals(thisWeek)) return count;         // the week in progress can still make it
     }
     return count + base;

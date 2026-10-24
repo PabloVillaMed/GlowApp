@@ -39,6 +39,17 @@
       </intent-filter>
     </activity>
 
+    <!-- The widget's mood and energy window (2.26): a small window over the
+         home screen, in its own task so the app is not brought up behind it,
+         and gone from the recent apps once closed. Only the widget opens it. -->
+    <activity
+        android:name=".MoodActivity"
+        android:exported="false"
+        android:theme="@style/MoodWindow"
+        android:taskAffinity=""
+        android:excludeFromRecents="true"
+        android:noHistory="true" />
+
     <!-- Fires reminders and answers their Done and Listen buttons. Not exported
          and with no intent filter: only this app's own PendingIntents reach it. -->
     <receiver

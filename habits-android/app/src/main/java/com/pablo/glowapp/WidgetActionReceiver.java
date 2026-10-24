@@ -20,6 +20,9 @@ public class WidgetActionReceiver extends BroadcastReceiver {
   /** A tap on a circle, from the 2.8 widget that a launcher may still be showing. */
   static final String ACTION_TAP = "com.pablo.glowapp.WIDGET_TAP";
   static final String ACTION_MIDNIGHT = "com.pablo.glowapp.WIDGET_MIDNIGHT";
+  /** A mood face in the widget's row (2.26); EXTRA_SCORE is 1 to 5. */
+  static final String ACTION_MOOD = "com.pablo.glowapp.WIDGET_MOOD";
+  static final String EXTRA_SCORE = "score";
   static final String EXTRA_HABIT_ID = "habitId";
   static final String EXTRA_OP = "op";
   static final String OP_TICK = "tick";
@@ -38,6 +41,17 @@ public class WidgetActionReceiver extends BroadcastReceiver {
       } catch (ActivityNotFoundException | SecurityException blocked) {
         // Nothing else to do; the header still opens the app.
       }
+      return;
+    }
+
+    if (ACTION_MOOD.equals(action)) {
+      // Today's mood, from the widget's faces: on the real today, like ticks.
+      final int score = intent.getIntExtra(EXTRA_SCORE, 0);
+      if (score >= 1 && score <= 5) {
+        GlowStore.setMood(context, GlowStore.today(), score);
+        MainActivity.pokePage();
+      }
+      GlowWidgetProvider.refresh(context);
       return;
     }
 

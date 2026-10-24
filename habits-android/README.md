@@ -113,6 +113,21 @@ them:
   (2.8 used fixed rows instead, which could not scroll: a widget too short for
   the day simply hid the rest.)
 
+- **Mood and energy on the widget (2.26).** Under the ring, a row with the
+  five faces of Today and an energy button. A face sets the day's mood with
+  one tap, without opening anything (the chosen one sits on a soft disc).
+  The energy button opens a small window over the home screen
+  (`MoodActivity`, in its own task, gone from recents when closed) with the
+  faces again and the energy slider with its − and +, as on Today; as there,
+  the slider waits for a face, and a first face's default 50 % is not saved
+  as a reading until it is moved. A change made by touch, TalkBack, a
+  keyboard or a D-pad is saved, and so is one left when the window closes.
+  The row shows only when the widget's height in use (the tallest in
+  portrait, the shortest in landscape) leaves a full habit row under it:
+  about 176 dp. Both go through the same queue as ticks (`kind: 'mood'` or
+  `'energy'`, one per day, a later one taking the earlier's place), and the
+  page writes them as Today's faces and slider would.
+
 ### How the widget and reminders see your data
 
 Habit data lives in the WebView's local storage, which native code cannot read.
@@ -247,3 +262,13 @@ through `__glow.fileSaved('saved' | 'cancelled' | 'failed')`; and the page's
 file input opens the system picker (`onShowFileChooser`, any type, since a
 backup sent through WhatsApp or Drive does not always keep its JSON type —
 the page checks what is inside before trusting it).
+
+### Printing the month's report (2.25)
+
+A WebView ignores `window.print()`. `NativeShell.printPage(title)` hands the
+page to Android's print framework (`PrintManager` with the WebView's own
+`createPrintDocumentAdapter`, API 21+, no permission): the print screen
+opens with the page as it prints, where "Save as PDF" writes the file
+wherever the user picks, or a printer prints it. The page only calls it
+while the month's report is open, and its print stylesheet then shows that
+report alone, dark on white. Nothing is sent anywhere.

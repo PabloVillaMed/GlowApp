@@ -2039,6 +2039,184 @@ dialog.sheet > .sheet-head { position: sticky; top: 0; z-index: 2; background: v
 .pico .pk-beak-up { fill: #E3A33A; }
 .pico .pk-beak-low { fill: #B87A1E; }
 
+/* His hats (2.24): flat like him, their own colours, set for dark themes
+   first and light ones after (as his purple is). --hat-a is the main
+   colour, -b and -c the second and the detail, --hat-ink the fine lines. */
+.pk-hat-a { fill: var(--hat-a); }
+.pk-hat-b { fill: var(--hat-b); }
+.pk-hat-c { fill: var(--hat-c); }
+.pk-hat-ink { fill: none; stroke: var(--hat-ink); stroke-width: 0.9; stroke-linecap: round; stroke-linejoin: round; }
+.pk-hat[data-hat='beanie'] { --hat-a: #34C3B5; --hat-b: #23968C; --hat-c: #A8EDE6; --hat-ink: #17766D; }
+.pk-hat[data-hat='birthday'] { --hat-a: #FF6F8E; --hat-c: #FFD166; }
+.pk-hat[data-hat='explorer'] { --hat-a: #D9C28C; --hat-b: #7A6443; --hat-c: #C4A971; }
+.pk-hat[data-hat='vueltiao'] { --hat-a: #EFE3C6; --hat-b: #241E17; --hat-ink: #241E17; }
+.pk-hat[data-hat='witch'] { --hat-a: #66568A; --hat-b: #FF8A1E; --hat-c: #54467A; }
+.pk-hat[data-hat='santa'] { --hat-a: #EF5466; --hat-c: #F7F2EA; }
+:root[data-theme='light'] .pk-hat[data-hat='beanie'] { --hat-a: #1E9E92; --hat-b: #157A71; --hat-c: #7FD3CA; --hat-ink: #0E5A53; }
+:root[data-theme='light'] .pk-hat[data-hat='birthday'] { --hat-a: #E8476B; --hat-c: #F0B429; }
+:root[data-theme='light'] .pk-hat[data-hat='explorer'] { --hat-a: #C2A56B; --hat-b: #5E4A2E; --hat-c: #A88C55; }
+:root[data-theme='light'] .pk-hat[data-hat='vueltiao'] { --hat-a: #E2D2A8; --hat-b: #1E1912; --hat-ink: #1E1912; }
+:root[data-theme='light'] .pk-hat[data-hat='witch'] { --hat-a: #2E2540; --hat-b: #F07A12; --hat-c: #3D3352; }
+:root[data-theme='light'] .pk-hat[data-hat='santa'] { --hat-a: #D7263D; --hat-c: #F3ECE2; }
+/* On a light page the white fur would melt into it: a soft edge keeps it. */
+:root[data-theme='light'] .pk-hat[data-hat='santa'] .pk-hat-c { stroke: #DCCFBD; stroke-width: 0.8; }
+/* 2.25's hats. */
+.pk-hat[data-hat='cap'] { --hat-a: #3B82F6; --hat-b: #1D4ED8; --hat-c: #F8FAFC; }
+.pk-hat[data-hat='flowers'] { --hat-a: #F472B6; --hat-b: #FCD34D; --hat-c: #FFF7ED; --hat-ink: #4ADE80; }
+.pk-hat[data-hat='beret'] { --hat-a: #3B5BDB; --hat-b: #2B44B0; --hat-ink: #3B5BDB; }
+.pk-hat[data-hat='graduation'] { --hat-a: #64748B; --hat-b: #475569; --hat-c: #FBBF24; --hat-ink: #FBBF24; }
+.pk-hat[data-hat='crown'] { --hat-a: #FBBF24; --hat-b: #D97706; --hat-c: #EF4444; }
+.pk-hat[data-hat='tophat'] { --hat-a: #52525B; --hat-b: #E11D48; --hat-c: #3F3F46; }
+.pk-hat[data-hat='chef'] { --hat-a: #FFFFFF; --hat-b: #E4E4E7; --hat-ink: #A1A1AA; }
+:root[data-theme='light'] .pk-hat[data-hat='cap'] { --hat-a: #2563EB; --hat-b: #1E40AF; --hat-c: #FFFFFF; }
+:root[data-theme='light'] .pk-hat[data-hat='flowers'] { --hat-a: #EC4899; --hat-b: #F59E0B; --hat-c: #FFFFFF; --hat-ink: #16A34A; }
+:root[data-theme='light'] .pk-hat[data-hat='beret'] { --hat-a: #1E3A8A; --hat-b: #172C6B; --hat-ink: #1E3A8A; }
+:root[data-theme='light'] .pk-hat[data-hat='graduation'] { --hat-a: #1F2937; --hat-b: #111827; --hat-c: #D97706; --hat-ink: #D97706; }
+:root[data-theme='light'] .pk-hat[data-hat='crown'] { --hat-a: #F59E0B; --hat-b: #B45309; --hat-c: #DC2626; }
+:root[data-theme='light'] .pk-hat[data-hat='tophat'] { --hat-a: #18181B; --hat-b: #BE123C; --hat-c: #27272A; }
+:root[data-theme='light'] .pk-hat[data-hat='chef'] { --hat-a: #FFFFFF; --hat-b: #F4F4F5; --hat-ink: #A1A1AA; }
+/* White on a light page: a soft edge, as the Christmas hat's fur has. */
+:root[data-theme='light'] .pk-hat[data-hat='chef'] .pk-hat-a,
+:root[data-theme='light'] .pk-hat[data-hat='chef'] .pk-hat-b { stroke: #D4D4D8; stroke-width: 0.8; }
+
+/* The wardrobe (2.24): Pico large on a little stage, what he has on, and
+   the hats to try, each tile drawn with the hat itself. Since 2.25 the top
+   (Pico, his hat's name, the button) holds still and only the gestures and
+   tiles scroll beneath it, so a hat tried on from far down is seen. */
+#wardrobeDialog[open] { display: flex; flex-direction: column; overflow: hidden; }
+.wardrobe-top {
+  flex: none; display: grid; gap: 8px; padding: 10px 16px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.wardrobe-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.wardrobe-stage {
+  display: flex; justify-content: center; padding: 6px 0 0;
+  border-radius: var(--radius);
+  background: radial-gradient(ellipse at 50% 85%, var(--accent-soft), transparent 70%);
+}
+.wardrobe-pico { width: 7rem; height: 7rem; }
+.wardrobe-moves { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.wardrobe-info { text-align: center; display: grid; gap: 4px; }
+.wardrobe-name { font-weight: 700; font-size: 1.05rem; }
+.wardrobe-wear { align-self: center; justify-self: center; min-width: 11rem; }
+.wardrobe-wear:disabled { opacity: 0.45; cursor: not-allowed; filter: none; }
+.wardrobe-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 560px) { .wardrobe-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.hat-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0;
+  padding: 8px 6px; border-radius: var(--radius);
+  border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--ink);
+  transition: transform 0.12s ease, box-shadow 0.15s ease;
+}
+.hat-tile:active { transform: scale(0.97); }
+.hat-tile[aria-pressed='true'] { border-color: transparent; box-shadow: 0 0 0 2px var(--accent); }
+.hat-tile-art { display: block; width: 100%; max-width: 4.6rem; }
+.hat-icon { display: block; width: 100%; height: auto; aspect-ratio: 70 / 36; }
+.hat-none path { fill: var(--pico-body); }
+.hat-tile-name { font-size: 0.76rem; font-weight: 600; line-height: 1.2; text-align: center; overflow-wrap: anywhere; }
+.hat-tile-tier { font-size: 0.68rem; color: var(--ink-2); }
+.hat-tile.is-worn .hat-tile-tier { color: var(--accent); font-weight: 700; }
+.hat-tile.is-locked .hat-tile-art { opacity: 0.7; }
+
+/* Guided routines (2.25, a Plus preview): a card in Hábitos, an editor, and
+   a player that goes step by step. */
+.routines-card { margin-bottom: 12px; display: grid; gap: 8px; }
+.routines-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.routines-card .btn { justify-self: start; }
+.routine-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.routine-item {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border);
+}
+.routine-item-text { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
+.routine-item-name { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.routine-item-meta { font-size: 0.75rem; color: var(--ink-2); }
+.routine-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.routine-step {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; align-items: center;
+  padding: 8px 10px; border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border);
+}
+.routine-step-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.routine-step-tools { display: flex; gap: 4px; align-items: center; }
+.routine-step-time { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--ink-2); }
+.routine-step-time output { min-width: 4.6rem; text-align: center; font-weight: 600; color: var(--ink); }
+.routine-step .icon-btn { width: 34px; height: 34px; }
+.player-body { align-items: center; text-align: center; }
+.player-pico { display: block; width: 6rem; height: 6rem; }
+.player-habit { font-size: 1.25rem; font-weight: 700; }
+.player-timer { font-size: 2.6rem; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.player-note { min-height: 1.2em; }
+.player-actions { justify-content: center; }
+
+/* Sick days (2.26): a quiet button in the mood card; while it lasts, a card
+   on Today saying what still counts. */
+.sick-chip {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 10px;
+  min-height: 34px; padding: 4px 12px; border-radius: var(--radius-pill);
+  font: inherit; font-size: 0.82rem; font-weight: 600; color: var(--ink-2);
+  background: var(--surface-2); border: 1px solid var(--border); cursor: pointer;
+}
+.sick-chip:hover { border-color: var(--accent); color: var(--ink); }
+.sick-card { display: grid; gap: 8px; border-color: color-mix(in srgb, var(--accent) 35%, var(--edge)); }
+.sick-head { display: flex; align-items: center; gap: 10px; }
+.sick-emoji { font-size: 1.7rem; line-height: 1; }
+.sick-head h3 { margin-bottom: 1px; }
+.sick-text { font-size: 0.86rem; line-height: 1.45; }
+.sick-card .button-row { margin-top: 2px; }
+.sick-keep { display: grid; gap: 10px; }
+.essential-row .essential-text { display: grid; gap: 2px; }
+.essential-row .field-hint { font-weight: 400; }
+
+/* The guided program (2.25, a Plus preview): its step on Today, its card in
+   Hábitos, and the sheet with the day's step. */
+.program-today {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  font: inherit; color: inherit; text-align: start; cursor: pointer;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, var(--surface)), var(--surface) 70%);
+}
+.program-today-text { flex: 1 1 auto; min-width: 0; display: grid; gap: 2px; }
+.program-today-day { font-size: 0.75rem; font-weight: 600; color: var(--accent); }
+.program-today-title { font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.program-today-go { flex: none; color: var(--ink-2); }
+.program-name { font-weight: 650; }
+.program-card .button-row { margin-top: 0; }
+.program-step-day { font-size: 0.85rem; font-weight: 600; color: var(--accent); }
+.program-body { align-items: center; text-align: center; }
+.program-pico { display: block; width: 5.5rem; height: 5.5rem; }
+.program-body h2 { font-size: 1.2rem; }
+.program-step-text { line-height: 1.5; max-width: 30rem; }
+.program-step-action:empty { display: none; }
+.preset-chip:disabled { opacity: 0.55; cursor: default; }
+
+/* The month's report (2.25, a Plus preview): what it holds, then the report
+   on a sheet of paper, the same that prints. */
+.insights-report { margin-top: 4px; }
+.report-holds { border: 0; margin: 0; padding: 0; display: grid; gap: 8px; }
+.report-holds legend { padding: 0; margin-bottom: 4px; }
+.check-line { display: flex; align-items: flex-start; gap: 8px; font-size: 0.86rem; line-height: 1.4; }
+.check-line input { margin-top: 2px; flex: none; width: 1.05rem; height: 1.05rem; accent-color: var(--accent); }
+.report-paper {
+  border-radius: 12px; padding: 16px; overflow-x: auto;
+  background: #FFFFFF; color: #1A1A1A; border: 1px solid var(--border);
+}
+.report { font-size: 0.8rem; line-height: 1.45; color: #1A1A1A; }
+.report-top { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.report-pico { width: 3rem; height: 3rem; flex: none; }
+.report-top h1 { font-size: 1.15rem; margin: 0 0 2px; color: #1A1A1A; }
+.report-top p, .report-holds-line, .report-foot { margin: 0; color: #55524D; font-size: 0.74rem; }
+.report-holds-line { margin-bottom: 12px; }
+.report h2 { font-size: 0.92rem; margin: 14px 0 6px; color: #1A1A1A; }
+.report-facts { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; }
+.report-facts dt { color: #55524D; }
+.report-facts dd { margin: 0; font-weight: 600; }
+.report table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.report th, .report td { text-align: start; padding: 4px 6px; border-bottom: 1px solid #E2DFDA; vertical-align: top; }
+.report th { font-weight: 600; color: #55524D; }
+.report td.num, .report th.num { text-align: end; white-space: nowrap; }
+.report ul { margin: 0; padding-inline-start: 1.1rem; display: grid; gap: 4px; }
+.report-foot { margin-top: 14px; padding-top: 8px; border-top: 1px solid #E2DFDA; }
+.print-area { display: none; }
+
 /* His invitation on Today, for anyone who had the app before he arrived. */
 .pico-promo {
   display: flex; align-items: center; gap: 0.9rem;
@@ -2049,6 +2227,21 @@ dialog.sheet > .sheet-head { position: sticky; top: 0; z-index: 2; background: v
 .pico-promo h3 { margin-bottom: 3px; }
 .pico-promo p { font-size: 0.82rem; line-height: 1.45; color: var(--ink-2); }
 .pico-promo .button-row { margin-top: 10px; }
+
+/* Pico's discoveries in Progress (2.24, a Plus preview): plain sentences,
+   one per finding, under a small thinking Pico. */
+.insights-head { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 6px; }
+.insights-pico { width: 3.2rem; height: 3.2rem; flex: none; }
+.insights-head h3 { margin-bottom: 2px; }
+.insights-tag {
+  display: inline-block; padding: 1px 8px; border-radius: var(--radius-pill);
+  font-size: 0.7rem; font-weight: 600; color: var(--accent); background: var(--accent-soft);
+}
+.insights-list { list-style: none; margin: 8px 0 6px; padding: 0; display: grid; gap: 8px; }
+.insights-list li {
+  font-size: 0.86rem; line-height: 1.45; padding: 8px 10px;
+  border-radius: 10px; background: var(--surface-2);
+}
 
 /* ── The tour (2.13) ──────────────────────────────────────────────────
    The spotlight is a box over the target whose enormous shadow dims the
@@ -2186,4 +2379,20 @@ html.is-touring body { padding-bottom: calc(64px + var(--safe-b) + 70vh); }
   .tour-spot, .tour-dim, .tour-coach, .tour-pico, .palette-card { transition: none; }
   .tour-spot.is-target::after, .tour-coach.is-entering,
   .pico-cheer, .pico-cheer.is-leaving { animation: none; }
+}
+
+/* Printing (2.25): only the month's report, black on white whatever the
+   theme. Anything else printed (a browser's own print, with no report
+   open) comes out as before. */
+@media print {
+  html.is-printing { color-scheme: light; }
+  html.is-printing, html.is-printing body { background: #FFFFFF !important; color: #1A1A1A !important; }
+  html.is-printing body { margin: 0 !important; padding: 0 !important; }
+  html.is-printing body > :not(.print-area) { display: none !important; }
+  html.is-printing .print-area { display: block; page: report; }
+  html.is-printing .report { font-size: 10.5pt; }
+  .report tr, .report li, .report-facts { break-inside: avoid; }
+  .report h2 { break-after: avoid; }
+  /* A named page: its margins are the report's alone. */
+  @page report { margin: 14mm; }
 }

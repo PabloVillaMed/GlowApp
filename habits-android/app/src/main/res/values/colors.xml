@@ -16,4 +16,6 @@
   <color name="widget_pill">#FDE8DE</color>
   <color name="widget_streak">#C04E1C</color>
   <color name="widget_press">#1F0B0B0B</color>
+  <!-- The mood face chosen today (2.26). -->
+  <color name="widget_face_on">#DCE9FA</color>
 </resources>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- A mood face in the widget's row (2.26): equal shares of the width. -->
+  <style name="WidgetFace">
+    <item name="android:layout_width">0dp</item>
+    <item name="android:layout_height">36dp</item>
+    <item name="android:layout_weight">1</item>
+    <item name="android:layout_marginStart">1dp</item>
+    <item name="android:layout_marginEnd">1dp</item>
+    <item name="android:gravity">center</item>
+    <item name="android:textSize">19sp</item>
+    <item name="android:background">@drawable/widget_face</item>
+  </style>
+
+  <!-- A mood face in the energy window (2.26). -->
+  <style name="MoodFace" parent="WidgetFace">
+    <item name="android:layout_height">48dp</item>
+    <item name="android:textSize">24sp</item>
+  </style>
+
+  <!-- The energy window over the home screen (2.26): floating, the widget's colours. -->
+  <style name="MoodWindow" parent="@android:style/Theme.Material.Light.Dialog.NoActionBar">
+    <item name="android:windowBackground">@drawable/mood_window</item>
+    <item name="android:windowMinWidthMajor">88%</item>
+    <item name="android:windowMinWidthMinor">92%</item>
+    <item name="android:colorAccent">@color/widget_accent</item>
+    <item name="android:textColorPrimary">@color/widget_ink</item>
+  </style>
+</resources>

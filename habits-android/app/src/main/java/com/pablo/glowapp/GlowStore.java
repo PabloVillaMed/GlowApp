@@ -143,6 +143,7 @@ final class GlowStore {
         values.put(habitId, value >= target ? 0 : target);
         action = "toggle";
       }
+      followSickDay(day, habitId, values.optInt(habitId) >= target);
       writeSnapshot(context, snapshot.toString());
       return action;
     } catch (JSONException ignored) {
@@ -166,6 +167,31 @@ final class GlowStore {
     } catch (JSONException ignored) {
       return false;
     }
+  }
+
+  /**
+   * On a sick day (2.26) a habit it was excused from is due only while done,
+   * as the page has it: unticked from the widget it leaves `due` (no row, no
+   * reminder) for `rest` (a weekly quota shortened), and the other way round.
+   */
+  private static void followSickDay(JSONObject day, String habitId, boolean done) throws JSONException {
+    if (!day.optBoolean("sick") || !has(day.optJSONArray("excused"), habitId)) return;
+    day.put("due", without(day.optJSONArray("due"), habitId, done));
+    day.put("rest", without(day.optJSONArray("rest"), habitId, !done));
+  }
+
+  private static boolean has(JSONArray list, String id) {
+    if (list == null) return false;
+    for (int i = 0; i < list.length(); i++) if (id.equals(list.optString(i))) return true;
+    return false;
+  }
+
+  /** The list without the id, and with it once at the end when `keep`. */
+  private static JSONArray without(JSONArray list, String id, boolean keep) {
+    final JSONArray out = new JSONArray();
+    if (list != null) for (int i = 0; i < list.length(); i++) if (!id.equals(list.optString(i))) out.put(list.optString(i));
+    if (keep) out.put(id);
+    return out;
   }
 
   static JSONObject habitById(JSONObject snapshot, String habitId) {
@@ -204,6 +230,83 @@ final class GlowStore {
       entry.put("date", date);
       entry.put("action", action);
       queue.put(entry);
+    } catch (JSONException ignored) {
+      return;
+    }
+    store.edit().putString(KEY_PENDING, queue.toString()).apply();
+  }
+
+  /* ── Today's mood and energy, from the widget (2.26) ── */
+
+  /** That day's mood in the snapshot, {score, energyPct}, or null when none is set. */
+  static synchronized JSONObject moodOf(Context context, String date) {
+    final JSONObject day = dayOf(readSnapshot(context), date);
+    final JSONObject mood = day == null ? null : day.optJSONObject("mood");
+    return mood != null && mood.optInt("score") > 0 ? mood : null;
+  }
+
+  /**
+   * A face chosen on the widget: shown at once in the snapshot, and queued for
+   * the page, which writes it as a tap on Today's face would (a new mood
+   * starts at the page's default energy, 50 %).
+   */
+  static synchronized void setMood(Context context, String date, int score) {
+    final JSONObject snapshot = readSnapshot(context);
+    final JSONObject day = dayOf(snapshot, date);
+    if (day != null) {
+      try {
+        JSONObject mood = day.optJSONObject("mood");
+        if (mood == null) {
+          mood = new JSONObject();
+          mood.put("energyPct", 50);
+          day.put("mood", mood);
+        }
+        mood.put("score", score);
+        writeSnapshot(context, snapshot.toString());
+      } catch (JSONException ignored) {
+        // The queued change still counts; the page sends a fresh snapshot.
+      }
+    }
+    queueMood(context, "mood", date, "score", score);
+  }
+
+  /** The energy set in the widget's window, 0 to 100; only once the day has a mood. */
+  static synchronized void setEnergy(Context context, String date, int pct) {
+    final int value = Math.max(0, Math.min(100, pct));
+    final JSONObject snapshot = readSnapshot(context);
+    final JSONObject day = dayOf(snapshot, date);
+    final JSONObject mood = day == null ? null : day.optJSONObject("mood");
+    if (mood != null) {
+      try {
+        mood.put("energyPct", value);
+        writeSnapshot(context, snapshot.toString());
+      } catch (JSONException ignored) {
+        // As above.
+      }
+    }
+    queueMood(context, "energy", date, "pct", value);
+  }
+
+  /**
+   * Queues a mood or an energy for the page. A later one for the same day
+   * takes the earlier one's place in the queue, so a mood still comes before
+   * the energy that needs it, and a slider moved twenty times is one change.
+   */
+  private static void queueMood(Context context, String kind, String date, String field, int value) {
+    final SharedPreferences store = prefs(context);
+    final JSONArray queue = readArray(store, KEY_PENDING);
+    try {
+      final JSONObject entry = new JSONObject();
+      entry.put("kind", kind);
+      entry.put("date", date);
+      entry.put(field, value);
+      int at = -1;
+      for (int i = 0; i < queue.length(); i++) {
+        final JSONObject old = queue.optJSONObject(i);
+        if (old != null && kind.equals(old.optString("kind")) && date.equals(old.optString("date"))) at = i;
+      }
+      if (at >= 0) queue.put(at, entry);
+      else queue.put(entry);
     } catch (JSONException ignored) {
       return;
     }

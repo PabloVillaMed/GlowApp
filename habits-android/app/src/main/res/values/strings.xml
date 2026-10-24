@@ -21,4 +21,10 @@
   <string name="widget_label">GlowApp — Today</string>
   <string name="widget_description">Today\'s habits: tick them off and add glasses of water without opening the app.</string>
   <string name="widget_empty">Open GlowApp to get started</string>
+
+  <!-- The widget's mood and energy (2.26), until the app has sent its own words. -->
+  <string name="mood_title">How do you feel?</string>
+  <string name="energy">Energy</string>
+  <string name="mood_first">Choose how you feel first.</string>
+  <string name="close">Close</string>
 </resources>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The mood face chosen today (2.26): a soft disc behind it. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="@color/widget_press">
+  <item>
+    <shape android:shape="oval">
+      <solid android:color="@color/widget_face_on" />
+    </shape>
+  </item>
+</ripple>

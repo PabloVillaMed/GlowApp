@@ -16,4 +16,9 @@
   <string name="widget_label">GlowApp — Hoy</string>
   <string name="widget_description">Tus hábitos de hoy: márcalos y suma vasos de agua sin abrir la app.</string>
   <string name="widget_empty">Abre GlowApp para empezar</string>
+
+  <string name="mood_title">¿Cómo te sientes?</string>
+  <string name="energy">Energía</string>
+  <string name="mood_first">Elige primero cómo te sientes.</string>
+  <string name="close">Cerrar</string>
 </resources>
