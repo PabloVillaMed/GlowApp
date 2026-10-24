@@ -16,9 +16,10 @@ purple crow, as a guide.
 ## Try it
 
 - **In the browser:** <https://hobby-col-web.vercel.app/habits/>
-- **On Android:** install `GlowApp-2.26.apk` from the repository root
-  (Android 7.0 or newer). `GlowApp-2.25.apk`, the release before it, is kept
-  next to it. Installing over an earlier GlowApp keeps your data; how to get
+- **On Android:** download `GlowApp-2.26.apk` from the
+  [latest release](https://github.com/PabloVillaMed/GlowApp/releases/latest)
+  (Android 7.0 or newer); it is also at the repository root, with
+  `GlowApp-2.25.apk`, the release before it, kept next to it. Installing over an earlier GlowApp keeps your data; how to get
   past Android's warnings for apps from outside the Play Store is in
   [habits-android/README.md](habits-android/README.md#installing-on-a-phone).
   Over USB: `adb install -r GlowApp-2.26.apk`.
